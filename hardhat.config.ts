@@ -25,17 +25,17 @@ const config: HardhatUserConfig = {
   },
   networks: {
 
-    // hardhat: {
-    //   chainId: 1337,
-
-    // },
     hardhat: {
-      // forking: {
-      //   url: process.env.RPC as string,
-      //   blockNumber: 9121617
+      chainId: 1337,
 
-      // },
     },
+    // hardhat: {
+    //   forking: {
+    //     url: process.env.RPC as string,
+    //     blockNumber: 9121617
+
+    //   },
+    // },
 
     sepolia: {
       url: "https://eth-sepolia.public.blastapi.io",
@@ -43,8 +43,8 @@ const config: HardhatUserConfig = {
       gasPrice: "auto",
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
     },
-    sepolia1: { // redeploy after fix missing audit code
-      url: process.env.SEPOLIA_RPC_URL,
+    sepolia1: { 
+      url:  "https://eth-sepolia.public.blastapi.io",
       chainId: 11155111,
       gasPrice: "auto",
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
