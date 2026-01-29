@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts } from "../../scripts/utils";
+import { saveContract, getContracts, getRpcUrl } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 import Web3 from "web3";
 dotenv.config();
@@ -10,7 +10,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const web3 = new Web3(process.env.RPC!);
+  const web3 = new Web3(getRpcUrl(network.config));
 
   const contracts = await getContracts();
   const router = contracts[network.name].TimeLockRouter.address;

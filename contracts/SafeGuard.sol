@@ -3,10 +3,10 @@
 pragma solidity 0.8.20;
 
 import {ISafeWallet} from "./interfaces/ISafeWallet.sol";
-import {Enum} from "@safe-global/safe-smart-account/contracts/common/Enum.sol";
-import {ISignatureValidator} from "@safe-global/safe-smart-account/contracts/interfaces/ISignatureValidator.sol";
-import {BaseGuard} from "@safe-global/safe-smart-account/contracts/base/GuardManager.sol";
-import {SafeMath} from "@safe-global/safe-smart-account/contracts/external/SafeMath.sol";
+import {Enum} from "@safe-global/safe-contracts/contracts/libraries/Enum.sol";
+import {ISignatureValidator} from "@safe-global/safe-contracts/contracts/interfaces/ISignatureValidator.sol";
+import {BaseGuard} from "@safe-global/safe-contracts/contracts/examples/guards/BaseGuard.sol";
+import {SafeMath} from "@safe-global/safe-contracts/contracts/external/SafeMath.sol";
 
 contract SafeGuard is BaseGuard {
   using SafeMath for uint256;
@@ -86,6 +86,33 @@ contract SafeGuard is BaseGuard {
   function checkAfterExecution(bytes32 hash, bool success) external {}
 
   /**
+   * @dev check module transaction
+   * @param to target address
+   * @param value value
+   * @param data data
+   * @param operation call or delegateCall
+   * @param module module address
+   * @return moduleTxHash hash of the module transaction
+   */
+  function checkModuleTransaction(
+    address to,
+    uint256 value,
+    bytes memory data,
+    Enum.Operation operation,
+    address module
+  ) external returns (bytes32 moduleTxHash) {
+    lastTimestampTxs = block.timestamp;
+    return keccak256(abi.encodePacked(to, value, data, operation, module));
+  }
+
+  /**
+   * @dev check after module execution
+   * @param txHash module transaction hash
+   * @param success true is success false otherwise
+   */
+  function checkAfterModuleExecution(bytes32 txHash, bool success) external {}
+
+  /**
    * @dev get last timestamp transaction
    */
   function getLastTimestampTxs() external view returns (uint256) {
@@ -143,7 +170,7 @@ contract SafeGuard is BaseGuard {
           contractSignature := add(add(signatures, s), 0x20)
         }
         require(
-          ISignatureValidator(currentOwner).isValidSignature(data, contractSignature) == bytes4(ISignatureValidator.isValidSignature.selector),
+          ISignatureValidator(currentOwner).isValidSignature(keccak256(data), contractSignature) == bytes4(ISignatureValidator.isValidSignature.selector),
           "GS024"
         );
       } else if (v == 1) {

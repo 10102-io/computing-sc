@@ -603,8 +603,8 @@ describe("Transfer Router", function () {
       const nicknames: string[] = ["SB nickname 1", "SB nickname 2"];
       const beneficiaries: string[] = [beneficiaries1.address, beneficiaries2.address];
       const minRequiredSignatures: bigint = BigInt(3);
-      const legacyAddress: string = await TransferWiLegacyuter.legacyAddresses(legacyId);
-      const legacy: TransferWiLegacy await getTransferWiLegacyillAddress);
+      const legacyAddress: string = await TransferLegacyRouter.legacyAddresses(legacyId);
+      const legacy: TransferLegacy = await getLegacyContract(legacyAddress);
 
       const protocolKit1: Safe = await getProtocolKit(SAFEWALLET_SUCEESFULLY, SIGNER1_PRIVATE_KEY);
       const signer1 = await new ethers.Wallet(SIGNER1_PRIVATE_KEY, provider);
@@ -934,8 +934,8 @@ describe("Transfer Router", function () {
       //Input
       const beneficiaries1 = new ethers.Wallet(BENEFICIARIES1_PRIVATE_KEY, provider);
       const legacyId: bigint = BigInt(1);
-      const legacyAddress: string = await TransferWiLegacyuter.legacyAddresses(legacyId);
-      const legacy = await getTransferWiLegacyillAddress);
+      const legacyAddress: string = await TransferLegacyRouter.legacyAddresses(legacyId);
+      const legacy = await getLegacyContract(legacyAddress);
       const beneficiaries: string[] = await legacy.getBeneficiaries();
       const protocolKit: Safe = await getProtocolKit(SAFEWALLET_SUCEESFULLY, beneficiaries1.address);
       const owners: string[] = await protocolKit.getOwners();
@@ -965,8 +965,8 @@ describe("Transfer Router", function () {
       //Input
       const signer = new ethers.Wallet(SIGNER1_PRIVATE_KEY, provider);
       const legacyId: bigint = BigInt(1);
-      const legacyAddress: string = await TransferWiLegacyuter.legacyAddresses(legacyId);
-      const legacy = await getTransferWiLegacyillAddress);
+      const legacyAddress: string = await TransferLegacyRouter.legacyAddresses(legacyId);
+      const legacy = await getLegacyContract(legacyAddress);
 
       //Execute
       const tx = await activeLegacy(legacyId, signer);
@@ -980,8 +980,8 @@ describe("Transfer Router", function () {
       const beneficiaries1 = new ethers.Wallet(BENEFICIARIES1_PRIVATE_KEY, provider);
       const legacyId: bigint = BigInt(1);
       const lackOfOutgoingTxRange: bigint = BigInt(10 ** 9);
-      const legacyAddress: string = await TransferWiLegacyuter.legacyAddresses(legacyId);
-      const legacy = await getTransferWiLegacyillAddress);
+      const legacyAddress: string = await TransferLegacyRouter.legacyAddresses(legacyId);
+      const legacy = await getLegacyContract(legacyAddress);
 
       const protocolKit1: Safe = await getProtocolKit(SAFEWALLET_SUCEESFULLY, SIGNER1_PRIVATE_KEY);
       const signer1 = await new ethers.Wallet(SIGNER1_PRIVATE_KEY, provider);

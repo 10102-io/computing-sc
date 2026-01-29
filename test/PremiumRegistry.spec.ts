@@ -1,6 +1,6 @@
 import Web3 from "web3";
 import { ethers, network } from "hardhat";
-import { BigNumber, ethers as ethersI } from "ethers";
+import { ethers as ethersI } from "ethers";
 import { assert } from "console";
 
 import { currentTime, increase, increaseTo } from "./utils/time";
@@ -8,13 +8,14 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 
 import { expect, use } from "chai";
-import { formatEther, formatUnits, parseEther, parseUnits } from "ethers/lib/utils";
+import { formatEther, formatUnits, parseEther, parseUnits } from "ethers";
 import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
 const web3 = new Web3(process.env.RPC!);
-const user_pk = process.env.PK;
+const user_pk = (process.env.PK || process.env.DEPLOYER_PRIVATE_KEY)?.trim();
+const privateKey = user_pk?.startsWith('0x') ? user_pk : `0x${user_pk}`;
 
-const user = web3.eth.accounts.privateKeyToAccount(user_pk!).address;
-const wallet = web3.eth.accounts.privateKeyToAccount(user_pk!);
+const user = web3.eth.accounts.privateKeyToAccount(privateKey!).address;
+const wallet = web3.eth.accounts.privateKeyToAccount(privateKey!);
 
 
 
@@ -37,7 +38,7 @@ describe("Premium Setting", async function () {
 
     const ONE_YEAR = 86400 * 365;
     const FIVE_YEARS = 86400 * 365 * 5;
-    const LIFETIME = ethers.constants.MaxUint256;
+    const LIFETIME = ethers.MaxUint256;
 
     function emailMapping(addr: string, email: string, name: string) {
         return { addr, email, name };
@@ -52,21 +53,21 @@ describe("Premium Setting", async function () {
 
         const Setting = await ethers.getContractFactory("PremiumSetting");
         const setting = await Setting.deploy();
-        await setting.initialize();
+        await setting.connect(treasury).initialize();
 
         const Payment = await ethers.getContractFactory("Payment");
         const payment = await Payment.deploy();
 
         const Registry = await ethers.getContractFactory("PremiumRegistry");
         const registry = await Registry.deploy();
-        await registry.initialize(
-            usdt.address,
-            usdc.address,
+        await registry.connect(treasury).initialize(
+            usdt.target,
+            usdc.target,
             "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
             "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
             "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-            setting.address,
-            payment.address
+            setting.target,
+            payment.target
 
         )
 
@@ -82,6 +83,12 @@ describe("Premium Setting", async function () {
 
         await usdt.mint(user3.address, 100000 * 10 ** 6); // 100K usdt
         await usdc.mint(user3.address, 100000 * 10 ** 6); // 100K usdc
+
+        // Fund the account with ETH before impersonating
+        await network.provider.send("hardhat_setBalance", [
+            "0x944a402a91c3d6663f5520bfe23c1c1ee77bca92",
+            "0x1000000000000000000" // 1 ETH
+        ]);
 
         await network.provider.request({
             method: "hardhat_impersonateAccount",
@@ -103,8 +110,8 @@ describe("Premium Setting", async function () {
 
 
         //set up
-        await setting.setParams(registry.address, treasury.address, treasury.address, multisignLegacyRouter.address);
-        await verifierTerm.connect(dev).setRouterAddresses(multisignLegacyRouter.address, multisignLegacyRouter.address, multisignLegacyRouter.address);
+        await setting.setParams(registry.target, treasury.address, treasury.address, multisignLegacyRouter.target);
+        await verifierTerm.connect(dev).setRouterAddresses(multisignLegacyRouter.target, multisignLegacyRouter.target, multisignLegacyRouter.target);
 
 
         return {
@@ -222,7 +229,7 @@ describe("Premium Setting", async function () {
     })
 
     describe("should calculate plan prices with decimals 2",async function () {
-        it.only("should setup plans successfully", async function () {
+        it("should setup plans successfully", async function () {
             const { usdt, usdc, registry, setting, treasury } = await loadFixture(deployFixture);
             await registry.createPlans(
                 [ONE_YEAR, FIVE_YEARS, LIFETIME],
@@ -262,7 +269,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(user1).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(user1).approve(registry.target, ethers.MaxUint256);
             const planPriceUSDC = await registry.getPlanPriceUSDC(0);
             console.log({ planPriceUSDC });
             await registry.connect(user1).subcribeWithUSDC(0);
@@ -297,7 +304,7 @@ describe("Premium Setting", async function () {
                 value: planPriceETH
             });
             const ethBalAfter = await ethers.provider.getBalance(user1.address);
-            expect(BigNumber.from(ethBalBefore).sub(BigNumber.from(ethBalAfter))).to.be.gte(BigNumber.from(planPriceETH)) // gas consumed in tx 
+            expect(ethBalBefore - ethBalAfter).to.be.gte(planPriceETH) // gas consumed in tx 
             expect(await setting.premiumExpired(user1.address)).to.be.gt(0n);
 
             // await expect(setting.connect(user1).setEmails()).to.not.reverted;
@@ -321,7 +328,7 @@ describe("Premium Setting", async function () {
             )
 
             //user subcribe plans
-            await usdc.connect(user1).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(user1).approve(registry.target, ethers.MaxUint256);
             const planPriceUSDC = await registry.getPlanPriceETH(0);
             console.log({ planPriceUSDC });
             await registry.connect(user1).subcribeWithUSDC(2);
@@ -347,14 +354,14 @@ describe("Premium Setting", async function () {
             )
 
             //user 1 subcribe with usdc
-            await usdc.connect(user1).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(user1).approve(registry.target, ethers.MaxUint256);
             const planPriceUSDC = await registry.getPlanPriceUSDC(0);
             console.log({ planPriceUSDC });
             await registry.connect(user1).subcribeWithUSDC(0);
             expect(await usdc.balanceOf(payment.address)).to.be.eq(planPriceUSDC);
 
             //user 2 subcribe with usdt
-            await usdt.connect(user2).approve(registry.address, ethers.constants.MaxUint256);
+            await usdt.connect(user2).approve(registry.target, ethers.MaxUint256);
             const planPriceUSDT = await registry.getPlanPriceUSDT(0);
             console.log({ planPriceUSDT });
             await registry.connect(user2).subcribeWithUSDT(0);
@@ -433,7 +440,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -480,7 +487,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -527,7 +534,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -580,7 +587,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -626,7 +633,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -665,7 +672,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -714,7 +721,7 @@ describe("Premium Setting", async function () {
             )
 
             // user subcribe for plan
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
 
             // set config
@@ -736,7 +743,7 @@ describe("Premium Setting", async function () {
 
             // user subcribe for plan
             let legacyAddress = "0x48e9365f1956e4ba6f4ffe75dfa5b28063888c71";
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
             await setting.connect(dev).setWatchers(legacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
         })
@@ -755,7 +762,7 @@ describe("Premium Setting", async function () {
 
             // user subcribe for plan
             let legacyAddress = "0x48e9365f1956e4ba6f4ffe75dfa5b28063888c71";
-            await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+            await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
             await registry.connect(dev).subcribeWithUSDC(0);
             await setting.connect(dev).setWatchers(legacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
             await setting.connect(dev).clearWatcher([legacyAddress]);
@@ -794,7 +801,7 @@ describe("Premium Setting", async function () {
     //     const newDistributions = [{ user: user3.address, percent: 100 }]
 
     //     // user subcribe for plan
-    //     await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+    //     await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
     //     await registry.connect(dev).subcribeWithUSDC(0);
 
     //     // set config
@@ -850,7 +857,7 @@ describe("Premium Setting", async function () {
     //         const newDistributions = [{ user: user3.address, percent: 100 }]
 
     //         // user subcribe for plan
-    //         await usdc.connect(user1).approve(registry.address, ethers.constants.MaxUint256);
+    //         await usdc.connect(user1).approve(registry.target, ethers.MaxUint256);
     //         await registry.connect(user1).subcribeWithUSDC(0);
 
     //         // set config

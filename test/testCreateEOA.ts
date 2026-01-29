@@ -1,6 +1,7 @@
 // scripts/test-create-legacy.ts
 
 import { ethers } from "hardhat";
+import { parseUnits } from "ethers";
 import type { Signer } from "ethers";
 
 async function main() {
@@ -111,7 +112,7 @@ const contract = new ethers.Contract(contractAddress, abi, deployer as unknown a
     nickName3,
     {
       gasLimit: 5000000, 
-      gasPrice: ethers.utils.parseUnits("10", "gwei"), 
+      gasPrice: parseUnits("10", "gwei"), 
     }
   );
 

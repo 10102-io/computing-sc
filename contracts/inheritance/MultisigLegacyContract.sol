@@ -7,7 +7,7 @@ import {GenericLegacy} from "../common/GenericLegacy.sol";
 import {ISafeGuard} from "../interfaces/ISafeGuard.sol";
 import {ISafeWallet} from "../interfaces/ISafeWallet.sol";
 import {MultisigLegacyStruct} from "../libraries/MultisigLegacyStruct.sol";
-import {Enum} from "@safe-global/safe-smart-account/contracts/common/Enum.sol";
+import {Enum} from "@safe-global/safe-contracts/contracts/libraries/Enum.sol";
 
 contract MultisigLegacy is GenericLegacy {
   error BeneficiaryInvalid();

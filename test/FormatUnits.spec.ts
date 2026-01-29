@@ -1,6 +1,6 @@
 import Web3 from "web3";
 import { ethers, network } from "hardhat";
-import { BigNumber, ethers as ethersI } from "ethers";
+import { ethers as ethersI } from "ethers";
 import { assert } from "console";
 
 import { currentTime, increase, increaseTo } from "./utils/time";
@@ -8,7 +8,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 
 import { expect, use } from "chai";
-import { formatEther, parseEther } from "ethers/lib/utils";
+import { formatEther, parseEther } from "ethers";
 import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 

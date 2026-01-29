@@ -4,8 +4,6 @@ import "@nomicfoundation/hardhat-chai-matchers";
 import "@nomicfoundation/hardhat-verify";
 import "hardhat-contract-sizer";
 import "hardhat-deploy";
-import "hardhat-deploy-ethers";
-import "@nomiclabs/hardhat-ethers";
 import "@nomicfoundation/hardhat-toolbox";
 
 dotenv.config();
@@ -41,19 +39,19 @@ const config: HardhatUserConfig = {
       url: "https://eth-sepolia.public.blastapi.io",
       chainId: 11155111,
       gasPrice: "auto",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY && process.env.DEPLOYER_PRIVATE_KEY.trim() !== "" ? [process.env.DEPLOYER_PRIVATE_KEY.trim()] : [],
     },
     sepolia1: { 
       url:  "https://eth-sepolia.public.blastapi.io",
       chainId: 11155111,
       gasPrice: "auto",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY && process.env.DEPLOYER_PRIVATE_KEY.trim() !== "" ? [process.env.DEPLOYER_PRIVATE_KEY.trim()] : [],
     },
     mainnet: {
       url: "https://ethereum-rpc.publicnode.com",
       chainId: 1,
       gasPrice: "auto",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY && process.env.DEPLOYER_PRIVATE_KEY.trim() !== "" ? [process.env.DEPLOYER_PRIVATE_KEY.trim()] : [],
     },
   },
   solidity: {
@@ -65,6 +63,13 @@ const config: HardhatUserConfig = {
       },
       viaIR : true, // Enable viaIR for better optimization
     },
+  },
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
+    root: "./",
   },
   etherscan: {
     apiKey: process.env.API_KEY_ETHERSCAN as string, //Single key

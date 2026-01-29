@@ -112,7 +112,31 @@ npx hardhat test
 2. Make sure your deployer wallet has sufficient funds (ETH) for gas fees
 3. Verify the network configuration in `hardhat.config.ts` matches your target network
 
-#### Deployment steps
+#### Deploy to Sepolia
+
+1. **Configure `.env`** in the project root:
+   - `DEPLOYER_PRIVATE_KEY` – wallet private key (must have Sepolia ETH for gas)
+   - `API_KEY_ETHERSCAN` – optional, for contract verification on Etherscan
+   - `RPC` – optional for deploy; if unset, the Sepolia RPC from `hardhat.config.ts` is used. Required for post-deploy init scripts.
+
+2. **Deploy all contracts** in dependency order:
+
+```bash
+npx hardhat compile
+npm run deploy:sepolia
+```
+
+Or deploy by tag (see Deployment tags for the full list):
+
+```bash
+npx hardhat deploy --network sepolia --tags Payment
+npx hardhat deploy --network sepolia --tags Banner
+# ... etc.
+```
+
+3. **Post-deployment setup** (after all contracts are deployed): run the init scripts as described in "Post-deployment setup" below. For those scripts, set `RPC` in `.env` (e.g. `RPC=https://eth-sepolia.public.blastapi.io`).
+
+#### Deployment steps (general)
 
 1. Compile the contracts (if not already done):
 

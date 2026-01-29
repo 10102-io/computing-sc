@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts, sleep } from "../../scripts/utils";
+import { saveContract, getContracts, sleep, getRpcUrl } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
 import Web3 from "web3";
@@ -10,7 +10,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const web3 = new Web3(process.env.RPC!);
+  const web3 = new Web3(getRpcUrl(network.config));
 
   const data = await deploy("EIP712LegacyVerifier", {
     from: deployer,

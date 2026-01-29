@@ -2,7 +2,7 @@
 // OpenZeppelin Contracts v5.x
 pragma solidity 0.8.20;
 
-import {Enum} from "@safe-global/safe-smart-account/contracts/common/Enum.sol";
+import {Enum} from "@safe-global/safe-contracts/contracts/libraries/Enum.sol";
 
 
 interface ISafeWallet {

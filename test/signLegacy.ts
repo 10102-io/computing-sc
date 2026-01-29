@@ -1,5 +1,5 @@
 import Web3 from "web3";
-import { ethers } from "ethers";
+import { ethers, keccak256, toUtf8Bytes, arrayify, hashMessage, recoverAddress } from "ethers";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 
@@ -36,31 +36,12 @@ if (user.toLowerCase() !== EXPECTED_USER_ADDRESS.toLowerCase()) {
   console.warn(`WARNING: user (${user}) does not match EXPECTED_USER_ADDRESS (${EXPECTED_USER_ADDRESS})`);
 }
 
-// ===== CALCULATE LEGACY ADDRESS ACCORDING TO FACTORY =====
-async function computeCreate2AddressEOAFactory(
-  sender: string,
-  nonce: number,
-  bytecode: string
-): Promise<string> {
-  const salt = ethers.utils.keccak256(ethers.utils.solidityPack(["address", "uint256"], [sender, nonce]));
-  const bytecodeHash = ethers.utils.keccak256(bytecode);
-  return ethers.utils.getCreate2Address(LEGACY_ROUTER, salt, bytecodeHash);
-}
-
 // ===== CREATE SIGNATURE =====
 async function generateLegacySignature(): Promise<{ signature: string; timestamp: number; legacyAddress: string }> {
   const router = new web3.eth.Contract(LEGACY_ROUTER_ABI, LEGACY_ROUTER);
-  const currentNonce = await router.methods.nonceByUsers(user).call();
-  const nextNonce = Number(currentNonce) + 1;
-
-  const bytecodeRaw = fs.readFileSync(
-    "./artifacts/contracts/forwarding/TransferLegacyEOAContract.sol/TransferEOALegacy.json",
-    "utf-8"
-  );
-  const parsed = JSON.parse(bytecodeRaw);
-  const legacyBytecode = parsed.bytecode;
-
-  const legacyAddress = (await computeCreate2AddressEOAFactory(user, nextNonce, legacyBytecode)).toLowerCase();
+  
+  // Use getNextLegacyAddress instead of nonceByUsers (which is not exposed on the router)
+  const legacyAddress = (await router.methods.getNextLegacyAddress(user).call()).toLowerCase();
   console.log("Predicted legacy address:", legacyAddress);
 
   const timestamp = Math.floor(Date.now() / 1000);
@@ -69,12 +50,12 @@ async function generateLegacySignature(): Promise<{ signature: string; timestamp
   const message = `I agree to legacy at address ${legacyAddress} at timestamp ${timestamp}`;
   console.log("Message:", message);
 
-  const messageHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(message));
-  const signature = await wallet.signMessage(ethers.utils.arrayify(messageHash));
+  const messageHash = keccak256(toUtf8Bytes(message));
+  const signature = await wallet.signMessage(arrayify(messageHash));
   console.log("Signature:", signature);
 
-  const ethSignedMessageHash = ethers.utils.hashMessage(ethers.utils.arrayify(messageHash));
-  const recoveredAddress = ethers.utils.recoverAddress(ethSignedMessageHash, signature);
+  const ethSignedMessageHash = hashMessage(arrayify(messageHash));
+  const recoveredAddress = recoverAddress(ethSignedMessageHash, signature);
   console.log("Recovered address:", recoveredAddress);
   console.log("Expected address:", user);
 

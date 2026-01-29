@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts, sleep } from "../../scripts/utils";
+import { saveContract, getContracts, sleep, getRpcUrl } from "../../scripts/utils";
 import contract from '../../contract-addresses.json';
 import * as dotenv from "dotenv";
 dotenv.config();
@@ -11,7 +11,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const web3 = new Web3(process.env.RPC!);
+  const web3 = new Web3(getRpcUrl(network.config));
 
   const usdt = "0x02f62735EaF5fFB56B629bC529e72801713f27cd";
   const usdc = "0xC1Fa197B73577868516dDA2492d44568D9Ec884c";

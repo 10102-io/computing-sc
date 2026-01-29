@@ -1,24 +1,21 @@
-import Web3 from "web3";
 import { ethers, network } from "hardhat";
-import { BigNumber, ethers as ethersI } from "ethers";
-import { assert } from "console";
+import Web3 from "web3";
 
-import { currentBlock, currentTime, increase, increaseTo } from "./utils/time";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+import { currentTime, increase } from "./utils/time";
 
 
-import { expect, use } from "chai";
-import { parseEther, parseUnits } from "ethers/lib/utils";
-import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
-import { LinkTokenInterface, ProxyAmin__factory, IKeeperRegistryMaster__factory, PremiumMailRouter } from "../.../../typechain-types";
+import { parseEther } from "ethers";
+import { IKeeperRegistryMaster__factory, LinkTokenInterface, PremiumMailRouter, ProxyAmin__factory } from "../.../../typechain-types";
 
 import { genMessage } from "../scripts/utils/genMsg";
 
 const web3 = new Web3(process.env.RPC!);
-const user_pk = process.env.DEPLOYER_PRIVATE_KEY;
+const user_pk = process.env.DEPLOYER_PRIVATE_KEY?.trim();
+const privateKey = user_pk?.startsWith('0x') ? user_pk : `0x${user_pk}`;
 
-const user = web3.eth.accounts.privateKeyToAccount(user_pk!).address;
-const wallet = web3.eth.accounts.privateKeyToAccount(user_pk!);
+const user = web3.eth.accounts.privateKeyToAccount(privateKey!).address;
+const wallet = web3.eth.accounts.privateKeyToAccount(privateKey!);
 
 
 
@@ -31,7 +28,7 @@ describe("Premium Automation ", async function () {
 
     const ONE_YEAR = 86400 * 365;
     const FIVE_YEARS = 86400 * 365 * 5;
-    const LIFETIME = ethers.constants.MaxUint256;
+    const LIFETIME = ethers.MaxUint256;
 
     const routerUniswap = "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008";
     const weth = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
@@ -59,6 +56,12 @@ describe("Premium Automation ", async function () {
     async function deployFixture() {
         const [treasury, user1, user2, user3] = await ethers.getSigners(); // Get the first signer (default account)
 
+        // Fund the account with ETH before impersonating
+        await network.provider.send("hardhat_setBalance", [
+            "0x944a402a91c3d6663f5520bfe23c1c1ee77bca92",
+            "0x1000000000000000000" // 1 ETH
+        ]);
+
         await network.provider.request({
             method: "hardhat_impersonateAccount",
             params: ["0x944a402a91c3d6663f5520bfe23c1c1ee77bca92"],
@@ -74,7 +77,7 @@ describe("Premium Automation ", async function () {
         const premiumAutomationManager = await PremiumAutomationMananger.deploy();
         await premiumAutomationManager.connect(dev).initialize();
 
-        await link.connect(dev).transfer(premiumAutomationManager.address, parseEther("100"));
+        await link.connect(dev).transfer(premiumAutomationManager.target, parseEther("100"));
 
         //Premium
         const ERC20 = await ethers.getContractFactory("ERC20Token");
@@ -91,12 +94,12 @@ describe("Premium Automation ", async function () {
 
         const PremiumRegistry = await ethers.getContractFactory("PremiumRegistry");
         const registry = await PremiumRegistry.deploy();
-        await registry.connect(dev).initialize(usdt.address, usdc.address,
+        await registry.connect(dev).initialize(usdt.target, usdc.target,
             "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
             "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
             "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-            setting.address,
-            payment.address
+            setting.target,
+            payment.target
         );
         const VerifierTerm = await ethers.getContractFactory("EIP712LegacyVerifier");
         const verifierTerm = await VerifierTerm.deploy();
@@ -111,20 +114,20 @@ describe("Premium Automation ", async function () {
 
         const TransferEOALegacyRouter = await ethers.getContractFactory("TransferEOALegacyRouter");
         const transferEOALegacyRouter = await TransferEOALegacyRouter.deploy();
-        await transferEOALegacyRouter.initialize(legacyDeployer.address, setting.address, verifierTerm.address, payment.address, router, weth); // fork setting contract 
+        await transferEOALegacyRouter.initialize(legacyDeployer.target, setting.target, verifierTerm.target, payment.target, router, weth); // fork setting contract 
 
         const TransferLegacyRouter = await ethers.getContractFactory("TransferLegacyRouter");
         const transferLegacyRouter = await TransferLegacyRouter.deploy();
-        await transferLegacyRouter.initialize(legacyDeployer.address, setting.address, verifierTerm.address, payment.address, router, weth);
+        await transferLegacyRouter.initialize(legacyDeployer.target, setting.target, verifierTerm.target, payment.target, router, weth);
 
         const MultisignLegacyRouter = await ethers.getContractFactory("MultisigLegacyRouter");
         const multisignLegacyRouter = await MultisignLegacyRouter.deploy();
-        await multisignLegacyRouter.initialize(legacyDeployer.address, setting.address, verifierTerm.address);
+        await multisignLegacyRouter.initialize(legacyDeployer.target, setting.target, verifierTerm.target);
 
-        await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
+        await legacyDeployer.setParams(multisignLegacyRouter.target, transferLegacyRouter.target, transferEOALegacyRouter.target);
 
 
-        await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
+        await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.target, transferLegacyRouter.target, transferEOALegacyRouter.target);
 
         const proxyAdmin = ProxyAmin__factory.connect("0x04F77bbc5AE606e0e1424A6e85762a95114AcBe4", dev);
 
@@ -133,15 +136,20 @@ describe("Premium Automation ", async function () {
         const premiumMailRouter = (await ethers.getContractAt("PremiumMailRouter", mailRouter)) as PremiumMailRouter;
         const PremiumMailRouter = await ethers.getContractFactory("PremiumMailRouter");
         const PremiumMailRouterV2 = await PremiumMailRouter.deploy();
-        await proxyAdmin.connect(dev).upgrade(premiumMailRouter.address, PremiumMailRouterV2.address);
+        await proxyAdmin.connect(dev).upgrade(premiumMailRouter.target, PremiumMailRouterV2.target);
 
-        await premiumMailRouter.connect(dev).setParams(mailBeforeActivation,mailActivated, mailReadyToActivate , setting.address, premiumAutomationManager.address);
+        await premiumMailRouter.connect(dev).setParams(mailBeforeActivation, mailActivated, mailReadyToActivate, setting.target, premiumAutomationManager.target);
 
-        await premiumAutomationManager.connect(dev).setParams(i_link, i_registrar, keeperRegistry, setting.address, "500000", premiumMailRouter.address, 150);
+        await premiumAutomationManager.connect(dev).setParams(i_link, i_registrar, keeperRegistry, setting.target, "500000", premiumMailRouter.target, 150);
 
         //set up
-        await setting.connect(dev).setParams(registry.address, transferEOALegacyRouter.address, transferLegacyRouter.address,  multisignLegacyRouter.address);
-        await setting.connect(dev).setUpReminder(premiumAutomationManager.address, premiumMailRouter.address);
+        await setting.connect(dev).setParams(
+            registry.target,
+            transferEOALegacyRouter.target,
+            transferLegacyRouter.target,
+            multisignLegacyRouter.target
+        );
+        await setting.connect(dev).setUpReminder(premiumAutomationManager.target, premiumMailRouter.target);
 
 
 
@@ -165,7 +173,7 @@ describe("Premium Automation ", async function () {
         )
 
         // user subcribe for plan
-        await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
+        await usdc.connect(dev).approve(registry.target, ethers.MaxUint256);
         await registry.connect(dev).subcribeWithUSDC(0);
 
         return {
@@ -184,7 +192,7 @@ describe("Premium Automation ", async function () {
         }
 
     }
-    it.only("should deploy fixture successfully", async function () {
+    it("should deploy fixture successfully", async function () {
         const { dev,
             premiumAutomationManager,
             link } = await loadFixture(deployFixture);
@@ -556,7 +564,7 @@ describe("Premium Automation ", async function () {
         if (checkUpkeepData[1] != '0x') console.log(await cronjob.decodePerformData(checkUpkeepData[1]))
         console.log('MailID', await premiumMailRouter.mailId());
 
-        await transferEOALegacyRouter.connect(user3).activeLegacy(1,[usdc.address], true);
+        await transferEOALegacyRouter.connect(user3).activeLegacy(1, [usdc.target], true);
         console.log('Activated')
         console.log('MailID', await premiumMailRouter.mailId());
     })
@@ -694,7 +702,7 @@ describe("Premium Automation ", async function () {
                 {
                     user: user1.address,
                     percent: 50
-                }, 
+                },
                 {
                     user: "0x6f5e0e8B41CD7Fa814cD4eBe31dCD16F2Ef58372",
                     percent: 50
@@ -739,31 +747,31 @@ describe("Premium Automation ", async function () {
 
 
         //set reminder config
-    //     const name = "Dat";
-    //     const ownerEmail = "dat.tran2@sotatek.com";
-    //     const timePriorActivation = 60 * 60 * 5;
-    //     const legacyData = [
-    //         {
-    //             cosigners: [],
-    //             beneficiaries: [
-    //                 emailMapping(user1.address, "dat.tran2@sotatek.com", "dat"),
-    //             ],
-    //             secondLine: emailMapping(user2.address, "dat.tran2@sotatek.com", "dat"),
-    //             thirdLine: emailMapping(user3.address, "dat.tran2@sotatek.com", "dat"),
-    //         },
-    //     ];
+        //     const name = "Dat";
+        //     const ownerEmail = "dat.tran2@sotatek.com";
+        //     const timePriorActivation = 60 * 60 * 5;
+        //     const legacyData = [
+        //         {
+        //             cosigners: [],
+        //             beneficiaries: [
+        //                 emailMapping(user1.address, "dat.tran2@sotatek.com", "dat"),
+        //             ],
+        //             secondLine: emailMapping(user2.address, "dat.tran2@sotatek.com", "dat"),
+        //             thirdLine: emailMapping(user3.address, "dat.tran2@sotatek.com", "dat"),
+        //         },
+        //     ];
 
-    //    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
+        //    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
 
-    //     await increase(86400*2);
+        //     await increase(86400*2);
 
-    //     console.log(await transferEOALegacyRouter.checkActiveLegacy(1));
+        //     console.log(await transferEOALegacyRouter.checkActiveLegacy(1));
 
-    //     console.log('MailID', await premiumMailRouter.mailId());
+        //     console.log('MailID', await premiumMailRouter.mailId());
 
-    //     await transferEOALegacyRouter.connect(dev).avtiveAlive(1);
+        //     await transferEOALegacyRouter.connect(dev).avtiveAlive(1);
 
-    //     console.log('MailID', await premiumMailRouter.mailId());
+        //     console.log('MailID', await premiumMailRouter.mailId());
 
 
     })
@@ -855,7 +863,7 @@ describe("Premium Automation ", async function () {
 
 
 
-        await transferEOALegacyRouter.connect(user1).activeLegacy(1, [usdc.address], true);
+        await transferEOALegacyRouter.connect(user1).activeLegacy(1, [usdc.target], true);
         console.log('MailID', await premiumMailRouter.mailId());
 
 
@@ -867,10 +875,10 @@ describe("Premium Automation ", async function () {
             premiumAutomationManager,
             transferEOALegacyRouter,
             link, setting,
-            registry, usdc, user1, user2, user3, premiumMailRouter , transferLegacyRouter} = await loadFixture(deployFixture);
+            registry, usdc, user1, user2, user3, premiumMailRouter, transferLegacyRouter } = await loadFixture(deployFixture);
 
-       
-        
+
+
 
         const mainConfig = {
             name: "abc",
@@ -936,13 +944,13 @@ describe("Premium Automation ", async function () {
                 beneficiaries: [
                     emailMapping(user2.address, "bene1@example.com", "dat"),
                 ],
-                secondLine: emailMapping( user3.address, "second1@example.com", "dat"),
-                thirdLine: emailMapping( "0xa0e95ACC5ec544f040b89261887C0BBa113981AD", "third1@example.com", "dat"),
+                secondLine: emailMapping(user3.address, "second1@example.com", "dat"),
+                thirdLine: emailMapping("0xa0e95ACC5ec544f040b89261887C0BBa113981AD", "third1@example.com", "dat"),
             },
         ];
 
         await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
-        
+
 
         let cronjobAddress = await premiumAutomationManager.cronjob(dev.address);
         const cronjob = (await ethers.getContractAt("PremiumAutomation", cronjobAddress));
@@ -961,7 +969,7 @@ describe("Premium Automation ", async function () {
 
     })
 
-    
+
 
 
 })

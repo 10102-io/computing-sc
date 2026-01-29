@@ -3,7 +3,11 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { ethers } from "hardhat";
 import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { MultisigLegacy, MultisigLegacyRouter } from "../typechain-types";
-import { MultisigLegacyStruct } from "../typechain-types/contracts/MultisigLegacy";
+
+type LegacyExtraConfigStruct = {
+  minRequiredSignatures: bigint;
+  lackOfOutgoingTxRange: bigint;
+};
 
 describe("MultisigLegacyRouter", function () {
   async function deployRouterFixture() {
@@ -42,7 +46,7 @@ describe("MultisigLegacyRouter", function () {
     it("Should set the right admin", async function () {
       const { deployer, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const ADMIN_ROLE = await MultisigLegacyRouter.DEFAULT_ADMINOLE();
+      const ADMIN_ROLE = await MultisigLegacyRouter.DEFAULT_ADMIN_ROLE();
       expect(await MultisigLegacyRouter.hasRole(ADMIN_ROLE, deployer.address)).to.be.true;
     });
 
@@ -57,12 +61,12 @@ describe("MultisigLegacyRouter", function () {
   });
 
   async function getLegacyContract(legacyAddress: string) {
-    const legacyFactory = await ethers.getContractFactory("MultisigWiLegacy;
+    const legacyFactory = await ethers.getContractFactory("MultisigLegacy");
     const MultisigLegacy: MultisigLegacy = legacyFactory.attach(legacyAddress) as any;
     return MultisigLegacy;
   }
 
-  const extraConfig: MultisigLegacyStruct.LegacyExtraConfigStruct = {
+  const extraConfig: LegacyExtraConfigStruct = {
     minRequiredSignatures: 2,
     lackOfOutgoingTxRange: 2,
   };
@@ -85,9 +89,9 @@ describe("MultisigLegacyRouter", function () {
     const mainConfigTuple = [mainConfig.name, mainConfig.note, mainConfig.nickNames, mainConfig.beneficiaries, mainConfig.assets];
     const extraConfigTuple = [extraConfig.minRequiredSignatures, extraConfig.lackOfOutgoingTxRange];
 
-    const legacyAddress = await MultisigWiLegacyuter.getNextWiLegacydressOfUser(user1.address);
+    const legacyAddress = await MultisigLegacyRouter.getNextLegacyAddressOfUser(user1.address);
     await MultisigLegacyRouter.connect(user1).createLegacy(mainConfig, extraConfig, { value });
-    const legacyId = await MultisigWiLegacyuter.legacyId();
+    const legacyId = await MultisigLegacyRouter.legacyId();
 
     return { legacyId, legacyAddress, mainConfig, extraConfig, mainConfigTuple, extraConfigTuple };
   }
@@ -105,14 +109,14 @@ describe("MultisigLegacyRouter", function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
       const newLegacyId = (await MultisigLegacyRouter.legacyId()) + BigInt(1);
-      const legacyAddress = await MultisigWiLegacyuter.getNextWiLegacydressOfUser(user1.address);
-      const legacyCountByUser = (await MultisigWiLegacyuter.legacyCountByUsers(user1.address)) + BigInt(1);
+      const legacyAddress = await MultisigLegacyRouter.getNextLegacyAddressOfUser(user1.address);
+      const legacyCountByUser = (await MultisigLegacyRouter.legacyCountByUsers(user1.address)) + BigInt(1);
       const nonceByUser = (await MultisigLegacyRouter.nonceByUsers(user1.address)) + BigInt(1);
 
       await createLegacy(user1, user2, user3, MultisigLegacyRouter);
 
-      expect(await MultisigLegacyRouter.legacyId()).to.equal(newWiLegacy);
-      expect(await MultisigLegacyRouter.legacyAddresses(newWiLegacy)).to.equal(legacyAddress);
+      expect(await MultisigLegacyRouter.legacyId()).to.equal(newLegacyId);
+      expect(await MultisigLegacyRouter.legacyAddresses(newLegacyId)).to.equal(legacyAddress);
       expect(await MultisigLegacyRouter.legacyCountByUsers(user1.address)).to.equal(legacyCountByUser);
       expect(await MultisigLegacyRouter.nonceByUsers(user1.address)).to.equal(nonceByUser);
     });
@@ -120,10 +124,10 @@ describe("MultisigLegacyRouter", function () {
     it("Should change Multisig legacy state", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
-      expect(await legacy.getWiLegacyfo()).to.deep.equal([legacyId, user1.address, 1]);
+      expect(await legacy.getLegacyInfo()).to.deep.equal([legacyId, user1.address, 1]);
       expect(await legacy.getActivationTrigger()).to.equal(extraConfig.lackOfOutgoingTxRange);
       expect(await legacy.minRequiredSignatures()).to.equal(extraConfig.minRequiredSignatures);
       expect(await legacy.getBeneficiaries()).to.deep.equal([user2.address, user3.address]);
@@ -134,8 +138,8 @@ describe("MultisigLegacyRouter", function () {
 
       const { mainConfig, extraConfig, mainConfigTuple, extraConfigTuple } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
       const timestamp = await getTimestampOfNextBlock();
-      const legacyId = (await MultisigWiLegacyuter.legacyId()) + BigInt(1);
-      const legacyAddress = await MultisigWiLegacyuter.getNextWiLegacydressOfUser(user1.address);
+      const legacyId = (await MultisigLegacyRouter.legacyId()) + BigInt(1);
+      const legacyAddress = await MultisigLegacyRouter.getNextLegacyAddressOfUser(user1.address);
 
       await expect(MultisigLegacyRouter.connect(user1).createLegacy(mainConfig, extraConfig))
         .to.emit(MultisigLegacyRouter, "MultisigLegacyCreated")
@@ -170,7 +174,7 @@ describe("MultisigLegacyRouter", function () {
         beneficiaries: [user2.address, user2.address, user2.address],
         assets: [],
       };
-      const legacy = await getWiLegacyntract(user1.address);
+      const legacy = await getLegacyContract(user1.address);
 
       await expect(MultisigLegacyRouter.connect(user1).createLegacy(mainConfig, extraConfig)).to.be.revertedWithCustomError(
         legacy,
@@ -188,7 +192,7 @@ describe("MultisigLegacyRouter", function () {
         beneficiaries: [user2.address, ethers.ZeroAddress],
         assets: [],
       };
-      const legacy = await getWiLegacyntract(user1.address);
+      const legacy = await getLegacyContract(user1.address);
 
       await expect(MultisigLegacyRouter.connect(user1).createLegacy(mainConfig, extraConfig)).to.be.revertedWithCustomError(
         legacy,
@@ -206,7 +210,7 @@ describe("MultisigLegacyRouter", function () {
         beneficiaries: [user2.address, user1.address],
         assets: [],
       };
-      const legacy = await getWiLegacyntract(user1.address);
+      const legacy = await getLegacyContract(user1.address);
 
       await expect(MultisigLegacyRouter.connect(user1).createLegacy(mainConfig, extraConfig)).to.be.revertedWithCustomError(
         legacy,
@@ -266,12 +270,12 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if legacy is initialized", async function () {
       const { user1, user2, user3, MultisigLegacyRouter, erc20Whitelist } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress, mainConfig, extraConfig } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress, mainConfig, extraConfig } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await expect(
         legacy.connect(user1).initialize(legacyId, user1.address, erc20Whitelist.target, mainConfig.beneficiaries, mainConfig.assets, extraConfig)
-      ).to.be.revertedWithCustomError(legacy, "WiLegacyreadyInitialized");
+      ).to.be.revertedWithCustomError(legacy, "LegacyAlreadyInitialized");
     });
   });
 
@@ -281,7 +285,7 @@ describe("MultisigLegacyRouter", function () {
     it("Should change router state", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId } = await createWiLegacyser1, user2, user3, MultisigWiLegacyuter);
+      const { legacyId } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
       expect(await MultisigLegacyRouter.legacyCountByUsers(user1.address)).to.equal(1);
       expect(await MultisigLegacyRouter.nonceByUsers(user1.address)).to.equal(1);
 
@@ -294,21 +298,21 @@ describe("MultisigLegacyRouter", function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
       const etherAmount = ethers.parseEther("1");
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer, etherAmount);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter, etherAmount);
       expect(await ethers.provider.getBalance(legacyAddress)).to.equal(etherAmount);
 
       await expect(MultisigLegacyRouter.connect(user1).deleteLegacy(legacyId)).to.changeEtherBalance(user1, etherAmount);
       expect(await ethers.provider.getBalance(legacyAddress)).to.equal(0);
 
-      const legacy = await getWiLegacyntract(legacyAddress);
-      expect(await legacy.getWiLegacyfo()).to.deep.equal([legacyId, user1.address, 0]);
+      const legacy = await getLegacyContract(legacyAddress);
+      expect(await legacy.getLegacyInfo()).to.deep.equal([legacyId, user1.address, 0]);
       expect(await legacy.getBeneficiaries()).to.deep.equal([]);
     });
 
     it("Should emit MultisigLegacyDeleted event", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId } = await createWiLegacyser1, user2, user3, MultisigWiLegacyuter);
+      const { legacyId } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
       const timestamp = await getTimestampOfNextBlock();
 
       await expect(MultisigLegacyRouter.connect(user1).deleteLegacy(legacyId))
@@ -326,9 +330,9 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if sender is not owner", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
       await createLegacy(user2, user1, user3, MultisigLegacyRouter);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await expect(MultisigLegacyRouter.connect(user2).deleteLegacy(legacyId)).to.be.revertedWithCustomError(legacy, "OnlyOwner");
     });
@@ -336,21 +340,21 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if legacy is not activated", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
       await createLegacy(user1, user2, user3, MultisigLegacyRouter);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await MultisigLegacyRouter.connect(user1).deleteLegacy(legacyId);
-      await expect(MultisigLegacyRouter.connect(user1).deleteLegacy(legacyId)).to.be.revertedWithCustomError(legacy, "LegacyLegacyctive");
+      await expect(MultisigLegacyRouter.connect(user1).deleteLegacy(legacyId)).to.be.revertedWithCustomError(legacy, "LegacyNotActive");
     });
 
     it("Should revert if sender is not router", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyAddress } = await createWiLegacyser1, user2, user3, MultisigWiLegacyuter);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
-      await expect(legacy.connect(user1).deleteWiLegacyser1.address)).to.be.revertedWithCustomError(legacy, "OnlyRouter");
+      await expect(legacy.connect(user1).deleteLegacy(user1.address)).to.be.revertedWithCustomError(legacy, "OnlyRouter");
     });
   });
 
@@ -360,7 +364,7 @@ describe("MultisigLegacyRouter", function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
       const etherAmount = ethers.parseEther("1");
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer, etherAmount);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter, etherAmount);
 
       const withdrawAmount = ethers.parseEther("0.5");
       await expect(MultisigLegacyRouter.connect(user1).withdrawEthFromLegacy(legacyId, withdrawAmount)).to.changeEtherBalances(
@@ -373,7 +377,7 @@ describe("MultisigLegacyRouter", function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
       const etherAmount = ethers.parseEther("1");
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer, etherAmount);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter, etherAmount);
       const legacy = await getWiLegacyntract(legacyAddress);
 
       await expect(MultisigLegacyRouter.connect(user1).withdrawEthFromLegacy(legacyId, etherAmount + BigInt(1))).to.be.revertedWithCustomError(
@@ -386,7 +390,7 @@ describe("MultisigLegacyRouter", function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
       const etherAmount = ethers.parseEther("1");
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer, etherAmount);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter, etherAmount);
       const legacy = await getWiLegacyntract(legacyAddress);
 
       await expect(MultisigLegacyRouter.connect(user2).withdrawEthFromLegacy(legacyId, etherAmount)).to.be.revertedWithCustomError(legacy, "OnlyOwner");
@@ -398,8 +402,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should update beneficiaries", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
       const timestamp = await getTimestampOfNextBlock();
 
       await expect(MultisigLegacyRouter.connect(user1).setLegacyBeneficiaries(legacyId, ["Dad"], [user2.address], 1))
@@ -410,8 +414,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if beneficiary is address 0", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await expect(
         MultisigLegacyRouter.connect(user1).setLegacyBeneficiaries(legacyId, ["Dad", "Mom"], [user2.address, ethers.ZeroAddress], 1)
@@ -420,8 +424,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if beneficiary is owner", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await expect(
         MultisigLegacyRouter.connect(user1).setLegacyBeneficiaries(legacyId, ["Dad", "Mom"], [user2.address, user1.address], 1)
@@ -430,8 +434,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if min required signatures > number of beneficiaries", async function () {
       const { user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await expect(
         MultisigLegacyRouter.connect(user1).setLegacyBeneficiaries(legacyId, ["Dad", "Mom"], [user2.address, user2.address], 2)
@@ -440,8 +444,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if beneficiary limit is reached", async function () {
       const { deployer, user1, user2, user3, MultisigLegacyRouter } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
       await MultisigLegacyRouter.connect(deployer).setBeneficiaryLimit(1);
 
       await expect(
@@ -465,7 +469,7 @@ describe("MultisigLegacyRouter", function () {
 
       const etherAmount = ethers.parseEther("1");
       const erc20Addresses: string[] = [erc20Contract1.target.toString(), erc20Contract2.target.toString()];
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer, etherAmount, erc20Addresses);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter, etherAmount, erc20Addresses);
 
       // Signatures
       const signatures = [await signByBeneficiary(user2, legacyId, user1), await signByBeneficiary(user3, legacyId, user1)];
@@ -509,7 +513,7 @@ describe("MultisigLegacyRouter", function () {
 
       const etherAmount = ethers.parseEther("1");
       const erc20Addresses: string[] = [erc20Contract1.target.toString(), erc20Contract2.target.toString()];
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer, etherAmount, erc20Addresses);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter, etherAmount, erc20Addresses);
 
       // Signatures
       const signatures = [await signByBeneficiary(user2, legacyId, user1), await signByBeneficiary(user3, legacyId, user1)];
@@ -533,8 +537,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if sender is not beneficiary", async function () {
       const { user1, user2, user3, MultisigLegacyRouter, erc20Contract1, erc20Contract2 } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       // Signatures
       const signatures = [await signByBeneficiary(user2, legacyId, user1), await signByBeneficiary(user3, legacyId, user1)];
@@ -545,8 +549,8 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if beneficiary signature invalid", async function () {
       const { user1, user2, user3, MultisigLegacyRouter, erc20Contract1, erc20Contract2 } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       // Signatures
       const signatures = [await signByBeneficiary(user2, legacyId, user1), await signByBeneficiary(user3, legacyId, user1)];
@@ -557,15 +561,15 @@ describe("MultisigLegacyRouter", function () {
     it("Should revert if legacy is not active", async function () {
       const { user1, user2, user3, MultisigLegacyRouter, erc20Contract1, erc20Contract2 } = await loadFixture(deployRouterFixture);
 
-      const { legacyId, legacyAddress } = await createLegacyLegacyr1, user2, user3, MultisigLegacyLegacyer);
-      const legacy = await getWiLegacyntract(legacyAddress);
+      const { legacyId, legacyAddress } = await createLegacy(user1, user2, user3, MultisigLegacyRouter);
+      const legacy = await getLegacyContract(legacyAddress);
 
       await MultisigLegacyRouter.connect(user1).deleteLegacy(legacyId);
 
       // Signatures
       const signatures = [await signByBeneficiary(user2, legacyId, user1), await signByBeneficiary(user3, legacyId, user1)];
 
-      await expect(MultisigLegacyRouter.connect(user3).activeLegacy(legacyId, signatures[0])).to.be.revertedWithCustomError(legacy, "LegacyLegacyctive");
+      await expect(MultisigLegacyRouter.connect(user3).activeLegacy(legacyId, signatures[0])).to.be.revertedWithCustomError(legacy, "LegacyNotActive");
     });
   });
 });

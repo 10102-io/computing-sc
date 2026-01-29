@@ -7,7 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Enum} from "@safe-global/safe-smart-account/contracts/common/Enum.sol";
+import {Enum} from "@safe-global/safe-contracts/contracts/libraries/Enum.sol";
 
 import {GenericLegacy} from "../common/GenericLegacy.sol";
 
