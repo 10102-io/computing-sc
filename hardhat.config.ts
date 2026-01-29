@@ -24,27 +24,19 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
-
     // hardhat: {
     //   chainId: 1337,
 
     // },
     hardhat: {
-      // forking: {
-      //   url: process.env.RPC as string,
-      //   blockNumber: 9121617
-
-      // },
+      forking: {
+        url: process.env.RPC as string,
+        blockNumber: 10145739,
+      },
     },
 
     sepolia: {
       url: "https://eth-sepolia.public.blastapi.io",
-      chainId: 11155111,
-      gasPrice: "auto",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
-    },
-    sepolia1: { // redeploy after fix missing audit code
-      url: process.env.SEPOLIA_RPC_URL,
       chainId: 11155111,
       gasPrice: "auto",
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
@@ -57,14 +49,27 @@ const config: HardhatUserConfig = {
     },
   },
   solidity: {
-    version: "0.8.20",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
+    compilers: [
+      {
+        version: "0.8.20",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+          viaIR: true,
+        },
       },
-      viaIR : true, // Enable viaIR for better optimization
-    },
+      {
+        version: "0.8.22",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      },
+    ],
   },
   etherscan: {
     apiKey: process.env.API_KEY_ETHERSCAN as string, //Single key
