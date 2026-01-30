@@ -66,4 +66,35 @@ export function getRpcUrl(networkConfig: { url?: string }): string {
   return url;
 }
 
+/** Etherscan v2 API URL for proxy verification (multi-chain). */
+const ETHERSCAN_V2_API = "https://api.etherscan.io/v2/api";
+
+/**
+ * Link proxy to implementation on Etherscan so the proxy page shows "Proxy" and links to implementation.
+ * Uses Etherscan v2 API verifyproxycontract. Requires API_KEY_ETHERSCAN in env.
+ */
+export async function verifyProxyOnEtherscan(
+  proxyAddress: string,
+  expectedImplementation: string,
+  chainId: number,
+  apiKey: string
+): Promise<{ success: boolean; message: string }> {
+  const params = new URLSearchParams({
+    apikey: apiKey,
+    chainid: String(chainId),
+    module: "contract",
+    action: "verifyproxycontract",
+    contractaddress: proxyAddress,
+    expectedimplementation: expectedImplementation,
+  });
+  const res = await fetch(ETHERSCAN_V2_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  const json = (await res.json()) as { status: string; message: string; result?: string };
+  const ok = json.status === "1" || json.message?.toLowerCase().includes("success");
+  return { success: ok, message: json.message ?? JSON.stringify(json) };
+}
+
 export { genMessage } from "./genMsg";

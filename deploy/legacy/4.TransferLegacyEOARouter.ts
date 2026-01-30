@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts, sleep, getRpcUrl } from "../../scripts/utils";
+import { saveContract, getContracts, sleep, getRpcUrl, verifyProxyOnEtherscan } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
 import Web3 from "web3";
@@ -15,7 +15,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const legacyDeployer = contracts[network.name].LegacyDeployer.address;
   const setting = contracts[network.name].PremiumSetting.address;
   const verifierTerm = contracts[network.name].EIP712LegacyVerifier.address;
-  const payment =  contracts[network.name].Payment.address;
+  const payment = contracts[network.name].Payment.address;
   const router = "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008";
   const weth = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 
@@ -43,26 +43,34 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   await saveContract(network.name, "DefaultProxyAdmin", data.args![1]);
   await saveContract(network.name, "TransferEOALegacyRouter", data.address, data.implementation!);
 
-  // verify proxy contract
+  // Verify implementation only (proxy may use a different compiler)
   try {
-    // verify
-    await hre.run("verify:verify", {
-      address: data.address,
-      constructorArguments: [],
-    });
-  } catch (e) {
-    console.log(e);
-  }
-
-  // verify impl contract
-  try {
-    // verify
     await hre.run("verify:verify", {
       address: data.implementation,
       constructorArguments: [],
     });
   } catch (e) {
     console.log(e);
+  }
+
+  const apiKey = process.env.API_KEY_ETHERSCAN;
+  const chainId = network.config?.chainId;
+  if (apiKey && chainId != null && data.address && data.implementation) {
+    try {
+      const result = await verifyProxyOnEtherscan(
+        data.address,
+        data.implementation,
+        chainId,
+        apiKey
+      );
+      if (result.success) {
+        console.log("Etherscan proxy link:", result.message);
+      } else {
+        console.warn("Etherscan proxy verification:", result.message);
+      }
+    } catch (e) {
+      console.warn("Etherscan proxy verification failed:", e);
+    }
   }
 };
 

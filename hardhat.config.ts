@@ -36,15 +36,17 @@ const config: HardhatUserConfig = {
     // },
 
     sepolia: {
-      url: "https://eth-sepolia.public.blastapi.io",
+      url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,
       gasPrice: "auto",
+      timeout: 60000,
       accounts: process.env.DEPLOYER_PRIVATE_KEY && process.env.DEPLOYER_PRIVATE_KEY.trim() !== "" ? [process.env.DEPLOYER_PRIVATE_KEY.trim()] : [],
     },
-    sepolia1: { 
-      url:  "https://eth-sepolia.public.blastapi.io",
+    sepolia1: {
+      url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,
       gasPrice: "auto",
+      timeout: 60000,
       accounts: process.env.DEPLOYER_PRIVATE_KEY && process.env.DEPLOYER_PRIVATE_KEY.trim() !== "" ? [process.env.DEPLOYER_PRIVATE_KEY.trim()] : [],
     },
     mainnet: {
@@ -61,7 +63,7 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 200,
       },
-      viaIR : true, // Enable viaIR for better optimization
+      viaIR: true, // Enable viaIR for better optimization
     },
   },
   paths: {

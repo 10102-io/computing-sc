@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getRpcUrl } from "../../scripts/utils";
+import { saveContract, getRpcUrl, verifyProxyOnEtherscan } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 import Web3 from "web3";
 dotenv.config();
@@ -33,17 +33,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   await saveContract(network.name, "DefaultProxyAdmin", result.args![1]);
   await saveContract(network.name, "TimeLockRouter", result.address, result.implementation!);
 
-  // verify proxy
-  try {
-    await hre.run("verify:verify", {
-      address: result.address,
-      constructorArguments: [],
-    });
-  } catch (err) {
-    console.warn("Proxy verify failed:", err);
-  }
-
-  // verify implementation
+  // Verify implementation only (proxy may use a different compiler)
   try {
     await hre.run("verify:verify", {
       address: result.implementation,
@@ -51,6 +41,26 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     });
   } catch (err) {
     console.warn("Implementation verify failed:", err);
+  }
+
+  const apiKey = process.env.API_KEY_ETHERSCAN;
+  const chainId = network.config?.chainId;
+  if (apiKey && chainId != null && result.address && result.implementation) {
+    try {
+      const verifyResult = await verifyProxyOnEtherscan(
+        result.address,
+        result.implementation,
+        chainId,
+        apiKey
+      );
+      if (verifyResult.success) {
+        console.log("Etherscan proxy link:", verifyResult.message);
+      } else {
+        console.warn("Etherscan proxy verification:", verifyResult.message);
+      }
+    } catch (e) {
+      console.warn("Etherscan proxy verification failed:", e);
+    }
   }
 };
 
