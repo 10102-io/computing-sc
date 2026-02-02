@@ -8,9 +8,15 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 struct TokenWhiteListItem {
     address token;
     bool isWhitelisted;
+    bool inList; // true once token has been pushed to tokenList; never cleared so re-add does not duplicate
 }
 
 contract TokenWhiteList is AccessControl, ITokenWhiteList {
+    error InvalidAdminAddress();
+    error AlreadyWhitelisted(address token);
+    error TokenNotWhitelisted(address token);
+    error NotERC20(address token);
+
     event TokenAdded(address token);
     event TokenRemoved(address token);
 
@@ -18,6 +24,7 @@ contract TokenWhiteList is AccessControl, ITokenWhiteList {
     address[] public tokenList; // List of all tokens that have previously been added to the whitelist. Some may have been subsequently de-whitelisted.
 
     constructor(address initialAdmin) {
+        if (initialAdmin == address(0)) revert InvalidAdminAddress();
         _grantRole(DEFAULT_ADMIN_ROLE, initialAdmin);
     }
 
@@ -36,9 +43,12 @@ contract TokenWhiteList is AccessControl, ITokenWhiteList {
     @param token The address of the token to add
     */
     function addToken(address token) external override onlyRole(DEFAULT_ADMIN_ROLE) onlyERC20(token) {
-        require(whitelistLookup[token].isWhitelisted == false, "Already whitelisted");
+        if (whitelistLookup[token].isWhitelisted) revert AlreadyWhitelisted(token);
         whitelistLookup[token].isWhitelisted = true;
-        tokenList.push(token);
+        if (!whitelistLookup[token].inList) {
+            whitelistLookup[token].inList = true;
+            tokenList.push(token);
+        }
         emit TokenAdded(token);
     }
 
@@ -48,10 +58,7 @@ contract TokenWhiteList is AccessControl, ITokenWhiteList {
     @param token The address of the token to remove
     */
     function removeToken(address token) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        // If the token is not whitelisted, do nothing
-        if (whitelistLookup[token].isWhitelisted == false) {
-            return;
-        }
+        if (!whitelistLookup[token].isWhitelisted) revert TokenNotWhitelisted(token);
         // De-whitelist the token
         whitelistLookup[token].isWhitelisted = false;
         emit TokenRemoved(token);
@@ -83,7 +90,7 @@ contract TokenWhiteList is AccessControl, ITokenWhiteList {
     }
 
     modifier onlyERC20(address token) {
-        require(isERC20(token), "Not an ERC20");
+        if (!isERC20(token)) revert NotERC20(token);
         _;
     }
 }
