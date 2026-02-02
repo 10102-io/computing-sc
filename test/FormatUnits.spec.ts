@@ -12,8 +12,8 @@ import { formatEther, parseEther } from "ethers/lib/utils";
 import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
-const web3 = new Web3(process.env.RPC!);
-const user_pk = process.env.PK;
+const web3 = new Web3(process.env.RPC || "http://localhost:8545");
+const user_pk = process.env.DEPLOYER_PRIVATE_KEY;
 
 
 describe("FormatUnits library", async function () {
