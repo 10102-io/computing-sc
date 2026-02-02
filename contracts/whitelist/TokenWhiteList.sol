@@ -3,6 +3,7 @@ pragma solidity 0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 struct TokenWhiteListItem {
     address token;
@@ -10,19 +11,34 @@ struct TokenWhiteListItem {
 }
 
 contract TokenWhiteList is Ownable, ITokenWhiteList {
-    mapping(address => TokenWhiteListItem) public whitelist;
-    address[] public whitelistTokens;
+    event TokenAdded(address token);
+    event TokenRemoved(address token);
+
+    mapping(address => TokenWhiteListItem) public whitelistLookup; // Mapping of token addresses to their current whitelist status.
+    address[] public tokenList; // List of all tokens that have previously been added to the whitelist. Some may have been subsequently de-whitelisted.
 
     constructor(address initialOwner) Ownable(initialOwner) {}
 
 
+    /*
+    @dev Check if a token is whitelisted
+    @param token The address of the token to check
+    @return True if the token is whitelisted, false otherwise
+    */
     function isWhitelisted(address token) public view override returns (bool) {
-        return whitelist[token];
+        return whitelistLookup[token].isWhitelisted;
     }
 
-    function addToken(address token) external override onlyOwner {
-        whitelist[token] = true;
-        whitelistTokens.push(token);
+
+    /*
+    @dev Add a token to the whitelist
+    @param token The address of the token to add
+    */
+    function addToken(address token) external override onlyOwner onlyERC20(token) {
+        require(whitelistLookup[token].isWhitelisted == false, "Already whitelisted");
+        whitelistLookup[token].isWhitelisted = true;
+        tokenList.push(token);
+        emit TokenAdded(token);
     }
 
     /*
@@ -31,7 +47,13 @@ contract TokenWhiteList is Ownable, ITokenWhiteList {
     @param token The address of the token to remove
     */
     function removeToken(address token) external override onlyOwner {
-        whiteList[token].isWhitelisted = false;
+        // If the token is not whitelisted, do nothing
+        if (whitelistLookup[token].isWhitelisted == false) {
+            return;
+        }
+        // De-whitelist the token
+        whitelistLookup[token].isWhitelisted = false;
+        emit TokenRemoved(token);
     }
 
     /*
@@ -39,15 +61,28 @@ contract TokenWhiteList is Ownable, ITokenWhiteList {
     @return The whitelist
     */
     function getWhitelist() external view override returns (address[] memory) {
-        // Iterate over the whitelist and return the tokens that are whitelisted
-        address[] memory tokens = new address[](whitelistTokens.length);
+        address[] memory tokens = new address[](tokenList.length);
         uint256 count = 0;
         // Iterate over the array of added tokens and return those that are still whitelisted
-        for (uint256 i = 0; i < whitelistTokens.length; i++) {
-            if (isWhitelisted(whitelistTokens[i])) { // Check the mapping to see if the token is still whitelisted
-                tokens[count] = whitelistTokens[i];
+        for (uint256 i = 0; i < tokenList.length; i++) {
+            if (isWhitelisted(tokenList[i])) { // Check the mapping to see if the token is still whitelisted
+                tokens[count] = tokenList[i];
                 count++;
             }
         }
         return tokens;
     }
+
+    function isERC20(address token) internal view returns (bool) {      
+        try IERC20(token).totalSupply() returns (uint256) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    modifier onlyERC20(address token) {
+        require(isERC20(token), "Not an ERC20");
+        _;
+    }
+}
