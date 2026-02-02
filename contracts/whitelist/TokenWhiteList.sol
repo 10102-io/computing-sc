@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -10,14 +10,16 @@ struct TokenWhiteListItem {
     bool isWhitelisted;
 }
 
-contract TokenWhiteList is Ownable, ITokenWhiteList {
+contract TokenWhiteList is AccessControl, ITokenWhiteList {
     event TokenAdded(address token);
     event TokenRemoved(address token);
 
     mapping(address => TokenWhiteListItem) public whitelistLookup; // Mapping of token addresses to their current whitelist status.
     address[] public tokenList; // List of all tokens that have previously been added to the whitelist. Some may have been subsequently de-whitelisted.
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    constructor(address initialAdmin) {
+        _grantRole(DEFAULT_ADMIN_ROLE, initialAdmin);
+    }
 
 
     /*
@@ -29,12 +31,11 @@ contract TokenWhiteList is Ownable, ITokenWhiteList {
         return whitelistLookup[token].isWhitelisted;
     }
 
-
     /*
     @dev Add a token to the whitelist
     @param token The address of the token to add
     */
-    function addToken(address token) external override onlyOwner onlyERC20(token) {
+    function addToken(address token) external override onlyRole(DEFAULT_ADMIN_ROLE) onlyERC20(token) {
         require(whitelistLookup[token].isWhitelisted == false, "Already whitelisted");
         whitelistLookup[token].isWhitelisted = true;
         tokenList.push(token);
@@ -46,7 +47,7 @@ contract TokenWhiteList is Ownable, ITokenWhiteList {
     @notice The token will be removed from the whitelist. The array will not be modified so that the whitelist can scale. For large lists, removing an item from an array is expensive.
     @param token The address of the token to remove
     */
-    function removeToken(address token) external override onlyOwner {
+    function removeToken(address token) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         // If the token is not whitelisted, do nothing
         if (whitelistLookup[token].isWhitelisted == false) {
             return;

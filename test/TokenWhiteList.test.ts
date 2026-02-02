@@ -10,16 +10,16 @@ type InterfaceWithParseLog = {
 
 describe("TokenWhiteList", function () {
     async function deployFixture() {
-        const [owner, other] = await ethers.getSigners();
+        const [admin, operator, other] = await ethers.getSigners();
 
         const TokenWhiteListFactory = await ethers.getContractFactory("TokenWhiteList");
-        const whitelist = await TokenWhiteListFactory.deploy(owner.address);
+        const whitelist = await TokenWhiteListFactory.deploy(admin.address);
 
         const ERC20Factory = await ethers.getContractFactory("ERC20Token");
         const tokenA = await ERC20Factory.deploy("Token A", "TKA", 18);
         const tokenB = await ERC20Factory.deploy("Token B", "TKB", 6);
 
-        return { whitelist, tokenA, tokenB, owner, other };
+        return { whitelist, tokenA, tokenB, admin, operator, other };
     }
 
     function toAddress(value: unknown): string {
@@ -35,17 +35,39 @@ describe("TokenWhiteList", function () {
     }
 
     describe("deployment", function () {
-        it("sets the initial owner", async function () {
-            const { whitelist, owner } = await loadFixture(deployFixture);
-            assert.equal(toAddress(await whitelist.owner()), toAddress(owner.address));
+        it("grants DEFAULT_ADMIN_ROLE to initial admin", async function () {
+            const { whitelist, admin } = await loadFixture(deployFixture);
+            const defaultAdminRole = await whitelist.DEFAULT_ADMIN_ROLE();
+            assert.isTrue(await whitelist.hasRole(defaultAdminRole, admin.address));
+        });
+    });
+
+    describe("roles", function () {
+        it("allows admin to grant DEFAULT_ADMIN_ROLE to another account", async function () {
+            const { whitelist, admin, operator } = await loadFixture(deployFixture);
+            const defaultAdminRole = await whitelist.DEFAULT_ADMIN_ROLE();
+            await whitelist.connect(admin).grantRole(defaultAdminRole, operator.address);
+            assert.isTrue(await whitelist.hasRole(defaultAdminRole, operator.address));
+        });
+
+        it("account with granted DEFAULT_ADMIN_ROLE can add and remove tokens", async function () {
+            const { whitelist, tokenA, admin, operator } = await loadFixture(deployFixture);
+            const defaultAdminRole = await whitelist.DEFAULT_ADMIN_ROLE();
+            await whitelist.connect(admin).grantRole(defaultAdminRole, operator.address);
+
+            await whitelist.connect(operator).addToken(tokenA.address);
+            assert.isTrue(await whitelist.isWhitelisted(tokenA.address));
+
+            await whitelist.connect(operator).removeToken(tokenA.address);
+            assert.isFalse(await whitelist.isWhitelisted(tokenA.address));
         });
     });
 
     describe("addToken", function () {
-        it("allows owner to add an ERC20 token and emits TokenAdded", async function () {
-            const { whitelist, tokenA, owner } = await loadFixture(deployFixture);
+        it("allows admin to add an ERC20 token and emits TokenAdded", async function () {
+            const { whitelist, tokenA, admin } = await loadFixture(deployFixture);
 
-            const tx = await whitelist.connect(owner).addToken(tokenA.address);
+            const tx = await whitelist.connect(admin).addToken(tokenA.address);
             const receipt = await tx.wait();
             const iface = whitelist.interface;
             const whitelistAddr = await getContractAddress(whitelist);
@@ -59,7 +81,7 @@ describe("TokenWhiteList", function () {
             assert.isTrue(await whitelist.isWhitelisted(tokenA.address));
         });
 
-        it("reverts when caller is not owner", async function () {
+        it("reverts when caller does not have DEFAULT_ADMIN_ROLE", async function () {
             const { whitelist, tokenA, other } = await loadFixture(deployFixture);
 
             let reverted = false;
@@ -72,12 +94,12 @@ describe("TokenWhiteList", function () {
         });
 
         it("reverts when token is not an ERC20 contract", async function () {
-            const { whitelist, owner, other } = await loadFixture(deployFixture);
+            const { whitelist, admin, other } = await loadFixture(deployFixture);
             const nonContractAddress = other.address;
 
             let reverted = false;
             try {
-                await whitelist.connect(owner).addToken(nonContractAddress);
+                await whitelist.connect(admin).addToken(nonContractAddress);
             } catch {
                 reverted = true;
             }
@@ -85,13 +107,13 @@ describe("TokenWhiteList", function () {
         });
 
         it("reverts when token is already whitelisted", async function () {
-            const { whitelist, tokenA, owner } = await loadFixture(deployFixture);
+            const { whitelist, tokenA, admin } = await loadFixture(deployFixture);
 
-            await whitelist.connect(owner).addToken(tokenA.address);
+            await whitelist.connect(admin).addToken(tokenA.address);
 
             let reverted = false;
             try {
-                await whitelist.connect(owner).addToken(tokenA.address);
+                await whitelist.connect(admin).addToken(tokenA.address);
             } catch {
                 reverted = true;
             }
@@ -99,10 +121,10 @@ describe("TokenWhiteList", function () {
         });
 
         it("appends token to tokenList and updates whitelist lookup", async function () {
-            const { whitelist, tokenA, tokenB, owner } = await loadFixture(deployFixture);
+            const { whitelist, tokenA, tokenB, admin } = await loadFixture(deployFixture);
 
-            await whitelist.connect(owner).addToken(tokenA.address);
-            await whitelist.connect(owner).addToken(tokenB.address);
+            await whitelist.connect(admin).addToken(tokenA.address);
+            await whitelist.connect(admin).addToken(tokenB.address);
 
             assert.equal(toAddress(await whitelist.tokenList(0)), toAddress(tokenA.address));
             assert.equal(toAddress(await whitelist.tokenList(1)), toAddress(tokenB.address));
@@ -112,11 +134,11 @@ describe("TokenWhiteList", function () {
     });
 
     describe("removeToken", function () {
-        it("allows owner to remove a whitelisted token and emits TokenRemoved", async function () {
-            const { whitelist, tokenA, owner } = await loadFixture(deployFixture);
-            await whitelist.connect(owner).addToken(tokenA.address);
+        it("allows admin to remove a whitelisted token and emits TokenRemoved", async function () {
+            const { whitelist, tokenA, admin } = await loadFixture(deployFixture);
+            await whitelist.connect(admin).addToken(tokenA.address);
 
-            const tx = await whitelist.connect(owner).removeToken(tokenA.address);
+            const tx = await whitelist.connect(admin).removeToken(tokenA.address);
             const receipt = await tx.wait();
             const iface = whitelist.interface;
             const whitelistAddr = await getContractAddress(whitelist);
@@ -130,9 +152,9 @@ describe("TokenWhiteList", function () {
             assert.isFalse(await whitelist.isWhitelisted(tokenA.address));
         });
 
-        it("reverts when caller is not owner", async function () {
-            const { whitelist, tokenA, owner, other } = await loadFixture(deployFixture);
-            await whitelist.connect(owner).addToken(tokenA.address);
+        it("reverts when caller does not have DEFAULT_ADMIN_ROLE", async function () {
+            const { whitelist, tokenA, admin, other } = await loadFixture(deployFixture);
+            await whitelist.connect(admin).addToken(tokenA.address);
 
             let reverted = false;
             try {
@@ -144,9 +166,9 @@ describe("TokenWhiteList", function () {
         });
 
         it("does nothing when token is not whitelisted (no revert, no event)", async function () {
-            const { whitelist, tokenA, owner } = await loadFixture(deployFixture);
+            const { whitelist, tokenA, admin } = await loadFixture(deployFixture);
 
-            const tx = await whitelist.connect(owner).removeToken(tokenA.address);
+            const tx = await whitelist.connect(admin).removeToken(tokenA.address);
             const receipt = await tx.wait();
             const whitelistAddr = await getContractAddress(whitelist);
             const logs = receipt!.logs.filter((l: { address: string }) => toAddress(l.address) === toAddress(whitelistAddr));
@@ -154,11 +176,11 @@ describe("TokenWhiteList", function () {
         });
 
         it("does not remove token from tokenList (array unchanged)", async function () {
-            const { whitelist, tokenA, tokenB, owner } = await loadFixture(deployFixture);
-            await whitelist.connect(owner).addToken(tokenA.address);
-            await whitelist.connect(owner).addToken(tokenB.address);
+            const { whitelist, tokenA, tokenB, admin } = await loadFixture(deployFixture);
+            await whitelist.connect(admin).addToken(tokenA.address);
+            await whitelist.connect(admin).addToken(tokenB.address);
 
-            await whitelist.connect(owner).removeToken(tokenA.address);
+            await whitelist.connect(admin).removeToken(tokenA.address);
 
             assert.equal(toAddress(await whitelist.tokenList(0)), toAddress(tokenA.address));
             assert.equal(toAddress(await whitelist.tokenList(1)), toAddress(tokenB.address));
@@ -177,10 +199,10 @@ describe("TokenWhiteList", function () {
         });
 
         it("returns only currently whitelisted tokens", async function () {
-            const { whitelist, tokenA, tokenB, owner } = await loadFixture(deployFixture);
-            await whitelist.connect(owner).addToken(tokenA.address);
-            await whitelist.connect(owner).addToken(tokenB.address);
-            await whitelist.connect(owner).removeToken(tokenA.address);
+            const { whitelist, tokenA, tokenB, admin } = await loadFixture(deployFixture);
+            await whitelist.connect(admin).addToken(tokenA.address);
+            await whitelist.connect(admin).addToken(tokenB.address);
+            await whitelist.connect(admin).removeToken(tokenA.address);
 
             const list = await whitelist.getWhitelist();
 
@@ -190,9 +212,9 @@ describe("TokenWhiteList", function () {
         });
 
         it("returns all added tokens when none removed", async function () {
-            const { whitelist, tokenA, tokenB, owner } = await loadFixture(deployFixture);
-            await whitelist.connect(owner).addToken(tokenA.address);
-            await whitelist.connect(owner).addToken(tokenB.address);
+            const { whitelist, tokenA, tokenB, admin } = await loadFixture(deployFixture);
+            await whitelist.connect(admin).addToken(tokenA.address);
+            await whitelist.connect(admin).addToken(tokenB.address);
 
             const list = await whitelist.getWhitelist();
 
@@ -211,14 +233,14 @@ describe("TokenWhiteList", function () {
         });
 
         it("returns true after add, false after remove", async function () {
-            const { whitelist, tokenA, owner } = await loadFixture(deployFixture);
+            const { whitelist, tokenA, admin } = await loadFixture(deployFixture);
 
             assert.isFalse(await whitelist.isWhitelisted(tokenA.address));
 
-            await whitelist.connect(owner).addToken(tokenA.address);
+            await whitelist.connect(admin).addToken(tokenA.address);
             assert.isTrue(await whitelist.isWhitelisted(tokenA.address));
 
-            await whitelist.connect(owner).removeToken(tokenA.address);
+            await whitelist.connect(admin).removeToken(tokenA.address);
             assert.isFalse(await whitelist.isWhitelisted(tokenA.address));
         });
     });
