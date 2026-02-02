@@ -35,7 +35,7 @@ const config: HardhatUserConfig = {
       },
     },
     sepolia: {
-      url: "https://eth-sepolia.public.blastapi.io",
+      url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,
       gasPrice: "auto",
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
