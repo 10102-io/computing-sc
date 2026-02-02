@@ -4,7 +4,18 @@
   "description": "Smart contract",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "send-mail": "npx ts-node scripts/premium/20.send_mail.ts",
+    "grant-role": "npx ts-node scripts/premium/4.grant_role.ts",
+    "set-up-legacy": "npx hardhat run deploy/init/0.set_up_legacy.ts",
+    "set-up-timelock": "npx hardhat run deploy/init/1.setTimelock.ts",
+    "set-up-premium": "npx hardhat run deploy/init/2.set_up_reminder.ts",
+    "create-default-plans": "npx hardhat run scripts/premium/5.set_up_plans.ts",
+    "update-template": "npx ts-node scripts/maijet/update_template_from_json_files.ts",
+    "send-mail-api": "npx ts-node scripts/maijet/send_mail.ts",
+    "get-template": "npx ts-node scripts/maijet/0.get_template.ts",
+    "check-upkeep": "npx ts-node scripts/reminder/11.check_keep_up.ts",
+    "perform-upkeep" :"npx ts-node scripts/reminder/13.peform_keepup.ts"
   },
   "author": "",
   "license": "ISC",

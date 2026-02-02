@@ -34,7 +34,6 @@ const config: HardhatUserConfig = {
         blockNumber: 10145739,
       },
     },
-
     sepolia: {
       url: "https://eth-sepolia.public.blastapi.io",
       chainId: 11155111,
