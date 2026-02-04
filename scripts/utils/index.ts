@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
-import { JsonRpcProvider, Wallet } from "ethers";
+import { Wallet } from "ethers";
+import { JsonRpcProvider } from "@ethersproject/providers";
 
 const CONTRACT_ADDRESSES_PATH = path.join(process.cwd(), "contract-addresses.json");
 
