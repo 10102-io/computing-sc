@@ -4,7 +4,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 import * as fs from "fs";
-import { getContracts, getProvider } from "../../scripts/utils";
+import { getContracts, getProvider } from "../utils";
 import { network } from "hardhat";
 
 const LegacyDeployer = JSON.parse(
@@ -33,7 +33,7 @@ async function setRouterAtVerifierTerm(
     const tx = await contract.setRouterAddresses(transferEOALegacyRouter, transferLegacyRouter, multisigLegacyRouter);
 
     console.log("Raw data:", tx?.data);
-    
+
     const receipt = await tx.wait();
     console.log("Receipt:", receipt);
 }
@@ -51,7 +51,7 @@ async function setParamsAtLegacyDeployer(
     const tx = await contract.setParams(multisigLegacyRouter, transferLegacyRouter, transferEOALegacyRouter);
 
     console.log("Raw data:", tx?.data);
-    
+
     const receipt = await tx.wait();
     console.log("Receipt:", receipt);
 
@@ -75,8 +75,8 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+    main().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
 }
