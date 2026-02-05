@@ -1,23 +1,13 @@
+import * as dotenv from "dotenv";
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, sleep, getRpcUrl, verifyProxyOnEtherscan } from "../../scripts/utils";
-import * as dotenv from "dotenv";
+import { saveContract, verifyProxyOnEtherscan } from "../../scripts/utils";
 dotenv.config();
-import Web3 from "web3";
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy, get } = deployments;
   const { deployer } = await getNamedAccounts();
-
-  const web3 = new Web3(process.env.RPC!);
-  const legacyDeployer = (await get("LegacyDeployer")).address;
-  const setting = (await get("PremiumSetting")).address;
-  const verifierTerm = (await get("EIP712LegacyVerifier")).address;
-  const payment = (await get("Payment")).address;
-  const router = "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008";
-  const weth = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
-
 
   const data = await deploy("TransferEOALegacyRouter", {
     from: deployer,

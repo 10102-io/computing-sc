@@ -24,7 +24,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
       owner: deployer,
       execute: {
         methodName: "initialize",
-        args: ["0x944A402a91c3D6663f5520bFe23c1c1eE77BCa92"],
+        args: [deployer],
       },
     }
   });

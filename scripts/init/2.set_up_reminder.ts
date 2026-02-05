@@ -8,17 +8,17 @@ import * as fs from "fs";
 import { saveContract, getContracts, sleep } from "../utils";
 import { network } from "hardhat";
 
-//CHAINLINK AUTOMATION
-const i_link = "0x779877A7B0D9E8603169DdbD7836e478b4624789"; //Token LINK 
+// Sepolia: Chainlink Automation and Functions. Change for mainnet (see docs/HARDCODED_ADDRESSES.md).
+const i_link = "0x779877A7B0D9E8603169DdbD7836e478b4624789";
 const i_registrar = "0xb0E49c5D0d05cbc241d68c05BC5BA1d1B7B72976";
 const keeperRegistry = "0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad";
 const baseGasLimit = "1500000";
 
 
 //CHAINLINK FUNCTION
-const router = "0xb83E47C2bC239B3bf370bc41e1459A34b41238D0"; //fix for sepolia
+const router = "0xb83E47C2bC239B3bf370bc41e1459A34b41238D0";
 const subcriptionId = 5168;
-const donID = "0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000" // fix for sepolia
+const donID = "0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000";
 const gasLimit = "300000";
 
 function getWeb3(): Web3 {

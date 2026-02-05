@@ -12,6 +12,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 
   const web3 = new Web3(process.env.RPC!);
 
+  // Sepolia: token and Chainlink price feed addresses. Change for mainnet.
   const usdt = "0x02f62735EaF5fFB56B629bC529e72801713f27cd";
   const usdc = "0xC1Fa197B73577868516dDA2492d44568D9Ec884c";
   const usdtUsdPriceFeed = "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E";
