@@ -14,7 +14,6 @@ struct TokenWhiteListItem {
 contract TokenWhiteList is AccessControl, ITokenWhiteList {
     error InvalidAdminAddress();
     error AlreadyWhitelisted(address token);
-    error TokenNotWhitelisted(address token);
     error NotERC20(address token);
 
     event TokenAdded(address token);
@@ -58,7 +57,7 @@ contract TokenWhiteList is AccessControl, ITokenWhiteList {
     @param token The address of the token to remove
     */
     function removeToken(address token) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (!whitelistLookup[token].isWhitelisted) revert TokenNotWhitelisted(token);
+        if (!whitelistLookup[token].isWhitelisted) return;
         // De-whitelist the token
         whitelistLookup[token].isWhitelisted = false;
         emit TokenRemoved(token);

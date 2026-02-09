@@ -14,8 +14,9 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-
 import {TimelockHelper} from "./TimelockHelper.sol";
+import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
+import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 
 contract TimeLockRouter is OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -23,6 +24,12 @@ contract TimeLockRouter is OwnableUpgradeable {
   struct TimelockERC20InputData {
     address tokenAddress;
     uint256 amount;
+  }
+
+  struct TimelockETHSwapInputData {
+    address outputToken;
+    uint256 amountOutMin;
+    uint256 deadline;
   }
 
   struct TimelockERC721InputData {
@@ -37,6 +44,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   struct TimelockRegular {
+    TimelockETHSwapInputData timelockETHSwap;
     TimelockERC20InputData[] timelockERC20;
     TimelockERC721InputData[] timelockERC721;
     TimelockERC1155InputData[] timelockERC1155;
@@ -45,6 +53,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   struct TimelockSoft {
+    TimelockETHSwapInputData timelockETHSwap;
     TimelockERC20InputData[] timelockERC20;
     TimelockERC721InputData[] timelockERC721;
     TimelockERC1155InputData[] timelockERC1155;
@@ -53,6 +62,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   struct TimelockGift {
+    TimelockETHSwapInputData timelockETHSwap;
     TimelockERC20InputData[] timelockERC20;
     TimelockERC721InputData[] timelockERC721;
     TimelockERC1155InputData[] timelockERC1155;
@@ -65,6 +75,9 @@ contract TimeLockRouter is OwnableUpgradeable {
   TimelockERC20 public timelockERC20Contract;
   TimelockERC721 public timelockERC721Contract;
   TimelockERC1155 public timelockERC1155Contract;
+
+  ITokenWhiteList public tokenWhitelist;
+  IUniswapV2Router02 public uniswapRouter;
 
   uint256 public timelockCounter;
   address internal constant NATIVE_TOKEN = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
@@ -84,18 +97,51 @@ contract TimeLockRouter is OwnableUpgradeable {
     timelockERC1155Contract = TimelockERC1155(_timelockERC1155);
   }
 
+  function setTokenWhitelist(address _tokenWhitelist) external onlyOwner {
+    tokenWhitelist = ITokenWhiteList(_tokenWhitelist);
+  }
+
+  function setUniswapRouter(address _uniswapRouter) external onlyOwner {
+    uniswapRouter = IUniswapV2Router02(_uniswapRouter);
+  }
+
+  /// @param ethAmountWei Amount of ETH in wei (e.g. msg.value).
+  /// @param outputToken The ERC-20 token address to receive.
+  /// @return Expected amount of outputToken (in its smallest units) for the given ETH.
+  function getEthToTokenAmountOut(uint256 ethAmountWei, address outputToken) external view returns (uint256) {
+    if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
+    address[] memory path = new address[](2);
+    path[0] = uniswapRouter.WETH();
+    path[1] = outputToken;
+    uint256[] memory amounts = uniswapRouter.getAmountsOut(ethAmountWei, path);
+    return amounts[1];
+  }
+
+  /// @param tokenAmount Amount of token (in its smallest units).
+  /// @param token The ERC-20 token address to swap.
+  /// @return Expected amount of ETH in wei received for the given token amount.
+  function getTokenToEthAmountOut(uint256 tokenAmount, address token) external view returns (uint256) {
+    if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
+    address[] memory path = new address[](2);
+    path[0] = token;
+    path[1] = uniswapRouter.WETH();
+    uint256[] memory amounts = uniswapRouter.getAmountsOut(tokenAmount, path);
+    return amounts[1];
+  }
+
   function createTimelock(TimelockRegular calldata timelockRegular) external payable {
     if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
-    
-    if (timelockRegular.timelockERC20.length == 0 && msg.value > 0) {
-      revert("ETH not accepted for non-ERC20 timelocks");
+
+    if (msg.value > 0 && timelockRegular.timelockETHSwap.outputToken == address(0)) {
+      revert TimelockHelper.EthSentWithoutSwap();
     }
 
     timelockCounter++;
 
-    if (timelockRegular.timelockERC20.length > 0) {
+    if (timelockRegular.timelockERC20.length > 0 || timelockRegular.timelockETHSwap.outputToken != address(0)) {
       _handleTimelockRegularERC20(
         timelockCounter,
+        timelockRegular.timelockETHSwap,
         timelockRegular.timelockERC20,
         timelockRegular.duration,
         timelockRegular.name,
@@ -137,18 +183,18 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function createSoftTimelock(TimelockSoft calldata timelockSoft) external payable {
-    
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
-        
-    if (timelockSoft.timelockERC20.length == 0 && msg.value > 0) {
-      revert("ETH not accepted for non-ERC20 timelocks");
+
+    if (msg.value > 0 && timelockSoft.timelockETHSwap.outputToken == address(0)) {
+      revert TimelockHelper.EthSentWithoutSwap();
     }
 
     timelockCounter++;
 
-    if (timelockSoft.timelockERC20.length > 0) {
+    if (timelockSoft.timelockERC20.length > 0 || timelockSoft.timelockETHSwap.outputToken != address(0)) {
       _handleTimelockSoftERC20(
         timelockCounter,
+        timelockSoft.timelockETHSwap,
         timelockSoft.timelockERC20,
         timelockSoft.bufferTime,
         timelockSoft.name,
@@ -183,17 +229,17 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createTimelockedGift(TimelockGift calldata timelockGift) external payable {
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
-    
-    if (timelockGift.timelockERC20.length == 0 && msg.value > 0) {
-      revert("ETH not accepted for non-ERC20 timelocks");
-    }
 
+    if (msg.value > 0 && timelockGift.timelockETHSwap.outputToken == address(0)) {
+      revert TimelockHelper.EthSentWithoutSwap();
+    }
 
     timelockCounter++;
 
-    if (timelockGift.timelockERC20.length > 0) {
+    if (timelockGift.timelockERC20.length > 0 || timelockGift.timelockETHSwap.outputToken != address(0)) {
       _handleTimelockGiftERC20(
         timelockCounter,
+        timelockGift.timelockETHSwap,
         timelockGift.timelockERC20,
         timelockGift.duration,
         timelockGift.recipient,
@@ -255,36 +301,113 @@ contract TimeLockRouter is OwnableUpgradeable {
     }
   }
 
+  function _swapEthForToken(TimelockETHSwapInputData calldata timelockETHSwap) private returns (address outputToken, uint256 receivedAmount) {
+    if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
+    if (address(tokenWhitelist) != address(0) && !tokenWhitelist.isWhitelisted(timelockETHSwap.outputToken)) {
+      revert TimelockHelper.TokenNotWhitelisted();
+    }
+    if (timelockETHSwap.deadline < block.timestamp) revert TimelockHelper.InvalidSwapIntent();
+    if (msg.value == 0) revert TimelockHelper.InvalidSwapIntent();
+
+    address weth = uniswapRouter.WETH();
+    address[] memory path = new address[](2);
+    path[0] = weth;
+    path[1] = timelockETHSwap.outputToken;
+
+    uint256 balanceBefore = IERC20(timelockETHSwap.outputToken).balanceOf(address(timelockERC20Contract));
+    uniswapRouter.swapExactETHForTokensSupportingFeeOnTransferTokens{value: msg.value}(
+      timelockETHSwap.amountOutMin,
+      path,
+      address(timelockERC20Contract),
+      timelockETHSwap.deadline
+    );
+    uint256 balanceAfter = IERC20(timelockETHSwap.outputToken).balanceOf(address(timelockERC20Contract));
+    receivedAmount = balanceAfter - balanceBefore;
+    return (timelockETHSwap.outputToken, receivedAmount);
+  }
+
+  /// @dev Validates and pulls ERC20s from the caller into the timelock contract. Reverts on empty list or balance mismatch.
+  /// @return tokens Token addresses from timelockERC20.
+  /// @return amounts Actual amounts received (fee-on-transfer safe).
+  function _pullAndValidateERC20(TimelockERC20InputData[] calldata timelockERC20) private returns (address[] memory tokens, uint256[] memory amounts) {
+    (tokens, amounts) = _makeListERC20(timelockERC20);
+    uint256 requiredNativeAmount = _validateERC20Input(tokens, amounts);
+    if (address(this).balance != requiredNativeAmount) revert TimelockHelper.InsufficientNativeToken();
+    amounts = _transferERC20TokensIn(tokens, amounts, requiredNativeAmount);
+  }
+
+  /// @dev Builds the ERC20 token list and amounts for a timelock, handling optional ETH→token swap.
+  /// @param timelockETHSwap If outputToken is set, msg.value is swapped to that token via Uniswap; otherwise no swap.
+  /// @param timelockERC20 Optional list of ERC20s to lock (user must transfer these in; no native required if no swap).
+  /// @return tokens Final list of token addresses to lock (may include swapped token + any from timelockERC20).
+  /// @return amounts Corresponding amounts (actual received, so fee-on-transfer is accounted for).
+  /// @return withdrawAsEthToken The token that was bought with ETH, if any; on withdraw it will be swapped back to ETH. Zero if no swap.
+  function _prepareERC20LockData(
+    TimelockETHSwapInputData calldata timelockETHSwap,
+    TimelockERC20InputData[] calldata timelockERC20
+  ) private returns (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) {
+    // Path 1: User sent ETH — swap to whitelisted token. withdrawAsEthToken marks it for swap-back-to-ETH on withdraw.
+    if (timelockETHSwap.outputToken != address(0)) {
+      (address swapToken, uint256 swapAmount) = _swapEthForToken(timelockETHSwap);
+      if (timelockERC20.length == 0) {
+        // Lock only the swapped token.
+        tokens = new address[](1);
+        amounts = new uint256[](1);
+        tokens[0] = swapToken;
+        amounts[0] = swapAmount;
+        return (tokens, amounts, swapToken);
+      }
+      // Lock other ERC20s (from user) plus the swapped token; append swap to the list.
+      (address[] memory listTokens, uint256[] memory listAmounts) = _pullAndValidateERC20(timelockERC20);
+      uint256 n = listTokens.length + 1;
+      tokens = new address[](n);
+      amounts = new uint256[](n);
+      for (uint256 i = 0; i < listTokens.length; i++) {
+        tokens[i] = listTokens[i];
+        amounts[i] = listAmounts[i];
+      }
+      tokens[listTokens.length] = swapToken;
+      amounts[listTokens.length] = swapAmount;
+      return (tokens, amounts, swapToken);
+    }
+
+    // Path 2: No swap — user must not send ETH; lock only the ERC20s from timelockERC20. No withdraw-as-ETH.
+    if (msg.value != 0) revert TimelockHelper.EthSentWithoutSwap();
+    (tokens, amounts) = _pullAndValidateERC20(timelockERC20);
+    return (tokens, amounts, address(0));
+  }
+
   function _handleTimelockRegularERC20(
     uint256 timelockId,
+    TimelockETHSwapInputData calldata timelockETHSwap,
     TimelockERC20InputData[] calldata timelockERC20,
     uint256 duration,
     string calldata name,
     address owner,
     TimelockHelper.LockStatus lockStatus
   ) private {
-    (address[] memory tokens, uint256[] memory amounts) = _makeListERC20(timelockERC20);
-    uint256 requiredNativeAmount = _validateERC20Input(tokens, amounts);
-     uint256[] memory actualReceived=  _transferERC20TokensIn(tokens, amounts, requiredNativeAmount);
-    timelockERC20Contract.createTimelock{value: msg.value}(timelockId, tokens, actualReceived, duration, name, owner, lockStatus);
+    (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
+      _prepareERC20LockData(timelockETHSwap, timelockERC20);
+    timelockERC20Contract.createTimelock{value: 0}(timelockId, tokens, amounts, duration, name, owner, lockStatus, withdrawAsEthToken);
   }
 
   function _handleTimelockSoftERC20(
     uint256 timelockId,
+    TimelockETHSwapInputData calldata timelockETHSwap,
     TimelockERC20InputData[] calldata timelockERC20,
     uint256 bufferTime,
     string calldata name,
     address owner,
     TimelockHelper.LockStatus lockStatus
   ) private {
-    (address[] memory tokens, uint256[] memory amounts) = _makeListERC20(timelockERC20);
-    uint256 requiredNativeAmount = _validateERC20Input(tokens, amounts);
-    uint256[] memory actualReceived =  _transferERC20TokensIn(tokens, amounts, requiredNativeAmount);
-    timelockERC20Contract.createSoftTimelock{value: msg.value}(timelockId, tokens, actualReceived, bufferTime, name, owner, lockStatus);
+    (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
+      _prepareERC20LockData(timelockETHSwap, timelockERC20);
+    timelockERC20Contract.createSoftTimelock{value: 0}(timelockId, tokens, amounts, bufferTime, name, owner, lockStatus, withdrawAsEthToken);
   }
 
   function _handleTimelockGiftERC20(
     uint256 timelockId,
+    TimelockETHSwapInputData calldata timelockETHSwap,
     TimelockERC20InputData[] calldata timelockERC20,
     uint256 duration,
     address recipient,
@@ -293,48 +416,39 @@ contract TimeLockRouter is OwnableUpgradeable {
     address owner,
     TimelockHelper.LockStatus lockStatus
   ) private {
-    (address[] memory tokens, uint256[] memory amounts) = _makeListERC20(timelockERC20);
-    uint256 requiredNativeAmount = _validateERC20Input(tokens, amounts);
-    uint256[] memory actualReceived = _transferERC20TokensIn(tokens, amounts, requiredNativeAmount);
-    timelockERC20Contract.createTimelockedGift{value: msg.value}(timelockId, tokens, actualReceived, duration, recipient, name, giftName, owner, lockStatus);
+    (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
+      _prepareERC20LockData(timelockETHSwap, timelockERC20);
+    timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawAsEthToken);
   }
 
-  function _transferERC20TokensIn(address[] memory tokens, uint256[] memory amounts, uint256 requiredNativeAmount) private returns(uint256[] memory actualReceived){
-    if (requiredNativeAmount != msg.value) {
-      revert TimelockHelper.InsufficientNativeToken();
-    }
+  function _transferERC20TokensIn(address[] memory tokens, uint256[] memory amounts, uint256 requiredNativeAmount) private returns (uint256[] memory actualReceived) {
+    if (address(this).balance != requiredNativeAmount) revert TimelockHelper.InsufficientNativeToken();
 
     actualReceived = new uint256[](tokens.length);
 
     for (uint256 i = 0; i < tokens.length; i++) {
-      if (tokens[i] != NATIVE_TOKEN) {
-        uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
-        IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
-        uint256 balanceAfter = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
-        actualReceived[i] = balanceAfter - balanceBefore;
-      }
+      uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
+      IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
+      uint256 balanceAfter = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
+      actualReceived[i] = balanceAfter - balanceBefore;
     }
   }
 
   function _validateERC20Input(address[] memory tokens, uint256[] memory amounts) private pure returns (uint256) {
     if (tokens.length == 0 || tokens.length != amounts.length) revert TimelockHelper.MismatchedArrayLength();
 
-    uint256 requiredNativeAmount = 0;
     for (uint256 i = 0; i < tokens.length; i++) {
       if (amounts[i] == 0) revert TimelockHelper.InvalidTokenAmount();
-      if (tokens[i] == NATIVE_TOKEN) {
-        requiredNativeAmount = amounts[i];
-      }
+      if (tokens[i] == NATIVE_TOKEN) revert TimelockHelper.NativeLockDeprecated();
     }
 
-    // ───── Check for duplicate token addresses ─────
     for (uint256 i = 0; i < tokens.length; i++) {
       for (uint256 j = i + 1; j < tokens.length; j++) {
         if (tokens[i] == tokens[j]) revert TimelockHelper.DuplicateTokenAddress();
       }
     }
 
-    return requiredNativeAmount;
+    return 0;
   }
 
   // regular ERC721

@@ -8,6 +8,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {TimelockHelper} from "./TimelockHelper.sol";
+import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 
 contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -19,6 +20,8 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   struct TimelockInfo {
     address[] tokenAddresses;
     uint256[] amounts;
+    /// @dev If set, this token is swapped to ETH on withdraw; otherwise address(0).
+    address withdrawAsEthToken;
     uint256 unlockTime;
     address owner;
     address recipient;
@@ -53,9 +56,16 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   // ───────────── Storage ─────────────
   mapping(uint256 => TimelockInfo) public timelocks;
   address public routerAddresses;
+  IUniswapV2Router02 public uniswapRouter;
+
+  uint256 private constant WITHDRAW_SWAP_DEADLINE_BUFFER = 300;
 
   function onlyRouter() private view {
     if (msg.sender != routerAddresses) revert TimelockHelper.NotAuthorized();
+  }
+
+  function setUniswapRouter(address _uniswapRouter) external onlyOwner {
+    uniswapRouter = IUniswapV2Router02(_uniswapRouter);
   }
 
   // ───────────── Init ─────────────
@@ -86,10 +96,11 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     uint256 duration,
     string calldata name,
     address caller,
-    TimelockHelper.LockStatus lockStatus
+    TimelockHelper.LockStatus lockStatus,
+    address withdrawAsEthToken
   ) external payable nonReentrant {
     onlyRouter();
-    _createTimelock(id, tokens, amounts, caller, caller, block.timestamp + duration, false, 0, TimelockHelper.LockType.Regular, lockStatus, name);
+    _createTimelock(id, tokens, amounts, withdrawAsEthToken, caller, caller, block.timestamp + duration, false, 0, TimelockHelper.LockType.Regular, lockStatus, name);
   }
 
   function createSoftTimelock(
@@ -99,10 +110,11 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     uint256 bufferTime,
     string calldata name,
     address caller,
-    TimelockHelper.LockStatus lockStatus
+    TimelockHelper.LockStatus lockStatus,
+    address withdrawAsEthToken
   ) external payable nonReentrant {
     onlyRouter();
-    _createTimelock(id, tokens, amounts, caller, caller, 0, true, bufferTime, TimelockHelper.LockType.Soft, lockStatus, name);
+    _createTimelock(id, tokens, amounts, withdrawAsEthToken, caller, caller, 0, true, bufferTime, TimelockHelper.LockType.Soft, lockStatus, name);
   }
 
   function createTimelockedGift(
@@ -114,10 +126,11 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     string calldata name,
     string calldata giftName,
     address owner,
-    TimelockHelper.LockStatus lockStatus
+    TimelockHelper.LockStatus lockStatus,
+    address withdrawAsEthToken
   ) external payable nonReentrant {
     onlyRouter();
-    _createTimelock(id, tokens, amounts, owner, recipient, block.timestamp + duration, false, 0, TimelockHelper.LockType.Gift, lockStatus, name);
+    _createTimelock(id, tokens, amounts, withdrawAsEthToken, owner, recipient, block.timestamp + duration, false, 0, TimelockHelper.LockType.Gift, lockStatus, name);
     emit TimelockGiftName(id, giftName, recipient);
   }
 
@@ -125,6 +138,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     uint256 id,
     address[] calldata tokens,
     uint256[] calldata amounts,
+    address withdrawAsEthToken,
     address owner,
     address recipient,
     uint256 unlockTime,
@@ -137,6 +151,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     timelocks[id] = TimelockInfo({
       tokenAddresses: tokens,
       amounts: amounts,
+      withdrawAsEthToken: withdrawAsEthToken,
       unlockTime: unlockTime,
       owner: owner,
       recipient: recipient,
@@ -187,20 +202,40 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
 
     address[] memory tokens = lock.tokenAddresses;
     uint256[] memory amounts = lock.amounts;
+    address withdrawAsEthToken = lock.withdrawAsEthToken;
 
     delete lock.tokenAddresses;
     delete lock.amounts;
+    lock.withdrawAsEthToken = address(0);
 
     for (uint256 i = 0; i < tokens.length; i++) {
-      if (tokens[i] == NATIVE_TOKEN) {
-        (bool success, ) = lock.recipient.call{value: amounts[i]}("");
-        if (!success) revert TimelockHelper.NativeTokenTransferFailed();
+      if (tokens[i] == withdrawAsEthToken) {
+        _swapTokenToEthAndSend(tokens[i], amounts[i], lock.recipient);
       } else {
         IERC20(tokens[i]).safeTransfer(lock.recipient, amounts[i]);
       }
     }
 
     emit FundsWithdrawn(id, lock.recipient);
+  }
+
+  function _swapTokenToEthAndSend(address token, uint256 amount, address recipient) internal {
+    if (address(uniswapRouter) == address(0)) {
+      IERC20(token).safeTransfer(recipient, amount);
+      return;
+    }
+    address weth = uniswapRouter.WETH();
+    address[] memory path = new address[](2);
+    path[0] = token;
+    path[1] = weth;
+    IERC20(token).forceApprove(address(uniswapRouter), amount);
+    uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+      amount,
+      0,
+      path,
+      recipient,
+      block.timestamp + WITHDRAW_SWAP_DEADLINE_BUFFER
+    );
   }
 
   // ───────────── View ─────────────
