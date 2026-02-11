@@ -33,15 +33,16 @@ No Liability: In no event shall 10102 or the contributors be liable for any clai
 
 The Computing ecosystem is a modular suite of smart contracts centered around the SafeGuard core. It manages digital assets through various "Legacy" modules:
 
-| Module | Purpose | Key functionality |
-| --- | --- | --- |
-| Forwarding | Transfer legacy | Handles direct transfer of assets to designated heirs. |
-| Inheritance | Multisig legacy | Implements multi-signature logic for distributed control. |
-| Timelock | Delayed execution | Enforces mandatory waiting periods before actions. |
-| Premium | Paid features | Manages advanced or subscription-based features. |
-| Term | Compliance | Verifies off-chain signatures for Terms of Service. |
+| Module      | Purpose           | Key functionality                                         |
+| ----------- | ----------------- | --------------------------------------------------------- |
+| Forwarding  | Transfer legacy   | Handles direct transfer of assets to designated heirs.    |
+| Inheritance | Multisig legacy   | Implements multi-signature logic for distributed control. |
+| Timelock    | Delayed execution | Enforces mandatory waiting periods before actions.        |
+| Premium     | Paid features     | Manages advanced or subscription-based features.          |
+| Term        | Compliance        | Verifies off-chain signatures for Terms of Service.       |
 
 Core component: SafeGuard
+
 - Central hub: SafeGuard.sol acts as the main entry point for user interactions.
 - Access control: Manages permissions and owner configurations for individual safeguards.
 - Module integration: Orchestrates calls between compliance checks and execution logic.
@@ -138,6 +139,14 @@ npx hardhat deploy --network mainnet --tags <tag-name>
 npx hardhat verify --network <network-name> <contract-address> <constructor-args>
 ```
 
+4. **Sync UI config (after deployment):** To update the UI app with the new contract addresses and ABIs, run:
+
+```bash
+npm run sync-ui
+```
+
+This writes `configs/contract-addresses.generated.ts` and ABI files under `output/sync-ui/` (in this repo). **Manually copy** the contents of `output/sync-ui/` into the UI repo so that `configs/` and `constants/` land under the UI's `src/` (e.g. copy into `10102-ui/src/` so that `output/sync-ui/configs/` → `10102-ui/src/configs/` and `output/sync-ui/constants/` → `10102-ui/src/constants/`). The UI reads contract addresses from the generated config; no address env vars are required.
+
 #### Deployment tags
 
 Deploy contracts in the following order using the `--tags` parameter:
@@ -205,6 +214,7 @@ npx hardhat deploy --network sepolia --tags PremiumMailActivated
 ### Post-deployment setup
 
 > **IMPORTANT:** Before running setup scripts, ensure:
+>
 > - All contracts have been deployed successfully
 > - Your `.env` file is properly configured with:
 >   - `DEPLOYER_PRIVATE_KEY` (required for all setup scripts)
@@ -229,6 +239,7 @@ npm run set-up-legacy -- --network <network-name>
 ```
 
 This script configures:
+
 - EIP712LegacyVerifier
 - LegacyDeployer
 - MultisigLegacyRouter
@@ -249,6 +260,7 @@ npm run set-up-timelock -- --network <network-name>
 ```
 
 This script configures:
+
 - TimeLockRouter with TimelockERC20, TimelockERC721, and TimelockERC1155 addresses
 
 #### 3. Setup Premium Contracts
@@ -265,6 +277,7 @@ npm run set-up-premium -- --network <network-name>
 ```
 
 This script configures:
+
 - PremiumSetting
 - PremiumRegistry
 - PremiumAutomationManager

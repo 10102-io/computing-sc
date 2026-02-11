@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:local": "hardhat deploy --network localhost",
     "send-mail": "npx ts-node scripts/premium/20.send_mail.ts",
     "grant-role": "npx ts-node scripts/premium/4.grant_role.ts",
     "set-up-legacy": "npx hardhat run deploy/init/0.set_up_legacy.ts",
@@ -15,7 +17,8 @@
     "send-mail-api": "npx ts-node scripts/maijet/send_mail.ts",
     "get-template": "npx ts-node scripts/maijet/0.get_template.ts",
     "check-upkeep": "npx ts-node scripts/reminder/11.check_keep_up.ts",
-    "perform-upkeep" :"npx ts-node scripts/reminder/13.peform_keepup.ts"
+    "perform-upkeep" :"npx ts-node scripts/reminder/13.peform_keepup.ts",
+    "sync-ui": "npx ts-node scripts/sync-ui.ts"
   },
   "author": "",
   "license": "ISC",

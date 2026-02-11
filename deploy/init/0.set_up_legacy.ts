@@ -1,3 +1,4 @@
+import { DeployFunction } from "hardhat-deploy/dist/types";
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
 
@@ -33,7 +34,7 @@ async function setRouterAtVerifierTerm(
     const tx = await contract.setRouterAddresses(transferEOALegacyRouter, transferLegacyRouter, multisigLegacyRouter);
 
     console.log("Raw data:", tx?.data);
-    
+
     const receipt = await tx.wait();
     console.log("Receipt:", receipt);
 }
@@ -51,7 +52,7 @@ async function setParamsAtLegacyDeployer(
     const tx = await contract.setParams(multisigLegacyRouter, transferLegacyRouter, transferEOALegacyRouter);
 
     console.log("Raw data:", tx?.data);
-    
+
     const receipt = await tx.wait();
     console.log("Receipt:", receipt);
 
@@ -80,3 +81,10 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+const setUpLegacy: DeployFunction = async () => {
+  /* Run via: npx hardhat run deploy/init/0.set_up_legacy.ts --network <network> */
+};
+setUpLegacy.tags = ["init", "set_up_legacy"];
+setUpLegacy.id = "set_up_legacy";
+export default setUpLegacy;

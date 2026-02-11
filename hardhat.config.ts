@@ -1,4 +1,6 @@
 import * as dotenv from "dotenv";
+import * as fs from "fs";
+import * as path from "path";
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@nomicfoundation/hardhat-verify";
@@ -9,6 +11,32 @@ import "@nomiclabs/hardhat-ethers";
 import "@nomicfoundation/hardhat-toolbox";
 
 dotenv.config();
+
+/** Public Sepolia RPC used as default when fork-block.json specifies sepolia and no env RPC is set. */
+const DEFAULT_SEPOLIA_RPC = "https://rpc.sepolia.org";
+
+/** Fork block from sync-deployment-artifacts.sh (min startBlock of deployment). */
+function getForkConfig(): { url: string; blockNumber: number } | null {
+  const forkBlockPath = path.join(__dirname, "fork-block.json");
+  if (!fs.existsSync(forkBlockPath)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(forkBlockPath, "utf-8")) as {
+      network?: string;
+      blockNumber?: number;
+    };
+    if (typeof data.blockNumber !== "number") return null;
+    const rpc =
+      data.network === "sepolia"
+        ? (process.env.SEPOLIA_RPC_URL ?? process.env.RPC ?? DEFAULT_SEPOLIA_RPC)
+        : (process.env.RPC ?? process.env.SEPOLIA_RPC_URL ?? "");
+    if (!rpc) return null;
+    return { url: rpc, blockNumber: data.blockNumber };
+  } catch {
+    return null;
+  }
+}
+
+const forkConfig = getForkConfig();
 
 const config: HardhatUserConfig = {
   defaultNetwork: "hardhat",
@@ -24,16 +52,14 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
-    // hardhat: {
-    //   chainId: 1337,
-
-    // },
-    hardhat: {
-      forking: {
-        url: process.env.RPC as string,
-        blockNumber: 10145739,
-      },
+    localhost: {
+      url: "http://127.0.0.1:8545",
+      chainId: 31337,
     },
+    // Fork at deployment start block when fork-block.json exists and RPC (or SEPOLIA_RPC_URL) is set.
+    hardhat: forkConfig
+      ? { forking: { url: forkConfig.url, blockNumber: forkConfig.blockNumber } }
+      : {},
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,

@@ -1,36 +1,23 @@
-
+import { DeployFunction } from "hardhat-deploy/dist/types";
 import Web3 from "web3";
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
 dotenv.config();
 
 import * as fs from "fs";
-import { saveContract, getContracts, sleep } from "../../scripts/utils";
+import { saveContract, getContracts, sleep, getExternalAddresses } from "../../scripts/utils";
 import { network } from "hardhat";
 
-//CHAINLINK AUTOMATION
-const i_link = "0x779877A7B0D9E8603169DdbD7836e478b4624789"; //Token LINK 
-const i_registrar = "0xb0E49c5D0d05cbc241d68c05BC5BA1d1B7B72976";
-const keeperRegistry = "0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad";
-const baseGasLimit = "1500000";
-
-
-//CHAINLINK FUNCTION
-const router =  "0xb83E47C2bC239B3bf370bc41e1459A34b41238D0"; //fix for sepolia
-const subcriptionId = 5168;
-const donID = "0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000" // fix for sepolia
-const gasLimit = "300000";
-
 function getWeb3(): Web3 {
-  const rpc = process.env.RPC;
-  if (!rpc) throw new Error("Set RPC in .env");
-  return new Web3(rpc);
+    const rpc = process.env.RPC;
+    if (!rpc) throw new Error("Set RPC in .env");
+    return new Web3(rpc);
 }
 
 function getUserAddress(): string {
-  const userPk = process.env.PK;
-  if (!userPk) throw new Error("Set PK in .env");
-  return getWeb3().eth.accounts.privateKeyToAccount(userPk).address;
+    const userPk = process.env.PK;
+    if (!userPk) throw new Error("Set PK in .env");
+    return getWeb3().eth.accounts.privateKeyToAccount(userPk).address;
 }
 
 const Manager = JSON.parse(
@@ -127,14 +114,15 @@ async function setParamsManager(
     userPk: string,
     manager: string,
     premiumSetting: string,
-    sendMailRouter: string
+    sendMailRouter: string,
+    chainlink: { link: string; registrar: string; keeperRegistry: string; baseGasLimit: string }
 ) {
     console.log('Set up Manager Params...');
     const txCount = await web3.eth.getTransactionCount(user);
     const contract = new web3.eth.Contract(Manager, manager);
 
     const txData = await contract.methods
-        .setParams(i_link, i_registrar, keeperRegistry, premiumSetting, baseGasLimit, sendMailRouter, 150).encodeABI();
+        .setParams(chainlink.link, chainlink.registrar, chainlink.keeperRegistry, premiumSetting, chainlink.baseGasLimit, sendMailRouter, 150).encodeABI();
     console.log(txData);
     const txObj = {
         nonce: txCount,
@@ -150,7 +138,7 @@ async function setParamsManager(
     const result = await web3.eth.sendSignedTransaction(signedTx.rawTransaction!);
     console.log(result);
 
-}  
+}
 
 async function setParamsMailRouter(
     web3: Web3,
@@ -189,9 +177,9 @@ async function setParamsMailRouter(
         signedTx.rawTransaction!
     );
     console.log(result);
-   
-    
-    
+
+
+
 }
 
 
@@ -219,15 +207,30 @@ async function main() {
     const userPk = process.env.PK!;
 
     // Setting contract
+    const externalAddrs = getExternalAddresses(network.name);
+    const chainlink = {
+        link: externalAddrs.chainlinkLink,
+        registrar: externalAddrs.chainlinkRegistrar,
+        keeperRegistry: externalAddrs.chainlinkKeeperRegistry,
+        baseGasLimit: externalAddrs.chainlinkBaseGasLimit,
+    };
+
     // await setPramramPremiumSetting(web3, user, userPk, premiumSetting, registry, transferLegacyRouter, transferEOALegacyRouter, multisigLegacyRouter);
     // await setUpReminder(web3, user, userPk, premiumSetting, manager, sendMailRouter);
-    // await setParamsManager(web3, user, userPk, manager, premiumSetting, sendMailRouter);
+    // await setParamsManager(web3, user, userPk, manager, premiumSetting, sendMailRouter, chainlink);
 
     await setParamsMailRouter(web3, user, userPk, sendMailRouter, mailBeforeActivation, mailActivated, mailReadyToActivate, premiumSetting, manager);
 }
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+    main().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
 }
+
+const deployFunc: DeployFunction = async () => {
+    /* Run via: npx hardhat run deploy/init/2.set_up_reminder.ts --network <network> */
+};
+deployFunc.tags = ["init", "set_up_reminder"];
+deployFunc.id = "set_up_reminder";
+export default deployFunc;
