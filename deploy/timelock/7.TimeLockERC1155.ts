@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { getContracts, saveContract, getRpcUrl, verifyProxyOnEtherscan } from "../../scripts/utils";
+import { getContracts, saveContract, getRpcUrl, verifyProxyOnEtherscan, shouldVerify } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 import Web3 from "web3";
 dotenv.config();
@@ -37,19 +37,20 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   await saveContract(network.name, "DefaultProxyAdmin", result.args![1]);
   await saveContract(network.name, "TimelockERC1155", result.address, result.implementation!);
 
-  // Verify implementation only (proxy may use a different compiler)
-  try {
-    await hre.run("verify:verify", {
-      address: result.implementation,
-      constructorArguments: [],
-    });
-  } catch (err) {
-    console.warn("Implementation verify failed:", err);
+  if (shouldVerify(network.name)) {
+    try {
+      await hre.run("verify:verify", {
+        address: result.implementation,
+        constructorArguments: [],
+      });
+    } catch (err) {
+      console.warn("Implementation verify failed:", err);
+    }
   }
 
   const apiKey = process.env.API_KEY_ETHERSCAN;
   const chainId = network.config?.chainId;
-  if (apiKey && chainId != null && result.address && result.implementation) {
+  if (shouldVerify(network.name) && apiKey && chainId != null && result.address && result.implementation) {
     try {
       const verifyResult = await verifyProxyOnEtherscan(
         result.address,
