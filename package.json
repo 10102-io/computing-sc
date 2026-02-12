@@ -6,6 +6,7 @@
   "scripts": {
     "test": "hardhat test",
     "node": "hardhat node",
+    "node:fresh": "HARDHAT_NO_FORK=1 hardhat node",
     "deploy:local": "hardhat deploy --network localhost",
     "send-mail": "npx ts-node scripts/premium/20.send_mail.ts",
     "grant-role": "npx ts-node scripts/premium/4.grant_role.ts",

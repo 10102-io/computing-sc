@@ -9,14 +9,11 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
-
-  const web3 = new Web3(process.env.RPC!);
+  ;
   const externalAddrs = getExternalAddresses(network.name);
   const { chainlinkFunctionsRouter: router, chainlinkSubscriptionId: subcriptionId, chainlinkDonId: donID, chainlinkGasLimit: gasLimit } = externalAddrs;
   const contracts = getContracts();
   const sendMailRouter = contracts[network.name]["PremiumMailRouter"].address;
-
-
 
   const data = await deploy("PremiumMailActivated", {
     from: deployer,

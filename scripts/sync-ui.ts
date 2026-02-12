@@ -1,7 +1,8 @@
 /**
  * Sync UI: reads contract-addresses.json and deployments/<network>/, writes
- * contract-addresses.generated.ts and ABI files to output/sync-ui/.
- * User must manually copy the contents of output/sync-ui/ into the UI repo's src/.
+ * contract-addresses.generated.ts, ABI files, and subgraph networks to output/sync-ui/.
+ * User must manually copy the contents of output/sync-ui/ into the UI repo's src/
+ * and merge subgraph-networks.json into the subgraph repo's networks.json.
  */
 
 import * as fs from 'fs';
@@ -14,6 +15,7 @@ const CONTRACT_ADDRESSES_PATH = path.join(CONTRACTS_ROOT, 'contract-addresses.js
 const DEPLOYMENTS_DIR = path.join(CONTRACTS_ROOT, 'deployments');
 
 const NETWORK_CHAIN_IDS: Record<string, number> = {
+  localhost: 31337,
   sepolia: 11155111,
   mainnet: 1,
 };
@@ -24,6 +26,9 @@ interface ContractEntry {
 }
 
 type ContractAddressesJson = Record<string, Record<string, ContractEntry>>;
+
+/** Subgraph networks.json fragment: network -> dataSourceName -> { address, startBlock? }. */
+type SubgraphNetworksOutput = Record<string, Record<string, { address: string; startBlock?: number }>>;
 
 interface UIContractAddresses {
   inheritance: string | null;
@@ -36,6 +41,7 @@ interface UIContractAddresses {
   timeLockERC721: string | null;
   timeLockERC1155: string | null;
   timeLock: string | null;
+  timelockRouter: string | null;
   usdcAddress: string | null;
   usdtAddress: string | null;
   tokenWhitelist: string | null;
@@ -78,6 +84,7 @@ function buildUIContractAddresses(networkContracts: Record<string, ContractEntry
     timeLockERC721: null,
     timeLockERC1155: null,
     timeLock: null,
+    timelockRouter: null,
     usdcAddress: null,
     usdtAddress: null,
     tokenWhitelist: null,
@@ -89,6 +96,7 @@ function buildUIContractAddresses(networkContracts: Record<string, ContractEntry
       if (addr) out[key] = addr;
     }
   }
+  if (out.timeLock) out.timelockRouter = out.timeLock;
   return out;
 }
 
@@ -96,6 +104,23 @@ function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
+}
+
+function getStartBlock(network: string, contractName: string): number | undefined {
+  const deploymentsNetwork = path.join(DEPLOYMENTS_DIR, network);
+  for (const artifactName of [`${contractName}.json`, `${contractName}_Proxy.json`]) {
+    const artifactPath = path.join(deploymentsNetwork, artifactName);
+    if (!fs.existsSync(artifactPath)) continue;
+    try {
+      const content = fs.readFileSync(artifactPath, 'utf-8');
+      const parsed = JSON.parse(content) as { receipt?: { blockNumber?: number } };
+      const block = parsed.receipt?.blockNumber;
+      if (typeof block === 'number') return block;
+    } catch {
+      // ignore
+    }
+  }
+  return undefined;
 }
 
 function writeAddresses(): void {
@@ -117,6 +142,7 @@ function writeAddresses(): void {
     '  timeLockERC721: string | null;',
     '  timeLockERC1155: string | null;',
     '  timeLock: string | null;',
+    '  timelockRouter: string | null;',
     '  usdcAddress: string | null;',
     '  usdtAddress: string | null;',
     '  tokenWhitelist: string | null;',
@@ -125,14 +151,23 @@ function writeAddresses(): void {
     'export const CONTRACT_ADDRESSES_BY_CHAIN_ID: ContractAddressesByChainId = {',
   ];
 
+  const seenChainIds = new Set<number>();
+  if (parsed.hardhat && !parsed.localhost) {
+    parsed.localhost = parsed.hardhat;
+  }
   for (const [network, chainId] of Object.entries(NETWORK_CHAIN_IDS)) {
+    if (seenChainIds.has(chainId)) continue;
     const networkContracts = parsed[network];
     if (!networkContracts) continue;
+    seenChainIds.add(chainId);
     const addrs = buildUIContractAddresses(networkContracts);
     lines.push(`  ${chainId}: {`);
     for (const [k, v] of Object.entries(addrs)) {
       const val = v === null ? 'null' : `'${v}'`;
       lines.push(`    ${k}: ${val},`);
+    }
+    if (addrs.timelockRouter === null && addrs.timeLock) {
+      lines.push(`    timelockRouter: '${addrs.timeLock}',`);
     }
     lines.push('  },');
   }
@@ -211,10 +246,56 @@ function writeAbis(): void {
   const data = fs.readFileSync(CONTRACT_ADDRESSES_PATH, 'utf-8');
   const parsed = JSON.parse(data) as ContractAddressesJson;
   const networks = Object.keys(parsed).filter((n) => NETWORK_CHAIN_IDS[n] !== undefined);
-  const network = networks[0] ?? 'sepolia';
+  const deploymentDirs = networks.filter((n) => fs.existsSync(path.join(DEPLOYMENTS_DIR, n)));
+  const allDirs =
+    fs.existsSync(DEPLOYMENTS_DIR) ?
+      fs.readdirSync(DEPLOYMENTS_DIR).filter((name) => {
+        const p = path.join(DEPLOYMENTS_DIR, name);
+        return fs.statSync(p).isDirectory() && !name.startsWith('.');
+      }) :
+      [];
+  const network = deploymentDirs[0] ?? allDirs[0] ?? networks[0] ?? 'sepolia';
   for (const m of ABI_MAPPINGS) {
     writeAbiFile(network, m.artifact, m.outPath, m.exportName, m.style);
   }
+}
+
+function writeSubgraphNetworks(): void {
+  const data = fs.readFileSync(CONTRACT_ADDRESSES_PATH, 'utf-8');
+  const parsed = JSON.parse(data) as ContractAddressesJson;
+  const output: SubgraphNetworksOutput = {};
+  for (const [network, contracts] of Object.entries(parsed)) {
+    if (network === 'hardhat' && output['localhost']) continue;
+    const outputKey = network === 'hardhat' ? 'localhost' : network;
+    const entries: Record<string, { address: string; startBlock?: number }> = {};
+    for (const [contractName, entry] of Object.entries(contracts)) {
+      const addr = checksum(entry?.address);
+      if (!addr) continue;
+      const startBlock = getStartBlock(network, contractName);
+      entries[contractName] = startBlock !== undefined ? { address: addr, startBlock } : { address: addr };
+    }
+    if (Object.keys(entries).length > 0) output[outputKey] = entries;
+  }
+  const outPath = path.join(OUTPUT_ROOT, 'subgraph-networks.json');
+  fs.writeFileSync(outPath, JSON.stringify(output, null, 2), 'utf-8');
+  console.log('Wrote', path.relative(CONTRACTS_ROOT, outPath));
+}
+
+function printCopyInstructions(): void {
+  const subgraphPath = path.join(OUTPUT_ROOT, 'subgraph-networks.json');
+  console.log('');
+  console.log('--- Copy instructions ---');
+  console.log('');
+  console.log('UI: Copy output/sync-ui/* into the UI repo src/ so that:');
+  console.log('     output/sync-ui/configs/  →  10102-ui/src/configs/');
+  console.log('     output/sync-ui/constants/  →  10102-ui/src/constants/');
+  console.log('');
+  console.log('Subgraph: Merge addresses from output/sync-ui/subgraph-networks.json into the');
+  console.log('     subgraph networks file. For each network (e.g. sepolia), replace or merge');
+  console.log('     that key in 10102-subgraph/networks.json with the corresponding object');
+  console.log('     from subgraph-networks.json. Then run "yarn build:sepolia" and');
+  console.log('     "yarn deploy:sepolia" in the subgraph repo to redeploy the indexer.');
+  console.log('');
 }
 
 function main(): void {
@@ -225,7 +306,8 @@ function main(): void {
   ensureDir(OUTPUT_ROOT);
   writeAddresses();
   writeAbis();
-  console.log('Done. Copy output/sync-ui/* into the UI repo src/ (so configs/ and constants/ land in src/configs/ and src/constants/).');
+  writeSubgraphNetworks();
+  printCopyInstructions();
 }
 
 main();

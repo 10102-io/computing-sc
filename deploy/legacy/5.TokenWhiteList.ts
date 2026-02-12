@@ -32,10 +32,14 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   console.log("TokenWhiteList deployed to:", data.address);
   await saveContract(network.name, "TokenWhiteList", data.address);
 
-  const contracts = getContracts();
-  const networkContracts = contracts[network.name] ?? {};
-  const testUsdc = networkContracts.ERC20Token_USDC?.address;
-  const testUsdt = networkContracts.ERC20Token_USDT?.address;
+  const usdcDeploy = await deployments.getOrNull("ERC20Token_USDC");
+  const usdtDeploy = await deployments.getOrNull("ERC20Token_USDT");
+  const testUsdc =
+    usdcDeploy?.address ??
+    getContracts()[network.name]?.ERC20Token_USDC?.address;
+  const testUsdt =
+    usdtDeploy?.address ??
+    getContracts()[network.name]?.ERC20Token_USDT?.address;
   if (
     shouldRunTestERC20(network.name) &&
     testUsdc != null &&
