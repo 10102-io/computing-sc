@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * Mock Uniswap V2 Router for tests. Exposes WETH(), getAmountsOut, and swap
  * functions with configurable multipliers. Tests must fund the mock with ETH
- * for token->ETH swaps and with output tokens for ETH->token swaps.
+ * for token->ETH swaps and with storage tokens for ETH->token swaps.
  */
 contract MockUniswapV2Router {
     address public immutable weth;
