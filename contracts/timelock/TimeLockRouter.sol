@@ -28,7 +28,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   struct TimelockETHSwapInputData {
-    address outputToken;
+    address storageToken;
     uint256 amountOutMin;
     uint256 deadline;
   }
@@ -107,28 +107,28 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   /// @param ethAmountWei Amount of ETH in wei (e.g. msg.value).
-  /// @param outputToken The ERC-20 token address to receive.
+  /// @param storageToken The ERC-20 token address to receive.
   /// @return Expected amount of outputToken (in its smallest units) for the given ETH.
-  function getEthToTokenAmountOut(uint256 ethAmountWei, address outputToken) external view returns (uint256) {
+  function getEthToTokenAmountOut(uint256 ethAmountWei, address storageToken) external view returns (uint256) {
     if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
     address weth = uniswapRouter.WETH();
-    if (outputToken == weth) return ethAmountWei; // ETH→WETH is 1:1 wrap
+    if (storageToken == weth) return ethAmountWei; // ETH→WETH is 1:1 wrap
     address[] memory path = new address[](2);
     path[0] = weth;
-    path[1] = outputToken;
+    path[1] = storageToken;
     uint256[] memory amounts = uniswapRouter.getAmountsOut(ethAmountWei, path);
     return amounts[1];
   }
 
   /// @param tokenAmount Amount of token (in its smallest units).
-  /// @param token The ERC-20 token address to swap.
+  /// @param storageToken The ERC-20 token address to swap.
   /// @return Expected amount of ETH in wei received for the given token amount.
-  function getTokenToEthAmountOut(uint256 tokenAmount, address token) external view returns (uint256) {
+  function getTokenToEthAmountOut(uint256 tokenAmount, address storageToken) external view returns (uint256) {
     if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
     address weth = uniswapRouter.WETH();
-    if (token == weth) return tokenAmount; // WETH→ETH is 1:1 unwrap
+    if (storageToken == weth) return tokenAmount; // WETH→ETH is 1:1 unwrap
     address[] memory path = new address[](2);
-    path[0] = token;
+    path[0] = storageToken;
     path[1] = weth;
     uint256[] memory amounts = uniswapRouter.getAmountsOut(tokenAmount, path);
     return amounts[1];
@@ -137,13 +137,13 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createTimelock(TimelockRegular calldata timelockRegular) external payable {
     if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
 
-    if (msg.value > 0 && timelockRegular.timelockETHSwap.outputToken == address(0)) {
+    if (msg.value > 0 && timelockRegular.timelockETHSwap.storageToken == address(0)) {
       revert TimelockHelper.EthSentWithoutSwap();
     }
 
     timelockCounter++;
 
-    if (timelockRegular.timelockERC20.length > 0 || timelockRegular.timelockETHSwap.outputToken != address(0)) {
+    if (timelockRegular.timelockERC20.length > 0 || timelockRegular.timelockETHSwap.storageToken != address(0)) {
       _handleTimelockRegularERC20(
         timelockCounter,
         timelockRegular.timelockETHSwap,
@@ -190,13 +190,13 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createSoftTimelock(TimelockSoft calldata timelockSoft) external payable {
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
 
-    if (msg.value > 0 && timelockSoft.timelockETHSwap.outputToken == address(0)) {
+    if (msg.value > 0 && timelockSoft.timelockETHSwap.storageToken == address(0)) {
       revert TimelockHelper.EthSentWithoutSwap();
     }
 
     timelockCounter++;
 
-    if (timelockSoft.timelockERC20.length > 0 || timelockSoft.timelockETHSwap.outputToken != address(0)) {
+    if (timelockSoft.timelockERC20.length > 0 || timelockSoft.timelockETHSwap.storageToken != address(0)) {
       _handleTimelockSoftERC20(
         timelockCounter,
         timelockSoft.timelockETHSwap,
@@ -235,13 +235,13 @@ contract TimeLockRouter is OwnableUpgradeable {
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
 
-    if (msg.value > 0 && timelockGift.timelockETHSwap.outputToken == address(0)) {
+    if (msg.value > 0 && timelockGift.timelockETHSwap.storageToken == address(0)) {
       revert TimelockHelper.EthSentWithoutSwap();
     }
 
     timelockCounter++;
 
-    if (timelockGift.timelockERC20.length > 0 || timelockGift.timelockETHSwap.outputToken != address(0)) {
+    if (timelockGift.timelockERC20.length > 0 || timelockGift.timelockETHSwap.storageToken != address(0)) {
       _handleTimelockGiftERC20(
         timelockCounter,
         timelockGift.timelockETHSwap,
@@ -308,14 +308,14 @@ contract TimeLockRouter is OwnableUpgradeable {
 
   function _swapEthForToken(TimelockETHSwapInputData calldata timelockETHSwap) private returns (address outputToken, uint256 receivedAmount) {
     if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
-    if (address(tokenWhitelist) != address(0) && !tokenWhitelist.isWhitelisted(timelockETHSwap.outputToken)) {
+    if (address(tokenWhitelist) != address(0) && !tokenWhitelist.isWhitelisted(timelockETHSwap.storageToken)) {
       revert TimelockHelper.TokenNotWhitelisted();
     }
     if (timelockETHSwap.deadline < block.timestamp) revert TimelockHelper.InvalidSwapIntent();
     if (msg.value == 0) revert TimelockHelper.InvalidSwapIntent();
 
     address weth = uniswapRouter.WETH();
-    if (timelockETHSwap.outputToken == weth) {
+    if (timelockETHSwap.storageToken == weth) {
       // ETH→WETH is 1:1 wrap; use WETH.deposit instead of Uniswap
       IWETH(weth).deposit{value: msg.value}();
       SafeERC20.safeTransfer(IERC20(weth), address(timelockERC20Contract), msg.value);
@@ -324,19 +324,19 @@ contract TimeLockRouter is OwnableUpgradeable {
 
     address[] memory path = new address[](2);
     path[0] = weth;
-    path[1] = timelockETHSwap.outputToken;
+    path[1] = timelockETHSwap.storageToken;
 
-    uint256 balanceBefore = IERC20(timelockETHSwap.outputToken).balanceOf(address(timelockERC20Contract));
+    uint256 balanceBefore = IERC20(timelockETHSwap.storageToken).balanceOf(address(timelockERC20Contract));
     uniswapRouter.swapExactETHForTokensSupportingFeeOnTransferTokens{value: msg.value}(
       timelockETHSwap.amountOutMin,
       path,
       address(timelockERC20Contract),
       timelockETHSwap.deadline
     );
-    uint256 balanceAfter = IERC20(timelockETHSwap.outputToken).balanceOf(address(timelockERC20Contract));
+    uint256 balanceAfter = IERC20(timelockETHSwap.storageToken).balanceOf(address(timelockERC20Contract));
     if (balanceAfter <= balanceBefore) revert TimelockHelper.NoTokensReceived();
     receivedAmount = balanceAfter - balanceBefore;
-    return (timelockETHSwap.outputToken, receivedAmount);
+    return (timelockETHSwap.storageToken, receivedAmount);
   }
 
   /// @dev Validates and pulls ERC20s from the caller into the timelock contract. Reverts on empty list or balance mismatch.
@@ -359,7 +359,8 @@ contract TimeLockRouter is OwnableUpgradeable {
     TimelockERC20InputData[] calldata timelockERC20
   ) private returns (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) {
     // Path 1: User sent ETH — swap to whitelisted token. withdrawAsEthToken marks it for swap-back-to-ETH on withdraw.
-    if (timelockETHSwap.outputToken != address(0)) {
+    if (timelockETHSwap.storageToken != address(0)) {
+      // swap token is WETH if the outputToken was 0x0
       (address swapToken, uint256 swapAmount) = _swapEthForToken(timelockETHSwap);
       if (timelockERC20.length == 0) {
         // Lock only the swapped token.
