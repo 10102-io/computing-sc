@@ -64,8 +64,9 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   uint256 private constant WITHDRAW_SWAP_SLIPPAGE_BPS = 500;
   uint256 private constant BPS_DENOMINATOR = 10_000;
 
-  function onlyRouter() private view {
+  modifier onlyRouter() {
     if (msg.sender != routerAddresses) revert TimelockHelper.NotAuthorized();
+    _;
   }
 
   function setUniswapRouter(address _uniswapRouter) external onlyOwner {
@@ -106,8 +107,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     address caller,
     TimelockHelper.LockStatus lockStatus,
     address withdrawAsEthToken
-  ) external payable nonReentrant {
-    onlyRouter();
+  ) external payable onlyRouter nonReentrant {
     _createTimelock(id, tokens, amounts, withdrawAsEthToken, caller, caller, block.timestamp + duration, false, 0, TimelockHelper.LockType.Regular, lockStatus, name);
   }
 
@@ -120,8 +120,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     address caller,
     TimelockHelper.LockStatus lockStatus,
     address withdrawAsEthToken
-  ) external payable nonReentrant {
-    onlyRouter();
+  ) external payable onlyRouter nonReentrant {
     _createTimelock(id, tokens, amounts, withdrawAsEthToken, caller, caller, 0, true, bufferTime, TimelockHelper.LockType.Soft, lockStatus, name);
   }
 
@@ -136,8 +135,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     address owner,
     TimelockHelper.LockStatus lockStatus,
     address withdrawAsEthToken
-  ) external payable nonReentrant {
-    onlyRouter();
+  ) external payable onlyRouter nonReentrant {
     _createTimelock(id, tokens, amounts, withdrawAsEthToken, owner, recipient, block.timestamp + duration, false, 0, TimelockHelper.LockType.Gift, lockStatus, name);
     emit TimelockGiftName(id, giftName, recipient);
   }
@@ -177,8 +175,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   }
 
   // ───────────── Soft Unlock ─────────────
-  function unlockSoftTimelock(uint256 id, address caller) external nonReentrant {
-    onlyRouter();
+  function unlockSoftTimelock(uint256 id, address caller) external onlyRouter nonReentrant {
     TimelockInfo storage lock = timelocks[id];
     if (lock.owner == address(0)) return;
     if (lock.lockStatus != TimelockHelper.LockStatus.Live) revert TimelockHelper.TimelockNotLive();
