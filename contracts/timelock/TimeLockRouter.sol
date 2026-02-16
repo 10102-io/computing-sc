@@ -334,6 +334,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       timelockETHSwap.deadline
     );
     uint256 balanceAfter = IERC20(timelockETHSwap.outputToken).balanceOf(address(timelockERC20Contract));
+    if (balanceAfter <= balanceBefore) revert TimelockHelper.NoTokensReceived();
     receivedAmount = balanceAfter - balanceBefore;
     return (timelockETHSwap.outputToken, receivedAmount);
   }
@@ -343,9 +344,8 @@ contract TimeLockRouter is OwnableUpgradeable {
   /// @return amounts Actual amounts received (fee-on-transfer safe).
   function _pullAndValidateERC20(TimelockERC20InputData[] calldata timelockERC20) private returns (address[] memory tokens, uint256[] memory amounts) {
     (tokens, amounts) = _makeListERC20(timelockERC20);
-    uint256 requiredNativeAmount = _validateERC20Input(tokens, amounts);
-    if (address(this).balance != requiredNativeAmount) revert TimelockHelper.InsufficientNativeToken();
-    amounts = _transferERC20TokensIn(tokens, amounts, requiredNativeAmount);
+    _validateERC20Input(tokens, amounts);
+    amounts = _transferERC20TokensIn(tokens, amounts);
   }
 
   /// @dev Builds the ERC20 token list and amounts for a timelock, handling optional ETH→token swap.
@@ -433,8 +433,7 @@ contract TimeLockRouter is OwnableUpgradeable {
     timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawAsEthToken);
   }
 
-  function _transferERC20TokensIn(address[] memory tokens, uint256[] memory amounts, uint256 requiredNativeAmount) private returns (uint256[] memory actualReceived) {
-    if (address(this).balance != requiredNativeAmount) revert TimelockHelper.InsufficientNativeToken();
+  function _transferERC20TokensIn(address[] memory tokens, uint256[] memory amounts) private returns (uint256[] memory actualReceived) {
 
     actualReceived = new uint256[](tokens.length);
 
@@ -446,7 +445,7 @@ contract TimeLockRouter is OwnableUpgradeable {
     }
   }
 
-  function _validateERC20Input(address[] memory tokens, uint256[] memory amounts) private pure returns (uint256) {
+  function _validateERC20Input(address[] memory tokens, uint256[] memory amounts) private pure {
     if (tokens.length == 0 || tokens.length != amounts.length) revert TimelockHelper.MismatchedArrayLength();
 
     for (uint256 i = 0; i < tokens.length; i++) {
@@ -460,7 +459,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       }
     }
 
-    return 0;
+
   }
 
   // regular ERC721
@@ -581,12 +580,6 @@ contract TimeLockRouter is OwnableUpgradeable {
     TimelockHelper.LockStatus lockStatus
   ) private {
     (address[] memory tokens, uint256[] memory ids, uint256[] memory amounts) = _makeListERC1155(timelockERC1155);
-
-    for (uint256 i = 0; i < timelockERC1155.length; i++) {
-      tokens[i] = timelockERC1155[i].tokenAddress;
-      ids[i] = timelockERC1155[i].id;
-      amounts[i] = timelockERC1155[i].amount;
-    }
 
     _validateERC1155Input(tokens, ids, amounts);
     _transferERC1155TokensIn(tokens, ids, amounts);

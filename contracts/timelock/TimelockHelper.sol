@@ -29,6 +29,7 @@ library TimelockHelper {
   error SwapNotConfigured();
   error InvalidSwapIntent();
   error EthSentWithoutSwap();
+  error NoTokensReceived();
 
   // ───────────── Enums ─────────────
   enum LockType {
