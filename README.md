@@ -263,6 +263,8 @@ This script configures:
 
 - TimeLockRouter with TimelockERC20, TimelockERC721, and TimelockERC1155 addresses
 
+> **Note:** On Sepolia and mainnet, timelock setup (setTimelock, setTokenWhitelist, setUniswapRouter, and adding external USDC/USDT to the whitelist) is handled automatically by the deploy script `SetSepoliaSwapRouter`. You only need to run `set-up-timelock` manually for other networks where that script does not run.
+
 #### 3. Setup Premium Contracts
 
 ```bash
