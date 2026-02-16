@@ -72,7 +72,7 @@ contract MockUniswapV2Router {
 
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
         uint256 amountIn,
-        uint256 /* amountOutMin */,
+        uint256 amountOutMin,
         address[] calldata path,
         address to,
         uint256 /* deadline */
@@ -82,6 +82,7 @@ contract MockUniswapV2Router {
         uint256 amountOutEth = (amountIn * tokenToEthMultiplier) / 1e18;
         uint256 balance = address(this).balance;
         uint256 sendAmount = amountOutEth < balance ? amountOutEth : balance;
+        require(sendAmount >= amountOutMin, "MockUniswapV2Router: insufficient output");
         (bool ok,) = payable(to).call{value: sendAmount}("");
         require(ok, "MockUniswapV2Router: ETH transfer failed");
     }

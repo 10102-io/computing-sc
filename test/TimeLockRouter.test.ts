@@ -57,6 +57,15 @@ describe("TimeLockRouter", function () {
       const amountOut = await router.getEthToTokenAmountOut(ethers.utils.parseEther("2"), storageToken.address);
       expect(amountOut).to.equal(ethers.utils.parseEther("2"));
     });
+
+    it("returns 1:1 when outputToken is WETH (avoids IDENTICAL_ADDRESSES)", async function () {
+      const { router, wethToken, mockRouter, owner } = await loadFixture(deployFixture);
+      await router.connect(owner as any).setUniswapRouter(mockRouter.address);
+      // mockRouter.WETH() returns wethToken.address; path [WETH,WETH] would revert with Uniswap's IDENTICAL_ADDRESSES
+      const ethAmountWei = ethers.utils.parseEther("1");
+      const amountOut = await router.getEthToTokenAmountOut(ethAmountWei, wethToken.address);
+      expect(amountOut).to.equal(ethAmountWei);
+    });
   });
 
   describe("getTokenToEthAmountOut", function () {
@@ -95,6 +104,14 @@ describe("TimeLockRouter", function () {
       const tokenAmount = ethers.utils.parseEther("3");
       const ethOut = await router.getTokenToEthAmountOut(tokenAmount, storageToken.address);
       expect(ethOut).to.equal(ethers.utils.parseEther("3"));
+    });
+
+    it("returns 1:1 when token is WETH (avoids IDENTICAL_ADDRESSES)", async function () {
+      const { router, wethToken, mockRouter, owner } = await loadFixture(deployFixture);
+      await router.connect(owner as any).setUniswapRouter(mockRouter.address);
+      const tokenAmount = ethers.utils.parseEther("1");
+      const ethOut = await router.getTokenToEthAmountOut(tokenAmount, wethToken.address);
+      expect(ethOut).to.equal(tokenAmount);
     });
   });
 });

@@ -60,6 +60,9 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   IUniswapV2Router02 public uniswapRouter;
 
   uint256 private constant WITHDRAW_SWAP_DEADLINE_BUFFER = 300;
+  /// @dev Slippage tolerance for token→ETH withdraw swap (basis points). 500 = 5%.
+  uint256 private constant WITHDRAW_SWAP_SLIPPAGE_BPS = 500;
+  uint256 private constant BPS_DENOMINATOR = 10_000;
 
   function onlyRouter() private view {
     if (msg.sender != routerAddresses) revert TimelockHelper.NotAuthorized();
@@ -241,10 +244,13 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     address[] memory path = new address[](2);
     path[0] = token;
     path[1] = weth;
+    uint256[] memory amountsOut = uniswapRouter.getAmountsOut(amount, path);
+    uint256 minAmountOut = amountsOut[1] * (BPS_DENOMINATOR - WITHDRAW_SWAP_SLIPPAGE_BPS) / BPS_DENOMINATOR;
+
     IERC20(token).forceApprove(address(uniswapRouter), amount);
     uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
       amount,
-      0,
+      minAmountOut,
       path,
       recipient,
       block.timestamp + WITHDRAW_SWAP_DEADLINE_BUFFER
