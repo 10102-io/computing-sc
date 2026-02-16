@@ -208,20 +208,21 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     address[] memory tokens = lock.tokenAddresses;
     uint256[] memory amounts = lock.amounts;
     address withdrawAsEthToken = lock.withdrawAsEthToken;
+    address recipient = lock.recipient;
+
+    for (uint256 i = 0; i < tokens.length; i++) {
+      if (tokens[i] == withdrawAsEthToken) {
+        _swapTokenToEthAndSend(tokens[i], amounts[i], recipient);
+      } else {
+        IERC20(tokens[i]).safeTransfer(recipient, amounts[i]);
+      }
+    }
 
     delete lock.tokenAddresses;
     delete lock.amounts;
     lock.withdrawAsEthToken = address(0);
 
-    for (uint256 i = 0; i < tokens.length; i++) {
-      if (tokens[i] == withdrawAsEthToken) {
-        _swapTokenToEthAndSend(tokens[i], amounts[i], lock.recipient);
-      } else {
-        IERC20(tokens[i]).safeTransfer(lock.recipient, amounts[i]);
-      }
-    }
-
-    emit FundsWithdrawn(id, lock.recipient);
+    emit FundsWithdrawn(id, recipient);
   }
 
   function _swapTokenToEthAndSend(address token, uint256 amount, address recipient) internal {
