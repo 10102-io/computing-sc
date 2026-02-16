@@ -46,8 +46,12 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     testUsdt != null
   ) {
     const whitelist = await ethers.getContractAt("TokenWhiteList", data.address);
-    await whitelist.addToken(testUsdc);
-    await whitelist.addToken(testUsdt);
+    if (!(await whitelist.isWhitelisted(testUsdc))) {
+      await whitelist.addToken(testUsdc);
+    }
+    if (!(await whitelist.isWhitelisted(testUsdt))) {
+      await whitelist.addToken(testUsdt);
+    }
     console.log("Added test ERC20 USDC and USDT to TokenWhiteList");
   }
 

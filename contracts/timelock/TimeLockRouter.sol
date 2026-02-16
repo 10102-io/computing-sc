@@ -17,6 +17,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {TimelockHelper} from "./TimelockHelper.sol";
 import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
+import {IWETH} from "../interfaces/IWETH.sol";
 
 contract TimeLockRouter is OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -110,8 +111,10 @@ contract TimeLockRouter is OwnableUpgradeable {
   /// @return Expected amount of outputToken (in its smallest units) for the given ETH.
   function getEthToTokenAmountOut(uint256 ethAmountWei, address outputToken) external view returns (uint256) {
     if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
+    address weth = uniswapRouter.WETH();
+    if (outputToken == weth) return ethAmountWei; // ETH→WETH is 1:1 wrap
     address[] memory path = new address[](2);
-    path[0] = uniswapRouter.WETH();
+    path[0] = weth;
     path[1] = outputToken;
     uint256[] memory amounts = uniswapRouter.getAmountsOut(ethAmountWei, path);
     return amounts[1];
@@ -122,9 +125,11 @@ contract TimeLockRouter is OwnableUpgradeable {
   /// @return Expected amount of ETH in wei received for the given token amount.
   function getTokenToEthAmountOut(uint256 tokenAmount, address token) external view returns (uint256) {
     if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
+    address weth = uniswapRouter.WETH();
+    if (token == weth) return tokenAmount; // WETH→ETH is 1:1 unwrap
     address[] memory path = new address[](2);
     path[0] = token;
-    path[1] = uniswapRouter.WETH();
+    path[1] = weth;
     uint256[] memory amounts = uniswapRouter.getAmountsOut(tokenAmount, path);
     return amounts[1];
   }
@@ -310,6 +315,13 @@ contract TimeLockRouter is OwnableUpgradeable {
     if (msg.value == 0) revert TimelockHelper.InvalidSwapIntent();
 
     address weth = uniswapRouter.WETH();
+    if (timelockETHSwap.outputToken == weth) {
+      // ETH→WETH is 1:1 wrap; use WETH.deposit instead of Uniswap
+      IWETH(weth).deposit{value: msg.value}();
+      SafeERC20.safeTransfer(IERC20(weth), address(timelockERC20Contract), msg.value);
+      return (weth, msg.value);
+    }
+
     address[] memory path = new address[](2);
     path[0] = weth;
     path[1] = timelockETHSwap.outputToken;

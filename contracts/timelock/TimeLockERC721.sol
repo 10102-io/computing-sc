@@ -52,6 +52,10 @@ contract TimelockERC721 is Initializable, OwnableUpgradeable, ReentrancyGuardUpg
     if (msg.sender != routerAddresses) revert TimelockHelper.NotAuthorized();
   }
 
+  function setRouterAddresses(address _routerAddresses) external onlyOwner {
+    routerAddresses = _routerAddresses;
+  }
+
   // ───────────── Init ─────────────
   function initialize(address initialOwner, address _routerAddresses) public initializer {
     __Ownable_init(initialOwner);

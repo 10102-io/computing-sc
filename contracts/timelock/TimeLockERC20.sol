@@ -9,6 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {TimelockHelper} from "./TimelockHelper.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
+import {IWETH} from "../interfaces/IWETH.sol";
 
 contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -66,6 +67,10 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
 
   function setUniswapRouter(address _uniswapRouter) external onlyOwner {
     uniswapRouter = IUniswapV2Router02(_uniswapRouter);
+  }
+
+  function setRouterAddresses(address _routerAddresses) external onlyOwner {
+    routerAddresses = _routerAddresses;
   }
 
   // ───────────── Init ─────────────
@@ -220,11 +225,18 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   }
 
   function _swapTokenToEthAndSend(address token, uint256 amount, address recipient) internal {
+    address weth = address(uniswapRouter) != address(0) ? uniswapRouter.WETH() : address(0);
+    if (token == weth) {
+      // WETH→ETH is 1:1 unwrap
+      IWETH(token).withdraw(amount);
+      (bool ok,) = recipient.call{value: amount}("");
+      if (!ok) revert TimelockHelper.NativeTokenTransferFailed();
+      return;
+    }
     if (address(uniswapRouter) == address(0)) {
       IERC20(token).safeTransfer(recipient, amount);
       return;
     }
-    address weth = uniswapRouter.WETH();
     address[] memory path = new address[](2);
     path[0] = token;
     path[1] = weth;

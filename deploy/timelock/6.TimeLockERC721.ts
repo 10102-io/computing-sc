@@ -12,14 +12,18 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 
   const web3 = new Web3(process.env.RPC!);
 
-  const contracts = await getContracts();
-  const router = contracts[network.name].TimeLockRouter.address;
+  const contracts = getContracts();
+  const router = contracts[network.name]?.TimeLockRouter?.address;
+  if (!router) {
+    throw new Error(`TimeLockRouter not found for ${network.name}. Deploy TimeLockRouter first (it must run before TimelockERC721).`);
+  }
 
   const result = await deploy("TimelockERC721", {
     from: deployer,
     args: [],
     log: true,
     deterministicDeployment: false,
+    skipIfAlreadyDeployed: true,
     gasPrice: (await web3.eth.getGasPrice()).toString(),
     proxy: {
       proxyContract: "OptimizedTransparentProxy",
@@ -69,4 +73,10 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 };
 
 deploy.tags = ["TimelockERC721"];
+deploy.dependencies = ["TimeLockRouter"];
+deploy.skip = async (hre: HardhatRuntimeEnvironment) => {
+  if (!hre.network.live) return false;
+  const existing = await hre.deployments.getOrNull("TimelockERC721");
+  return existing != null;
+};
 export default deploy;
