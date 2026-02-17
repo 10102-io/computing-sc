@@ -1,9 +1,7 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { getExternalAddresses } from "../../scripts/utils";
-
-const ZERO = "0x0000000000000000000000000000000000000000";
-
+import { AddressZero } from "@ethersproject/constants";
 /**
  * Sets the real Uniswap V2 router on TimeLockRouter and TimelockERC20, configures setTimelock,
  * and adds external USDC/USDT to TokenWhiteList. Runs on Sepolia and mainnet (any network with
@@ -14,7 +12,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 
   const externalAddrs = getExternalAddresses(network.name);
   const { uniswapRouter, usdc, usdt } = externalAddrs;
-  if (!uniswapRouter || uniswapRouter === ZERO) {
+  if (!uniswapRouter || uniswapRouter === AddressZero) {
     throw new Error("uniswapRouter not configured in external-addresses.ts for this network");
   }
 
@@ -65,14 +63,14 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   console.log("TimelockERC20.setUniswapRouter(UniswapV2) set to:", uniswapRouter);
 
   const whitelist = await ethers.getContractAt("TokenWhiteList", tokenWhiteListDeploy.address);
-  if (usdc && usdc !== ZERO) {
+  if (usdc && usdc !== AddressZero) {
     if (!(await whitelist.isWhitelisted(usdc))) {
       const txUsdc = await whitelist.addToken(usdc);
       await txUsdc.wait();
       console.log("TokenWhiteList: added USDC", usdc);
     }
   }
-  if (usdt && usdt !== ZERO) {
+  if (usdt && usdt !== AddressZero) {
     if (!(await whitelist.isWhitelisted(usdt))) {
       const txUsdt = await whitelist.addToken(usdt);
       await txUsdt.wait();
@@ -94,7 +92,7 @@ deploy.skip = async (hre: HardhatRuntimeEnvironment) => {
   if (network.name === "localhost" || network.name === "hardhat") return true;
   try {
     const { uniswapRouter } = getExternalAddresses(network.name);
-    return !uniswapRouter || uniswapRouter === ZERO;
+    return !uniswapRouter || uniswapRouter === AddressZero;
   } catch {
     return true;
   }

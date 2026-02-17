@@ -9,6 +9,7 @@ import { DeployFunction } from "hardhat-deploy/dist/types";
 import * as dotenv from "dotenv";
 import { ethers } from "ethers";
 import { network } from "hardhat";
+import { AddressZero } from "@ethersproject/constants";
 
 import { getContracts, getExternalAddresses, getProvider } from "../../scripts/utils";
 
@@ -22,7 +23,7 @@ async function main(): Promise<void> {
   }
 
   const { usdc } = getExternalAddresses(network.name);
-  if (!usdc || usdc === "0x0000000000000000000000000000000000000000") {
+  if (!usdc || usdc === AddressZero) {
     throw new Error(`USDC not configured for network ${network.name}`);
   }
 
