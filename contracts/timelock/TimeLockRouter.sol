@@ -386,12 +386,14 @@ contract TimeLockRouter is OwnableUpgradeable {
     _validateERC20LockInput(timelockETHSwap, timelockERC20);
     (tokens, amounts, withdrawAsEthToken) = _buildERC20LockArrays(timelockETHSwap, timelockERC20);
 
+    // If the storage token is defined, swap ETH for it and update the tokens and amounts arrays
     if (withdrawAsEthToken != address(0)) {
       (address swapToken, uint256 swapAmount) = _executeEthSwapForToken(timelockETHSwap);
       tokens[tokens.length - 1] = swapToken;
       amounts[amounts.length - 1] = swapAmount;
     }
 
+    // Transfer the user ERC20s to the timelock
     uint256 numUserTransfers = withdrawAsEthToken != address(0) ? tokens.length - 1 : tokens.length;
     if (numUserTransfers > 0) {
       uint256[] memory actualReceived = _transferERC20TokensToTimelock(tokens, amounts, numUserTransfers);

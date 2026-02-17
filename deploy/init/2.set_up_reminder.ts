@@ -1,12 +1,11 @@
+import * as dotenv from "dotenv";
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import Web3 from "web3";
-import { ethers } from "ethers";
-import * as dotenv from "dotenv";
 dotenv.config();
 
 import * as fs from "fs";
-import { saveContract, getContracts, sleep, getExternalAddresses } from "../../scripts/utils";
 import { network } from "hardhat";
+import { getContracts, getExternalAddresses } from "../../scripts/utils";
 
 function getWeb3(): Web3 {
     const rpc = process.env.RPC;
