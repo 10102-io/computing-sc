@@ -275,7 +275,13 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function withdraw(uint256 id) external {
-    timelockERC20Contract.withdraw(id, msg.sender);
+    timelockERC20Contract.withdraw(id, msg.sender, false);
+    timelockERC721Contract.withdraw(id, msg.sender);
+    timelockERC1155Contract.withdraw(id, msg.sender);
+  }
+
+  function withdraw(uint256 id, bool skipSwap) external {
+    timelockERC20Contract.withdraw(id, msg.sender, skipSwap);
     timelockERC721Contract.withdraw(id, msg.sender);
     timelockERC1155Contract.withdraw(id, msg.sender);
   }

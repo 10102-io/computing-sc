@@ -58,12 +58,13 @@ describe("TimelockERC20", function () {
       await ethers.provider.send("evm_mine", []);
 
       const recipientBefore = await ethers.provider.getBalance(owner.address);
-      const tx = await timelock.connect(owner).withdraw(id, owner.address);
+      const tx = await timelock.connect(owner).withdraw(id, owner.address, false);
       const receipt = await tx.wait();
       const recipientAfter = await ethers.provider.getBalance(owner.address);
-      const gasCost = receipt.gasUsed.mul(receipt.effectiveGasPrice);
 
-      expect(recipientAfter.sub(recipientBefore).add(gasCost)).to.equal(ONE_ETH);
+      const gasCost = BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice);
+
+      expect(BigInt(recipientAfter) - BigInt(recipientBefore) + gasCost).to.equal(ONE_ETH);
     });
 
     it("reverts when swap would return less than minAmountOut (slippage attack)", async function () {
@@ -101,7 +102,7 @@ describe("TimelockERC20", function () {
       let reverted = false;
       let messageIncludesSlippage = false;
       try {
-        await timelock.connect(owner).withdraw(id, owner.address);
+        await timelock.connect(owner).withdraw(id, owner.address, false);
       } catch (e: unknown) {
         reverted = true;
         const err = e as { message?: string };
@@ -109,6 +110,46 @@ describe("TimelockERC20", function () {
       }
       assert.isTrue(reverted, "withdraw should revert when swap output < minAmountOut");
       assert.isTrue(messageIncludesSlippage, "revert reason should mention insufficient output");
+    });
+
+    it("withdraws storage token as token when skipSwap is true", async function () {
+      const { timelock, lockToken, owner } = await loadFixture(deployFixture);
+
+      const lockAmount = ONE_ETH;
+      await lockToken.mint(timelock.address, lockAmount);
+
+      const id = 3;
+      const duration = 86400;
+      await timelock
+        .connect(owner)
+        .createTimelock(
+          id,
+          [lockToken.address],
+          [lockAmount],
+          duration,
+          "Lock",
+          owner.address,
+          LOCK_STATUS_LIVE,
+          lockToken.address
+        );
+
+      await ethers.provider.send("evm_increaseTime", [duration + 1]);
+      await ethers.provider.send("evm_mine", []);
+
+      const recipientTokenBefore = await lockToken.balanceOf(owner.address);
+      const recipientEthBefore = await ethers.provider.getBalance(owner.address);
+
+      const tx = await timelock.connect(owner).withdraw(id, owner.address, true);
+      const receipt = await tx.wait();
+      const toBn = (v: bigint | { toString(): string }) =>
+        typeof v === "bigint" ? v : BigInt(v.toString());
+      const gasCost = toBn(receipt.gasUsed) * toBn(receipt.effectiveGasPrice);
+
+      const recipientTokenAfter = await lockToken.balanceOf(owner.address);
+      const recipientEthAfter = await ethers.provider.getBalance(owner.address);
+
+      expect(toBn(recipientTokenAfter) - toBn(recipientTokenBefore)).to.equal(toBn(lockAmount));
+      expect(toBn(recipientEthBefore) - toBn(recipientEthAfter)).to.equal(gasCost);
     });
   });
 });

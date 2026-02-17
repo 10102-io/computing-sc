@@ -191,7 +191,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   }
 
   // ───────────── Withdraw ─────────────
-  function withdraw(uint256 id, address caller) external nonReentrant {
+  function withdraw(uint256 id, address caller, bool skipSwap) external nonReentrant {
     TimelockInfo storage lock = timelocks[id];
 
     if (lock.owner == address(0)) return;
@@ -211,7 +211,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     address recipient = lock.recipient;
 
     for (uint256 i = 0; i < tokens.length; i++) {
-      if (tokens[i] == withdrawAsEthToken) {
+      if (tokens[i] == withdrawAsEthToken && !skipSwap) {
         _swapTokenToEthAndSend(tokens[i], amounts[i], recipient);
       } else {
         IERC20(tokens[i]).safeTransfer(recipient, amounts[i]);
