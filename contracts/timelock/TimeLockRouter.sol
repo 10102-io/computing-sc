@@ -458,6 +458,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
       IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
       uint256 balanceAfter = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
+      if (balanceAfter <= balanceBefore) revert TimelockHelper.NoTokensReceived();
       actualReceived[i] = balanceAfter - balanceBefore;
     }
   }
