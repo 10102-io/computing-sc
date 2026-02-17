@@ -306,7 +306,58 @@ contract TimeLockRouter is OwnableUpgradeable {
     }
   }
 
-  function _swapEthForToken(TimelockETHSwapInputData calldata timelockETHSwap) private returns (address outputToken, uint256 receivedAmount) {
+  /// @dev Validates swap intent and user ERC20 list; reverts on invalid input. No state changes, no transfers.
+  function _validateERC20LockInput(
+    TimelockETHSwapInputData calldata timelockETHSwap,
+    TimelockERC20InputData[] calldata timelockERC20
+  ) private view {
+    if (timelockETHSwap.storageToken != address(0)) {
+      if (msg.value == 0) revert TimelockHelper.InvalidSwapIntent();
+      if (timelockERC20.length > 0) {
+        (address[] memory tokens, uint256[] memory amounts) = _makeListERC20(timelockERC20);
+        _validateERC20Input(tokens, amounts);
+        for (uint256 i = 0; i < tokens.length; i++) {
+          if (tokens[i] == timelockETHSwap.storageToken) revert TimelockHelper.DuplicateTokenAddress();
+        }
+      }
+    } else {
+      if (msg.value != 0) revert TimelockHelper.EthSentWithoutSwap();
+      (address[] memory tokens, uint256[] memory amounts) = _makeListERC20(timelockERC20);
+      _validateERC20Input(tokens, amounts);
+    }
+  }
+
+  /// @dev Builds (tokens, amounts, withdrawAsEthToken) layout. No validation, swap, or transfers. When swap required, last amount is 0 until filled.
+  function _buildERC20LockArrays(
+    TimelockETHSwapInputData calldata timelockETHSwap,
+    TimelockERC20InputData[] calldata timelockERC20
+  ) private pure returns (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) {
+    address storageToken = timelockETHSwap.storageToken;
+    if (storageToken != address(0) && timelockERC20.length == 0) {
+      tokens = new address[](1);
+      amounts = new uint256[](1);
+      tokens[0] = storageToken;
+      amounts[0] = 0;
+      return (tokens, amounts, storageToken);
+    }
+    if (storageToken != address(0)) {
+      (address[] memory listTokens, uint256[] memory listAmounts) = _makeListERC20(timelockERC20);
+      uint256 n = listTokens.length + 1;
+      tokens = new address[](n);
+      amounts = new uint256[](n);
+      for (uint256 i = 0; i < listTokens.length; i++) {
+        tokens[i] = listTokens[i];
+        amounts[i] = listAmounts[i];
+      }
+      tokens[listTokens.length] = storageToken;
+      amounts[listTokens.length] = 0;
+      return (tokens, amounts, storageToken);
+    }
+    (tokens, amounts) = _makeListERC20(timelockERC20);
+    return (tokens, amounts, address(0));
+  }
+
+  function _executeEthSwapForToken(TimelockETHSwapInputData calldata timelockETHSwap) private returns (address outputToken, uint256 receivedAmount) {
     if (address(uniswapRouter) == address(0)) revert TimelockHelper.SwapNotConfigured();
     if (address(tokenWhitelist) != address(0) && !tokenWhitelist.isWhitelisted(timelockETHSwap.storageToken)) {
       revert TimelockHelper.TokenNotWhitelisted();
@@ -339,55 +390,29 @@ contract TimeLockRouter is OwnableUpgradeable {
     return (timelockETHSwap.storageToken, receivedAmount);
   }
 
-  /// @dev Validates and pulls ERC20s from the caller into the timelock contract. Reverts on empty list or balance mismatch.
-  /// @return tokens Token addresses from timelockERC20.
-  /// @return amounts Actual amounts received (fee-on-transfer safe).
-  function _pullAndValidateERC20(TimelockERC20InputData[] calldata timelockERC20) private returns (address[] memory tokens, uint256[] memory amounts) {
-    (tokens, amounts) = _makeListERC20(timelockERC20);
-    _validateERC20Input(tokens, amounts);
-    amounts = _transferERC20TokensIn(tokens, amounts);
-  }
-
-  /// @dev Builds the ERC20 token list and amounts for a timelock, handling optional ETH→token swap.
-  /// @param timelockETHSwap If outputToken is set, msg.value is swapped to that token via Uniswap; otherwise no swap.
-  /// @param timelockERC20 Optional list of ERC20s to lock (user must transfer these in; no native required if no swap).
-  /// @return tokens Final list of token addresses to lock (may include swapped token + any from timelockERC20).
-  /// @return amounts Corresponding amounts (actual received, so fee-on-transfer is accounted for).
-  /// @return withdrawAsEthToken The token that was bought with ETH, if any; on withdraw it will be swapped back to ETH. Zero if no swap.
-  function _prepareERC20LockData(
+  /// @dev Validates, then builds arrays, executes swap if required, transfers user ERC20s if required. Returns lock assets for timelock.
+  function _resolveERC20LockAssets(
     TimelockETHSwapInputData calldata timelockETHSwap,
     TimelockERC20InputData[] calldata timelockERC20
   ) private returns (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) {
-    // Path 1: User sent ETH — swap to whitelisted token. withdrawAsEthToken marks it for swap-back-to-ETH on withdraw.
-    if (timelockETHSwap.storageToken != address(0)) {
-      // swap token is WETH if the outputToken was 0x0
-      (address swapToken, uint256 swapAmount) = _swapEthForToken(timelockETHSwap);
-      if (timelockERC20.length == 0) {
-        // Lock only the swapped token.
-        tokens = new address[](1);
-        amounts = new uint256[](1);
-        tokens[0] = swapToken;
-        amounts[0] = swapAmount;
-        return (tokens, amounts, swapToken);
-      }
-      // Lock other ERC20s (from user) plus the swapped token; append swap to the list.
-      (address[] memory listTokens, uint256[] memory listAmounts) = _pullAndValidateERC20(timelockERC20);
-      uint256 n = listTokens.length + 1;
-      tokens = new address[](n);
-      amounts = new uint256[](n);
-      for (uint256 i = 0; i < listTokens.length; i++) {
-        tokens[i] = listTokens[i];
-        amounts[i] = listAmounts[i];
-      }
-      tokens[listTokens.length] = swapToken;
-      amounts[listTokens.length] = swapAmount;
-      return (tokens, amounts, swapToken);
+    _validateERC20LockInput(timelockETHSwap, timelockERC20);
+    (tokens, amounts, withdrawAsEthToken) = _buildERC20LockArrays(timelockETHSwap, timelockERC20);
+
+    if (withdrawAsEthToken != address(0)) {
+      (address swapToken, uint256 swapAmount) = _executeEthSwapForToken(timelockETHSwap);
+      tokens[tokens.length - 1] = swapToken;
+      amounts[amounts.length - 1] = swapAmount;
     }
 
-    // Path 2: No swap — user must not send ETH; lock only the ERC20s from timelockERC20. No withdraw-as-ETH.
-    if (msg.value != 0) revert TimelockHelper.EthSentWithoutSwap();
-    (tokens, amounts) = _pullAndValidateERC20(timelockERC20);
-    return (tokens, amounts, address(0));
+    uint256 numUserTransfers = withdrawAsEthToken != address(0) ? tokens.length - 1 : tokens.length;
+    if (numUserTransfers > 0) {
+      uint256[] memory actualReceived = _transferERC20TokensToTimelock(tokens, amounts, numUserTransfers);
+      for (uint256 i = 0; i < numUserTransfers; i++) {
+        amounts[i] = actualReceived[i];
+      }
+    }
+
+    return (tokens, amounts, withdrawAsEthToken);
   }
 
   function _handleTimelockRegularERC20(
@@ -400,7 +425,7 @@ contract TimeLockRouter is OwnableUpgradeable {
     TimelockHelper.LockStatus lockStatus
   ) private {
     (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
-      _prepareERC20LockData(timelockETHSwap, timelockERC20);
+      _resolveERC20LockAssets(timelockETHSwap, timelockERC20);
     timelockERC20Contract.createTimelock{value: 0}(timelockId, tokens, amounts, duration, name, owner, lockStatus, withdrawAsEthToken);
   }
 
@@ -414,7 +439,7 @@ contract TimeLockRouter is OwnableUpgradeable {
     TimelockHelper.LockStatus lockStatus
   ) private {
     (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
-      _prepareERC20LockData(timelockETHSwap, timelockERC20);
+      _resolveERC20LockAssets(timelockETHSwap, timelockERC20);
     timelockERC20Contract.createSoftTimelock{value: 0}(timelockId, tokens, amounts, bufferTime, name, owner, lockStatus, withdrawAsEthToken);
   }
 
@@ -430,15 +455,18 @@ contract TimeLockRouter is OwnableUpgradeable {
     TimelockHelper.LockStatus lockStatus
   ) private {
     (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
-      _prepareERC20LockData(timelockETHSwap, timelockERC20);
+      _resolveERC20LockAssets(timelockETHSwap, timelockERC20);
     timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawAsEthToken);
   }
 
-  function _transferERC20TokensIn(address[] memory tokens, uint256[] memory amounts) private returns (uint256[] memory actualReceived) {
-
-    actualReceived = new uint256[](tokens.length);
-
-    for (uint256 i = 0; i < tokens.length; i++) {
+  /// @dev Transfers first `count` tokens from msg.sender to timelock; returns actual amounts received (fee-on-transfer safe).
+  function _transferERC20TokensToTimelock(
+    address[] memory tokens,
+    uint256[] memory amounts,
+    uint256 count
+  ) private returns (uint256[] memory actualReceived) {
+    actualReceived = new uint256[](count);
+    for (uint256 i = 0; i < count; i++) {
       uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
       IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
       uint256 balanceAfter = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
