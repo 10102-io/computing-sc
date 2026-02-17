@@ -137,10 +137,6 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createTimelock(TimelockRegular calldata timelockRegular) external payable {
     if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
 
-    if (msg.value > 0 && timelockRegular.timelockETHSwap.storageToken == address(0)) {
-      revert TimelockHelper.EthSentWithoutSwap();
-    }
-
     timelockCounter++;
 
     if (timelockRegular.timelockERC20.length > 0 || timelockRegular.timelockETHSwap.storageToken != address(0)) {
@@ -190,10 +186,6 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createSoftTimelock(TimelockSoft calldata timelockSoft) external payable {
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
 
-    if (msg.value > 0 && timelockSoft.timelockETHSwap.storageToken == address(0)) {
-      revert TimelockHelper.EthSentWithoutSwap();
-    }
-
     timelockCounter++;
 
     if (timelockSoft.timelockERC20.length > 0 || timelockSoft.timelockETHSwap.storageToken != address(0)) {
@@ -234,10 +226,6 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createTimelockedGift(TimelockGift calldata timelockGift) external payable {
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
-
-    if (msg.value > 0 && timelockGift.timelockETHSwap.storageToken == address(0)) {
-      revert TimelockHelper.EthSentWithoutSwap();
-    }
 
     timelockCounter++;
 
@@ -561,6 +549,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function _validateERC721Input(address[] memory tokens, uint256[] memory ids) private view {
+    if (msg.value > 0) revert TimelockHelper.EthSentWithoutSwap();
     if (tokens.length == 0 || tokens.length != ids.length) revert TimelockHelper.MismatchedArrayLength();
     for (uint256 i = 0; i < tokens.length; i++) {
       _validateERC721(tokens[i]);
@@ -644,6 +633,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function _validateERC1155Input(address[] memory tokens, uint256[] memory ids, uint256[] memory amounts) private view {
+    if (msg.value > 0) revert TimelockHelper.EthSentWithoutSwap();
     if (tokens.length == 0 || tokens.length != ids.length || ids.length != amounts.length) revert TimelockHelper.MismatchedArrayLength();
     for (uint256 i = 0; i < amounts.length; i++) {
       if (amounts[i] == 0) revert TimelockHelper.ZeroAmount();
