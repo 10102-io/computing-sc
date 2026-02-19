@@ -14,24 +14,21 @@ import {IWETH} from "../interfaces/IWETH.sol";
 contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
   using SafeERC20 for IERC20;
 
-  // ───────────── Constants ─────────────
-  address internal constant NATIVE_TOKEN = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
-
   // ───────────── Struct ─────────────
   struct TimelockInfo {
     address[] tokenAddresses;
     uint256[] amounts;
-    /// @dev If set, this token is swapped to ETH on withdraw; otherwise address(0).
-    address withdrawAsEthToken;
+    string name;
     uint256 unlockTime;
+    uint256 bufferTime;
     address owner;
     address recipient;
     bool isSoftLock;
     bool isUnlocked;
-    uint256 bufferTime;
+    /// @dev If true, the last token in tokenAddresses is swapped to ETH on withdraw.
+    bool withdrawLastAsEth;
     TimelockHelper.LockType lockType;
     TimelockHelper.LockStatus lockStatus;
-    string name;
   }
 
   // ───────────── Events ─────────────
@@ -58,6 +55,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   mapping(uint256 => TimelockInfo) public timelocks;
   address public routerAddresses;
   IUniswapV2Router02 public uniswapRouter;
+  address internal weth;
 
   uint256 private constant WITHDRAW_SWAP_DEADLINE_BUFFER = 300;
   /// @dev Slippage tolerance for token→ETH withdraw swap (basis points). 500 = 5%.
@@ -71,6 +69,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
 
   function setUniswapRouter(address _uniswapRouter) external onlyOwner {
     uniswapRouter = IUniswapV2Router02(_uniswapRouter);
+    weth = _uniswapRouter != address(0) ? IUniswapV2Router02(_uniswapRouter).WETH() : address(0);
   }
 
   function setRouterAddresses(address _routerAddresses) external onlyOwner {
@@ -106,9 +105,9 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     string calldata name,
     address caller,
     TimelockHelper.LockStatus lockStatus,
-    address withdrawAsEthToken
+    bool withdrawLastAsEth
   ) external payable onlyRouter nonReentrant {
-    _createTimelock(id, tokens, amounts, withdrawAsEthToken, caller, caller, block.timestamp + duration, false, 0, TimelockHelper.LockType.Regular, lockStatus, name);
+    _createTimelock(id, tokens, amounts, withdrawLastAsEth, caller, caller, block.timestamp + duration, false, 0, TimelockHelper.LockType.Regular, lockStatus, name);
   }
 
   function createSoftTimelock(
@@ -119,9 +118,9 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     string calldata name,
     address caller,
     TimelockHelper.LockStatus lockStatus,
-    address withdrawAsEthToken
+    bool withdrawLastAsEth
   ) external payable onlyRouter nonReentrant {
-    _createTimelock(id, tokens, amounts, withdrawAsEthToken, caller, caller, 0, true, bufferTime, TimelockHelper.LockType.Soft, lockStatus, name);
+    _createTimelock(id, tokens, amounts, withdrawLastAsEth, caller, caller, 0, true, bufferTime, TimelockHelper.LockType.Soft, lockStatus, name);
   }
 
   function createTimelockedGift(
@@ -134,9 +133,9 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     string calldata giftName,
     address owner,
     TimelockHelper.LockStatus lockStatus,
-    address withdrawAsEthToken
+    bool withdrawLastAsEth
   ) external payable onlyRouter nonReentrant {
-    _createTimelock(id, tokens, amounts, withdrawAsEthToken, owner, recipient, block.timestamp + duration, false, 0, TimelockHelper.LockType.Gift, lockStatus, name);
+    _createTimelock(id, tokens, amounts, withdrawLastAsEth, owner, recipient, block.timestamp + duration, false, 0, TimelockHelper.LockType.Gift, lockStatus, name);
     emit TimelockGiftName(id, giftName, recipient);
   }
 
@@ -144,7 +143,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     uint256 id,
     address[] calldata tokens,
     uint256[] calldata amounts,
-    address withdrawAsEthToken,
+    bool withdrawLastAsEth,
     address owner,
     address recipient,
     uint256 unlockTime,
@@ -157,16 +156,16 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
     timelocks[id] = TimelockInfo({
       tokenAddresses: tokens,
       amounts: amounts,
-      withdrawAsEthToken: withdrawAsEthToken,
+      name: name,
       unlockTime: unlockTime,
+      bufferTime: buffer,
       owner: owner,
       recipient: recipient,
       isSoftLock: isSoft,
       isUnlocked: false,
-      bufferTime: buffer,
+      withdrawLastAsEth: withdrawLastAsEth,
       lockType: lockType,
-      lockStatus: lockStatus,
-      name: name
+      lockStatus: lockStatus
     });
 
     emit TimelockCreated(id, owner, recipient, tokens, amounts, unlockTime, buffer, lockType, name);
@@ -207,11 +206,11 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
 
     address[] memory tokens = lock.tokenAddresses;
     uint256[] memory amounts = lock.amounts;
-    address withdrawAsEthToken = lock.withdrawAsEthToken;
     address recipient = lock.recipient;
+    bool withdrawLastAsEth = lock.withdrawLastAsEth;
 
     for (uint256 i = 0; i < tokens.length; i++) {
-      if (tokens[i] == withdrawAsEthToken && !skipSwap) {
+      if (i == tokens.length - 1 && withdrawLastAsEth && !skipSwap) {
         _swapTokenToEthAndSend(tokens[i], amounts[i], recipient);
       } else {
         IERC20(tokens[i]).safeTransfer(recipient, amounts[i]);
@@ -220,27 +219,27 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
 
     delete lock.tokenAddresses;
     delete lock.amounts;
-    lock.withdrawAsEthToken = address(0);
+    lock.withdrawLastAsEth = false;
 
     emit FundsWithdrawn(id, recipient);
   }
 
   function _swapTokenToEthAndSend(address token, uint256 amount, address recipient) internal {
-    address weth = address(uniswapRouter) != address(0) ? uniswapRouter.WETH() : address(0);
-    if (token == weth) {
+    address wethAddr = weth;
+    if (token == wethAddr) {
       // WETH→ETH is 1:1 unwrap
       IWETH(token).withdraw(amount);
       (bool ok,) = recipient.call{value: amount}("");
       if (!ok) revert TimelockHelper.NativeTokenTransferFailed();
       return;
     }
-    if (address(uniswapRouter) == address(0)) {
+    if (address(uniswapRouter) == address(0) || wethAddr == address(0)) {
       IERC20(token).safeTransfer(recipient, amount);
       return;
     }
     address[] memory path = new address[](2);
     path[0] = token;
-    path[1] = weth;
+    path[1] = wethAddr;
     uint256[] memory amountsOut = uniswapRouter.getAmountsOut(amount, path);
     uint256 minAmountOut = amountsOut[1] * (BPS_DENOMINATOR - WITHDRAW_SWAP_SLIPPAGE_BPS) / BPS_DENOMINATOR;
 

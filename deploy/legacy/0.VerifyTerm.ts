@@ -24,7 +24,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   if (!rpcUrl) throw new Error("No RPC URL for gas price (set RPC or network url)");
   const web3 = new Web3(rpcUrl);
 
-  if (network.name !== "hardhat" && network.name !== "localhost") {
+  if (network.live) {
     await sleep(8000);
   }
 

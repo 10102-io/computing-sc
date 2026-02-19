@@ -321,18 +321,18 @@ contract TimeLockRouter is OwnableUpgradeable {
     }
   }
 
-  /// @dev Builds (tokens, amounts, withdrawAsEthToken) layout. No validation, swap, or transfers. When swap required, last amount is 0 until filled.
+  /// @dev Builds (tokens, amounts, withdrawLastAsEth) layout. No validation, swap, or transfers. When swap required, last amount is 0 until filled.
   function _buildERC20LockArrays(
     TimelockETHSwapInputData calldata timelockETHSwap,
     TimelockERC20InputData[] calldata timelockERC20
-  ) private pure returns (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) {
+  ) private pure returns (address[] memory tokens, uint256[] memory amounts, bool withdrawLastAsEth) {
     address storageToken = timelockETHSwap.storageToken;
     if (storageToken != address(0) && timelockERC20.length == 0) {
       tokens = new address[](1);
       amounts = new uint256[](1);
       tokens[0] = storageToken;
       amounts[0] = 0;
-      return (tokens, amounts, storageToken);
+      return (tokens, amounts, true);
     }
     if (storageToken != address(0)) {
       (address[] memory listTokens, uint256[] memory listAmounts) = _makeListERC20(timelockERC20);
@@ -345,10 +345,10 @@ contract TimeLockRouter is OwnableUpgradeable {
       }
       tokens[listTokens.length] = storageToken;
       amounts[listTokens.length] = 0;
-      return (tokens, amounts, storageToken);
+      return (tokens, amounts, true);
     }
     (tokens, amounts) = _makeListERC20(timelockERC20);
-    return (tokens, amounts, address(0));
+    return (tokens, amounts, false);
   }
 
   function _executeEthSwapForToken(TimelockETHSwapInputData calldata timelockETHSwap) private returns (address outputToken, uint256 receivedAmount) {
@@ -388,19 +388,19 @@ contract TimeLockRouter is OwnableUpgradeable {
   function _resolveERC20LockAssets(
     TimelockETHSwapInputData calldata timelockETHSwap,
     TimelockERC20InputData[] calldata timelockERC20
-  ) private returns (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) {
+  ) private returns (address[] memory tokens, uint256[] memory amounts, bool withdrawLastAsEth) {
     _validateERC20LockInput(timelockETHSwap, timelockERC20);
-    (tokens, amounts, withdrawAsEthToken) = _buildERC20LockArrays(timelockETHSwap, timelockERC20);
+    (tokens, amounts, withdrawLastAsEth) = _buildERC20LockArrays(timelockETHSwap, timelockERC20);
 
     // If the storage token is defined, swap ETH for it and update the tokens and amounts arrays
-    if (withdrawAsEthToken != address(0)) {
+    if (withdrawLastAsEth) {
       (address swapToken, uint256 swapAmount) = _executeEthSwapForToken(timelockETHSwap);
       tokens[tokens.length - 1] = swapToken;
       amounts[amounts.length - 1] = swapAmount;
     }
 
     // Transfer the user ERC20s to the timelock
-    uint256 numUserTransfers = withdrawAsEthToken != address(0) ? tokens.length - 1 : tokens.length;
+    uint256 numUserTransfers = withdrawLastAsEth ? tokens.length - 1 : tokens.length;
     if (numUserTransfers > 0) {
       uint256[] memory actualReceived = _transferERC20TokensToTimelock(tokens, amounts, numUserTransfers);
       for (uint256 i = 0; i < numUserTransfers; i++) {
@@ -408,7 +408,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       }
     }
 
-    return (tokens, amounts, withdrawAsEthToken);
+    return (tokens, amounts, withdrawLastAsEth);
   }
 
   function _handleTimelockRegularERC20(
@@ -420,9 +420,9 @@ contract TimeLockRouter is OwnableUpgradeable {
     address owner,
     TimelockHelper.LockStatus lockStatus
   ) private {
-    (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
+    (address[] memory tokens, uint256[] memory amounts, bool withdrawLastAsEth) =
       _resolveERC20LockAssets(timelockETHSwap, timelockERC20);
-    timelockERC20Contract.createTimelock{value: 0}(timelockId, tokens, amounts, duration, name, owner, lockStatus, withdrawAsEthToken);
+    timelockERC20Contract.createTimelock{value: 0}(timelockId, tokens, amounts, duration, name, owner, lockStatus, withdrawLastAsEth);
   }
 
   function _handleTimelockSoftERC20(
@@ -434,9 +434,9 @@ contract TimeLockRouter is OwnableUpgradeable {
     address owner,
     TimelockHelper.LockStatus lockStatus
   ) private {
-    (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
+    (address[] memory tokens, uint256[] memory amounts, bool withdrawLastAsEth) =
       _resolveERC20LockAssets(timelockETHSwap, timelockERC20);
-    timelockERC20Contract.createSoftTimelock{value: 0}(timelockId, tokens, amounts, bufferTime, name, owner, lockStatus, withdrawAsEthToken);
+    timelockERC20Contract.createSoftTimelock{value: 0}(timelockId, tokens, amounts, bufferTime, name, owner, lockStatus, withdrawLastAsEth);
   }
 
   function _handleTimelockGiftERC20(
@@ -450,9 +450,9 @@ contract TimeLockRouter is OwnableUpgradeable {
     address owner,
     TimelockHelper.LockStatus lockStatus
   ) private {
-    (address[] memory tokens, uint256[] memory amounts, address withdrawAsEthToken) =
+    (address[] memory tokens, uint256[] memory amounts, bool withdrawLastAsEth) =
       _resolveERC20LockAssets(timelockETHSwap, timelockERC20);
-    timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawAsEthToken);
+    timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawLastAsEth);
   }
 
   /// @dev Transfers first `count` tokens from msg.sender to timelock; returns actual amounts received (fee-on-transfer safe).
