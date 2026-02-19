@@ -81,7 +81,6 @@ contract TimeLockRouter is OwnableUpgradeable {
   IUniswapV2Router02 public uniswapRouter;
 
   uint256 public timelockCounter;
-  address internal constant NATIVE_TOKEN = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
   bytes4 private constant IERC721_ID = 0x80ac58cd;
   bytes4 private constant IERC1155_ID = 0xd9b67a26;
 
@@ -476,7 +475,6 @@ contract TimeLockRouter is OwnableUpgradeable {
 
     for (uint256 i = 0; i < tokens.length; i++) {
       if (amounts[i] == 0) revert TimelockHelper.InvalidTokenAmount();
-      if (tokens[i] == NATIVE_TOKEN) revert TimelockHelper.NativeLockDeprecated();
     }
 
     for (uint256 i = 0; i < tokens.length; i++) {
@@ -484,8 +482,6 @@ contract TimeLockRouter is OwnableUpgradeable {
         if (tokens[i] == tokens[j]) revert TimelockHelper.DuplicateTokenAddress();
       }
     }
-
-
   }
 
   // regular ERC721
