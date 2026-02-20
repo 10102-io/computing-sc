@@ -18,17 +18,19 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   struct TimelockInfo {
     address[] tokenAddresses;
     uint256[] amounts;
-    string name;
     uint256 unlockTime;
     uint256 bufferTime;
+
     address owner;
-    address recipient;
     bool isSoftLock;
     bool isUnlocked;
     /// @dev If true, the last token in tokenAddresses is swapped to ETH on withdraw.
     bool withdrawLastAsEth;
     TimelockHelper.LockType lockType;
     TimelockHelper.LockStatus lockStatus;
+    
+    address recipient;
+    string name;
   }
 
   // ───────────── Events ─────────────
