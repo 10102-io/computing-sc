@@ -656,3 +656,215 @@ describe("Legacy contract", async function () {
     console.log(await premiumSetting.getBatchLegacyTriggerTimestamp([legacyAddress, legacyAddress]));
   });
 });
+
+describe("EOA Legacy autoSwap and unswap", async function () {
+  this.timeout(150000);
+
+  async function deploySwapFixture() {
+    const [treasury, user1, user2] = await ethers.getSigners();
+
+    // Deploy mock ERC20 storage token (6 decimals like USDC)
+    const ERC20 = await ethers.getContractFactory("ERC20Token");
+    const usdc = await ERC20.deploy("USDC", "USDC", 6);
+
+    // Deploy mock Uniswap router
+    const MockRouter = await ethers.getContractFactory("MockUniswapV2Router");
+    const mockRouter = await MockRouter.deploy();
+
+    // Set rate: 1 ETH = 2000 USDC (at 1e18 ETH → 2000 * 1e6 USDC units)
+    const USDC_RATE = ethers.utils.parseUnits("2000", 6); // 2000e6
+    await mockRouter.setMockRate(usdc.address, USDC_RATE);
+    // Fund mock router with USDC (for autoSwap → transfer to owner)
+    await usdc.mint(mockRouter.address, ethers.utils.parseUnits("1000000", 6));
+    // Fund mock router with ETH (for unswap → send ETH back to owner)
+    // Need enough for unswap: 2000 USDC (2000e6 units) * 1e12 = 2000e18 = 2000 ETH
+    await network.provider.send("hardhat_setBalance", [
+      mockRouter.address,
+      "0x21E19E0C9BAB2400000", // 10000 ETH in hex
+    ]);
+
+    const wethAddress = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"; // placeholder, not used by mock
+
+    // Deploy infrastructure using treasury as admin (no impersonation needed)
+    const premiumSetting = await deployProxy("PremiumSetting", [], "initialize", treasury);
+
+    const Payment = await ethers.getContractFactory("Payment");
+    const payment = await Payment.deploy();
+
+    const ERC20Mock = await ethers.getContractFactory("ERC20Token");
+    const usdt = await ERC20Mock.deploy("USDT", "USDT", 6);
+
+    const premiumRegistry = await deployProxy(
+      "PremiumRegistry",
+      [
+        usdt.address,
+        usdc.address,
+        "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E", // chainlink price feed placeholder (non-zero)
+        "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
+        "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+        premiumSetting.address,
+        payment.address,
+      ],
+      "initialize",
+      treasury
+    );
+
+    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [treasury.address]);
+    const legacyDeployer = await deployProxy("LegacyDeployer");
+
+    const transferEOALegacyRouter = await deployProxy("TransferEOALegacyRouter", [
+      legacyDeployer.address,
+      premiumSetting.address,
+      verifierTerm.address,
+      payment.address,
+      mockRouter.address,  // use mock router
+      wethAddress,
+    ]);
+
+    const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
+      legacyDeployer.address,
+      premiumSetting.address,
+      verifierTerm.address,
+      payment.address,
+      mockRouter.address,
+      wethAddress,
+    ]);
+
+    const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [
+      legacyDeployer.address,
+      premiumSetting.address,
+      verifierTerm.address,
+    ]);
+
+    await premiumSetting
+      .connect(treasury)
+      .setParams(premiumRegistry.address, transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+    await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
+    await verifierTerm.connect(treasury).setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+
+    // Create lifetime plan and subscribe user1
+    await premiumRegistry.connect(treasury).createPlans([ethers.constants.MaxUint256], [1], [""], [""], [""]);
+    const planId = await premiumRegistry.getNextPlanId();
+    await premiumRegistry.connect(treasury).subrcribeByAdmin(user1.address, Number(planId) - 1, "USDC");
+
+    // Create an EOA legacy for user1
+    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(user1.address);
+    const currentTimestamp = await currentTime();
+    const msg = await genMessage(currentTimestamp);
+    const signature = await user1.signMessage(msg);
+
+    const mainConfig = {
+      name: "Test Legacy",
+      note: "",
+      nickNames: ["Bene"],
+      distributions: [{ user: user2.address, percent: 1000000 }],
+    };
+    const extraConfig = { lackOfOutgoingTxRange: 86400, delayLayer2: 0, delayLayer3: 0 };
+    const emptyDist = { user: ethers.constants.AddressZero, percent: 0 };
+
+    await transferEOALegacyRouter
+      .connect(user1)
+      .createLegacy(mainConfig, extraConfig, emptyDist, emptyDist, "", "", currentTimestamp, signature);
+
+    const legacyId = 1;
+
+    return {
+      treasury, user1, user2,
+      usdc, mockRouter,
+      transferEOALegacyRouter, legacyId, legacyAddress,
+    };
+  }
+
+  it("autoSwap: swaps ETH to storage token and stores eoaStorageToken", async function () {
+    const { user1, usdc, transferEOALegacyRouter, legacyId, legacyAddress } =
+      await loadFixture(deploySwapFixture);
+
+    const ethAmount = ethers.utils.parseEther("1");
+    const usdcBefore = await usdc.balanceOf(user1.address);
+
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+    await transferEOALegacyRouter.connect(user1).autoSwap(
+      legacyId,
+      { storageToken: usdc.address, amountOutMin: 0, deadline },
+      { value: ethAmount }
+    );
+
+    const usdcAfter = await usdc.balanceOf(user1.address);
+    expect(usdcAfter.gt(usdcBefore)).to.be.true;
+
+    const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
+    const storedToken = await legacy.eoaStorageToken();
+    expect(storedToken.toLowerCase() === usdc.address.toLowerCase()).to.be.true;
+  });
+
+  it("unswap: pulls storage token from owner, swaps to ETH, clears eoaStorageToken", async function () {
+    const { user1, usdc, transferEOALegacyRouter, legacyId, legacyAddress } =
+      await loadFixture(deploySwapFixture);
+
+    const ethAmount = ethers.utils.parseEther("1");
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+
+    // First do an autoSwap
+    await transferEOALegacyRouter.connect(user1).autoSwap(
+      legacyId,
+      { storageToken: usdc.address, amountOutMin: 0, deadline },
+      { value: ethAmount }
+    );
+
+    const usdcBalance = await usdc.balanceOf(user1.address);
+    expect(usdcBalance.gt(0)).to.be.true;
+
+    // Approve storage token to legacy contract (required for safeTransferFrom)
+    await usdc.connect(user1).approve(legacyAddress, usdcBalance);
+
+    // Unswap
+    await transferEOALegacyRouter.connect(user1).unswap(
+      legacyId,
+      usdcBalance,
+      0,
+      deadline
+    );
+
+    const usdcAfter = await usdc.balanceOf(user1.address);
+    expect(usdcAfter.toString() === "0").to.be.true;
+
+    const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
+    const clearedToken = await legacy.eoaStorageToken();
+    expect(clearedToken === "0x0000000000000000000000000000000000000000").to.be.true;
+  });
+
+  it("autoSwap: reverts when called by non-owner", async function () {
+    const { user2, usdc, transferEOALegacyRouter, legacyId } =
+      await loadFixture(deploySwapFixture);
+
+    let didRevert = false;
+    try {
+      await transferEOALegacyRouter.connect(user2).autoSwap(
+        legacyId,
+        { storageToken: usdc.address, amountOutMin: 0, deadline: Math.floor(Date.now() / 1000) + 600 },
+        { value: ethers.utils.parseEther("1") }
+      );
+    } catch (e: any) {
+      didRevert = true;
+    }
+    expect(didRevert).to.be.true;
+  });
+
+  it("unswap: reverts when no active swap", async function () {
+    const { user1, transferEOALegacyRouter, legacyId } =
+      await loadFixture(deploySwapFixture);
+
+    let didRevert = false;
+    try {
+      await transferEOALegacyRouter.connect(user1).unswap(
+        legacyId,
+        ethers.utils.parseEther("1"),
+        0,
+        Math.floor(Date.now() / 1000) + 600
+      );
+    } catch (e: any) {
+      didRevert = true;
+    }
+    expect(didRevert).to.be.true;
+  });
+});

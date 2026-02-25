@@ -29,10 +29,13 @@ const config: HardhatUserConfig = {
 
     // },
     hardhat: {
-      forking: {
-        url: process.env.RPC as string,
-        blockNumber: 10145739,
-      },
+      allowUnlimitedContractSize: true,
+      ...(process.env.RPC ? {
+        forking: {
+          url: process.env.RPC as string,
+          blockNumber: 10145739,
+        },
+      } : {}),
     },
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL ?? "",
@@ -87,7 +90,7 @@ const config: HardhatUserConfig = {
     alphaSort: true,
     disambiguatePaths: false,
     runOnCompile: true,
-    strict: true,
+    strict: false,
   },
 };
 

@@ -4,12 +4,12 @@ pragma solidity 0.8.20;
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
-import {TransferEOALegacy} from "./TransferLegacyEOAContract.sol";
 import {ITransferEOALegacy} from "../interfaces/ITransferLegacyEOAContract.sol";
 import {TransferLegacyStruct} from "../libraries/TransferLegacyStruct.sol";
 import {IEIP712LegacyVerifier} from "../interfaces/IEIP712LegacyVerifier.sol";
 import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
+import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 
 contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable {
   address public premiumSetting;
@@ -17,6 +17,8 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   address public paymentContract;
   address public uniswapRouter;
   address public weth;
+  bytes public legacyCreationCode;
+  address private _codeAdmin;
 
   /* Error */
   error NumBeneficiariesInvalid();
@@ -71,6 +73,8 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   );
   event TransferEOALegacyLayer23Created(uint256 legacyId, uint8 layer, TransferLegacyStruct.Distribution distribution, string nickName);
   event EmailOwnerResetNotCompleted(address legacyAddress);
+  event TransferEOALegacyAutoSwapped(uint256 legacyId, address storageToken, uint256 ethAmount, uint256 timestamp);
+  event TransferEOALegacyUnswapped(uint256 legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
 
     constructor () {
     _disableInitializers();
@@ -100,11 +104,21 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     weth = weth_;
   }
 
+  function initializeV2(address codeAdmin_) external reinitializer(2) {
+    _codeAdmin = codeAdmin_;
+  }
+
+  function setLegacyCreationCode(bytes calldata code_) external {
+    require(msg.sender == _codeAdmin, "not code admin");
+    require(code_.length > 0, "empty code");
+    legacyCreationCode = code_;
+  }
+
   /**
    * @dev Get next legacy address that would be created for a sender
    */
   function getNextLegacyAddress(address sender_) external view returns (address) {
-    return _getNextAddress(type(TransferEOALegacy).creationCode, sender_);
+    return _getNextAddress(legacyCreationCode, sender_);
   }
 
   function checkActiveLegacy(uint256 legacyId_) external view returns (bool) {
@@ -128,7 +142,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     if (_isCreateLegacy(msg.sender)) revert SenderIsCreatedLegacy(msg.sender);
 
     // Create new legacy contract
-    (uint256 newLegacyId, address legacyAddress) = _createLegacy(type(TransferEOALegacy).creationCode, msg.sender);
+    (uint256 newLegacyId, address legacyAddress) = _createLegacy(legacyCreationCode, msg.sender);
 
     //Verify + store user agreement signature
     verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);
@@ -321,6 +335,63 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   function withdraw(uint256 legacyId_, uint256 amount_) external {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     ITransferEOALegacy(legacyAddress).withdraw(msg.sender, amount_);
+  }
+
+  /**
+   * @dev Forwards ETH + swap config to the individual legacy contract.
+   * The individual contract swaps ETH -> storageToken and sends tokens to the owner's wallet.
+   */
+  function autoSwap(
+    uint256 legacyId_,
+    TransferLegacyStruct.EOALegacyETHSwap calldata swap_
+  ) external payable {
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+    ITransferEOALegacy(legacyAddress).autoSwap{value: msg.value}(msg.sender, swap_);
+    emit TransferEOALegacyAutoSwapped(legacyId_, swap_.storageToken, msg.value, block.timestamp);
+  }
+
+  /**
+   * @dev Forwards unswap request to the individual legacy contract.
+   * Pulls storageToken from owner's wallet, swaps to ETH, sends ETH to owner.
+   */
+  function unswap(
+    uint256 legacyId_,
+    uint256 amountIn_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external {
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+    address storageToken = ITransferEOALegacy(legacyAddress).eoaStorageToken();
+    ITransferEOALegacy(legacyAddress).unswap(msg.sender, amountIn_, amountOutMin_, deadline_);
+    emit TransferEOALegacyUnswapped(legacyId_, storageToken, amountIn_, block.timestamp);
+  }
+
+  /**
+   * @dev Returns the expected token amount out for a given ETH amount via Uniswap V2.
+   */
+  function getEthToTokenAmountOut(
+    uint256 ethAmount_,
+    address outputToken_
+  ) external view returns (uint256) {
+    address[] memory path = new address[](2);
+    path[0] = weth;
+    path[1] = outputToken_;
+    uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).getAmountsOut(ethAmount_, path);
+    return amounts[1];
+  }
+
+  /**
+   * @dev Returns the expected ETH amount out for a given token amount via Uniswap V2.
+   */
+  function getTokenToEthAmountOut(
+    uint256 tokenAmount_,
+    address token_
+  ) external view returns (uint256) {
+    address[] memory path = new address[](2);
+    path[0] = token_;
+    path[1] = weth;
+    uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).getAmountsOut(tokenAmount_, path);
+    return amounts[1];
   }
 
   function _setLayer23Distributions(

@@ -62,6 +62,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   IPremiumSetting public premiumSetting;
   address public creator;
+  address public eoaStorageToken; // address(0) means no active swap
 
   modifier onlyLive() {
     if (!isLive()) {
@@ -93,6 +94,66 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     {} catch {
       IERC20(token).safeTransfer(paymentContract, amountIn);
     }
+  }
+
+  /**
+   * @dev Owner swaps ETH (sent as msg.value) into a storage token via Uniswap V2.
+   * The resulting tokens are sent directly to the owner's wallet, not held by this contract.
+   * Sets eoaStorageToken so the system knows a swap is active.
+   */
+  function autoSwap(
+    address sender_,
+    TransferLegacyStruct.EOALegacyETHSwap calldata swap_
+  ) external payable onlyRouter onlyLive onlyOwner(sender_) {
+    if (msg.value == 0) revert NotEnoughETH();
+    if (swap_.storageToken == address(0)) revert AssetInvalid();
+
+    address[] memory path = new address[](2);
+    path[0] = weth;
+    path[1] = swap_.storageToken;
+
+    IUniswapV2Router02(uniswapRouter).swapExactETHForTokens{value: msg.value}(
+      swap_.amountOutMin,
+      path,
+      sender_,
+      swap_.deadline
+    );
+
+    eoaStorageToken = swap_.storageToken;
+    _lastTimestamp = block.timestamp;
+  }
+
+  /**
+   * @dev Owner reverses a previous autoSwap: pulls storage token from owner's wallet
+   * (requires prior ERC-20 approval), swaps back to ETH via Uniswap V2, sends ETH to owner.
+   * Clears eoaStorageToken on completion.
+   */
+  function unswap(
+    address sender_,
+    uint256 amountIn_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external onlyRouter onlyLive onlyOwner(sender_) {
+    if (eoaStorageToken == address(0)) revert AssetInvalid();
+    if (amountIn_ == 0) revert AssetInvalid();
+
+    IERC20(eoaStorageToken).safeTransferFrom(sender_, address(this), amountIn_);
+    IERC20(eoaStorageToken).forceApprove(uniswapRouter, amountIn_);
+
+    address[] memory path = new address[](2);
+    path[0] = eoaStorageToken;
+    path[1] = weth;
+
+    IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
+      amountIn_,
+      amountOutMin_,
+      path,
+      sender_,
+      deadline_
+    );
+
+    eoaStorageToken = address(0);
+    _lastTimestamp = block.timestamp;
   }
 
   /* View functions to support premium */

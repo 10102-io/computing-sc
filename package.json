@@ -15,7 +15,9 @@
     "send-mail-api": "npx ts-node scripts/maijet/send_mail.ts",
     "get-template": "npx ts-node scripts/maijet/0.get_template.ts",
     "check-upkeep": "npx ts-node scripts/reminder/11.check_keep_up.ts",
-    "perform-upkeep" :"npx ts-node scripts/reminder/13.peform_keepup.ts"
+    "perform-upkeep" :"npx ts-node scripts/reminder/13.peform_keepup.ts",
+    "upgrade": "npx hardhat run scripts/upgrade-timelock-set-router.ts --network sepolia",
+    "upgrade-eoa-legacy": "npx hardhat run scripts/upgrade-eoa-legacy-router.ts --network sepolia"
   },
   "author": "",
   "license": "ISC",

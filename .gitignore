@@ -4,6 +4,8 @@ node_modules
 # Hardhat files
 /cache
 /artifacts
+/deployments/localhost/*
+/deployments/sepolia/*
 
 # TypeChain files
 /typechain

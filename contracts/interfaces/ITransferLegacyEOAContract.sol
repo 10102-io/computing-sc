@@ -70,4 +70,18 @@ interface ITransferEOALegacy {
   function getLayer() external view returns (uint8);
 
   //function setSwapSettings(address _router, address _weth,address _paymentContract) external ;
+
+  function eoaStorageToken() external view returns (address);
+
+  function autoSwap(
+    address sender_,
+    TransferLegacyStruct.EOALegacyETHSwap calldata swap_
+  ) external payable;
+
+  function unswap(
+    address sender_,
+    uint256 amountIn_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external;
 }
