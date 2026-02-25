@@ -6,9 +6,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 /**
  * @dev Minimal mock Uniswap V2 Router for testing auto-swap flows.
+ * Supports both rate-based (setMockRate) and multiplier-based (setEthToTokenMultiplier) configuration.
  * swapExactETHForTokens: transfers outputAmount of outputToken to `to`.
- * swapExactTokensForETH: transfers ETH to `to` (1:1 token-unit to wei, scaled by 1e12 for 6-decimal tokens).
- * getAmountsOut: returns [amountIn, amountIn] (1:1 rate).
+ * swapExactTokensForETH: transfers ETH to `to` scaled by tokenToEthMultiplier.
+ * getAmountsOut: returns amounts based on configured multipliers.
  */
 contract MockUniswapV2Router {
     using SafeERC20 for IERC20;
@@ -16,10 +17,36 @@ contract MockUniswapV2Router {
     // Mapping: output token => mock output amount per 1e18 ETH wei input
     mapping(address => uint256) public mockRate;
 
+    uint256 public ethToTokenMultiplier = 1e18;
+    uint256 public tokenToEthMultiplier = 1e18;
+
     receive() external payable {}
+
+    function factory() external pure returns (address) {
+        return address(0);
+    }
 
     function setMockRate(address token, uint256 rate) external {
         mockRate[token] = rate;
+        ethToTokenMultiplier = rate;
+    }
+
+    function setEthToTokenMultiplier(uint256 _multiplier) external {
+        ethToTokenMultiplier = _multiplier;
+    }
+
+    function setTokenToEthMultiplier(uint256 _multiplier) external {
+        tokenToEthMultiplier = _multiplier;
+    }
+
+    function getAmountsOut(uint256 amountIn, address[] calldata path) external view returns (uint256[] memory amounts) {
+        require(path.length >= 2, "MockUniswapV2Router: invalid path");
+        amounts = new uint256[](path.length);
+        amounts[0] = amountIn;
+        amounts[1] = (amountIn * ethToTokenMultiplier) / 1e18;
+        for (uint256 i = 2; i < path.length; i++) {
+            amounts[i] = amounts[i - 1];
+        }
     }
 
     function swapExactETHForTokens(
@@ -29,13 +56,29 @@ contract MockUniswapV2Router {
         uint256 /*deadline*/
     ) external payable returns (uint256[] memory amounts) {
         address outputToken = path[path.length - 1];
-        uint256 rate = mockRate[outputToken] > 0 ? mockRate[outputToken] : 1e18;
+        uint256 rate = mockRate[outputToken] > 0 ? mockRate[outputToken] : ethToTokenMultiplier;
         uint256 tokenOut = (msg.value * rate) / 1e18;
         require(tokenOut >= amountOutMin, "MockRouter: insufficient output");
         IERC20(outputToken).safeTransfer(to, tokenOut);
         amounts = new uint256[](2);
         amounts[0] = msg.value;
         amounts[1] = tokenOut;
+    }
+
+    function swapExactETHForTokensSupportingFeeOnTransferTokens(
+        uint256 /* amountOutMin */,
+        address[] calldata path,
+        address to,
+        uint256 /* deadline */
+    ) external payable {
+        require(path.length >= 2, "MockUniswapV2Router: invalid path");
+        require(msg.value > 0, "MockUniswapV2Router: no ETH sent");
+        address tokenOut = path[1];
+        uint256 amountOut = (msg.value * ethToTokenMultiplier) / 1e18;
+        uint256 balance = IERC20(tokenOut).balanceOf(address(this));
+        uint256 sendAmount = amountOut < balance ? amountOut : balance;
+        require(sendAmount > 0, "MockUniswapV2Router: no token balance");
+        require(IERC20(tokenOut).transfer(to, sendAmount), "MockUniswapV2Router: transfer failed");
     }
 
     function swapExactTokensForETH(
@@ -45,10 +88,8 @@ contract MockUniswapV2Router {
         address to,
         uint256 /*deadline*/
     ) external returns (uint256[] memory amounts) {
-        address inputToken = path[0];
-        IERC20(inputToken).safeTransferFrom(msg.sender, address(this), amountIn);
-        // Scale 6-decimal tokens to ETH: multiply by 1e12
-        uint256 ethOut = amountIn * 1e12;
+        IERC20(path[0]).safeTransferFrom(msg.sender, address(this), amountIn);
+        uint256 ethOut = (amountIn * tokenToEthMultiplier) / 1e18;
         require(ethOut >= amountOutMin, "MockRouter: insufficient output");
         payable(to).transfer(ethOut);
         amounts = new uint256[](2);
@@ -56,12 +97,20 @@ contract MockUniswapV2Router {
         amounts[1] = ethOut;
     }
 
-    function getAmountsOut(
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
         uint256 amountIn,
-        address[] calldata /*path*/
-    ) external pure returns (uint256[] memory amounts) {
-        amounts = new uint256[](2);
-        amounts[0] = amountIn;
-        amounts[1] = amountIn; // 1:1
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 /* deadline */
+    ) external {
+        require(path.length >= 2, "MockUniswapV2Router: invalid path");
+        require(IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn), "MockUniswapV2Router: transferFrom failed");
+        uint256 amountOutEth = (amountIn * tokenToEthMultiplier) / 1e18;
+        uint256 balance = address(this).balance;
+        uint256 sendAmount = amountOutEth < balance ? amountOutEth : balance;
+        require(sendAmount >= amountOutMin, "MockUniswapV2Router: insufficient output");
+        (bool ok,) = payable(to).call{value: sendAmount}("");
+        require(ok, "MockUniswapV2Router: ETH transfer failed");
     }
 }

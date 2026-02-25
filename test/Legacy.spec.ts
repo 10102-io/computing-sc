@@ -107,6 +107,9 @@ describe("Legacy contract", async function () {
     await premiumRegistry.connect(dev).subrcribeByAdmin(user1.address, Number(planId) - 1, "USDC");
     await premiumRegistry.connect(dev).subrcribeByAdmin(dev.address, Number(planId) - 1, "USDC");
 
+    const MockSafeWallet = await ethers.getContractFactory("MockSafeWallet");
+    const mockSafeWallet = await MockSafeWallet.deploy([dev.address]);
+
     return {
       genericLegacy,
       treasury,
@@ -122,6 +125,7 @@ describe("Legacy contract", async function () {
       premiumRegistry,
       usdc,
       usdt,
+      mockSafeWallet,
     };
   }
   it("should deploy fixture successfully", async function () {
@@ -430,9 +434,8 @@ describe("Legacy contract", async function () {
   });
 
   it("should create transfer legacy (Safe) ", async function () {
-    const { genericLegacy, treasury, user1, user2, user3, transferEOALegacyRouter, transferLegacyRouter, dev, premiumSetting } = await loadFixture(
-      deployFixture
-    );
+    const { genericLegacy, treasury, user1, user2, user3, transferEOALegacyRouter, transferLegacyRouter, dev, premiumSetting, mockSafeWallet } =
+      await loadFixture(deployFixture);
 
     const mainConfig = {
       name: "abc",
@@ -465,7 +468,7 @@ describe("Legacy contract", async function () {
     const nickName2 = "daddd";
     const nickName3 = "dat";
 
-    const safeWallet = "0x2eC4C5abe5789d85b3f9E8FE4107F3ceD29B0740";
+    const safeWallet = mockSafeWallet.address;
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
@@ -474,6 +477,8 @@ describe("Legacy contract", async function () {
     await transferLegacyRouter
       .connect(dev)
       .createLegacy(safeWallet, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
+
+    await mockSafeWallet.enableModule(legacyAddress);
 
     console.log(legacyAddress);
     const legacy = await ethers.getContractAt("TransferLegacy", legacyAddress);
@@ -498,9 +503,8 @@ describe("Legacy contract", async function () {
   });
 
   it("should beneficiaries activate (Safe) legacy and claim assets", async function () {
-    const { genericLegacy, treasury, user1, user2, user3, transferEOALegacyRouter, transferLegacyRouter, dev, usdc } = await loadFixture(
-      deployFixture
-    );
+    const { genericLegacy, treasury, user1, user2, user3, transferEOALegacyRouter, transferLegacyRouter, dev, usdc, mockSafeWallet } =
+      await loadFixture(deployFixture);
 
     const mainConfig = {
       name: "abc",
@@ -533,7 +537,7 @@ describe("Legacy contract", async function () {
     const nickName2 = "daddd";
     const nickName3 = "dat";
 
-    const safeWallet = "0x2eC4C5abe5789d85b3f9E8FE4107F3ceD29B0740";
+    const safeWallet = mockSafeWallet.address;
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
@@ -542,6 +546,8 @@ describe("Legacy contract", async function () {
     await transferLegacyRouter
       .connect(dev)
       .createLegacy(safeWallet, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
+
+    await mockSafeWallet.enableModule(legacyAddress);
 
     const legacy = await ethers.getContractAt("TransferLegacy", legacyAddress);
 
@@ -558,9 +564,8 @@ describe("Legacy contract", async function () {
   });
 
   it("should layer2 activate (Safe) legacy and claim assets", async function () {
-    const { genericLegacy, treasury, user1, user2, user3, transferEOALegacyRouter, transferLegacyRouter, dev, usdc } = await loadFixture(
-      deployFixture
-    );
+    const { genericLegacy, treasury, user1, user2, user3, transferEOALegacyRouter, transferLegacyRouter, dev, usdc, mockSafeWallet } =
+      await loadFixture(deployFixture);
 
     const mainConfig = {
       name: "abc",
@@ -593,7 +598,7 @@ describe("Legacy contract", async function () {
     const nickName2 = "daddd";
     const nickName3 = "dat";
 
-    const safeWallet = "0x2eC4C5abe5789d85b3f9E8FE4107F3ceD29B0740";
+    const safeWallet = mockSafeWallet.address;
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
@@ -602,6 +607,8 @@ describe("Legacy contract", async function () {
     await transferLegacyRouter
       .connect(dev)
       .createLegacy(safeWallet, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
+
+    await mockSafeWallet.enableModule(legacyAddress);
 
     const legacy = await ethers.getContractAt("TransferLegacy", legacyAddress);
 
@@ -621,6 +628,7 @@ describe("Legacy contract", async function () {
       multisignLegacyRouter,
       dev,
       premiumSetting,
+      mockSafeWallet,
     } = await loadFixture(deployFixture);
 
     const mainConfig = {
@@ -635,13 +643,15 @@ describe("Legacy contract", async function () {
       lackOfOutgoingTxRange: 1,
     };
 
-    const safeWallet = "0x2eC4C5abe5789d85b3f9E8FE4107F3ceD29B0740";
+    const safeWallet = mockSafeWallet.address;
     const legacyAddress = await multisignLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
     const signature = wallet.sign(message).signature;
 
     await multisignLegacyRouter.connect(dev).createLegacy(safeWallet, mainConfig, extraConfig, currentTimestamp, signature);
+
+    await mockSafeWallet.enableModule(legacyAddress);
 
     const legacy = await ethers.getContractAt("MultisigLegacy", legacyAddress);
 

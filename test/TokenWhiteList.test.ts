@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { assert } from "chai";
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+import { AddressZero } from "@ethersproject/constants";
 
 type InterfaceWithParseLog = {
     parseLog: (log: { topics: string[]; data: string }) => { name: string; args: unknown[] } | null;
@@ -207,7 +207,7 @@ describe("TokenWhiteList", function () {
             const list = await whitelist.getWhitelist();
 
             assert.equal(list.length, 2);
-            const whitelistedAddresses = list.filter((a: string) => toAddress(a) !== ZERO_ADDRESS);
+            const whitelistedAddresses = list.filter((a: string) => toAddress(a) !== AddressZero);
             assert.deepEqual(whitelistedAddresses.map(toAddress), [toAddress(tokenB.address)]);
         });
 
@@ -219,7 +219,7 @@ describe("TokenWhiteList", function () {
             const list = await whitelist.getWhitelist();
 
             assert.equal(list.length, 2);
-            const whitelistedAddresses = list.filter((a: string) => toAddress(a) !== ZERO_ADDRESS);
+            const whitelistedAddresses = list.filter((a: string) => toAddress(a) !== AddressZero);
             assert.includeMembers(whitelistedAddresses.map(toAddress), [toAddress(tokenA.address), toAddress(tokenB.address)]);
             assert.equal(whitelistedAddresses.length, 2);
         });
