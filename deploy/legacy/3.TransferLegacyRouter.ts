@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts, sleep, getRpcUrl, verifyProxyOnEtherscan } from "../../scripts/utils";
+import { saveContract, getRpcUrl, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
 import Web3 from "web3";
@@ -10,21 +10,26 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  const legacyDeployer = (await deployments.get("LegacyDeployer")).address;
+  const premiumSetting = (await deployments.get("PremiumSetting")).address;
+  const verifier = (await deployments.get("EIP712LegacyVerifier")).address;
+  const payment = (await deployments.get("Payment")).address;
+  const externalAddrs = getExternalAddresses(network.name);
+  const { uniswapRouter, weth } = externalAddrs;
+
   const data = await deploy("TransferLegacyRouter", {
     from: deployer,
     args: [],
     log: true,
     deterministicDeployment: false,
-    // gasLimit: 4000000,
-    // gasPrice: (await web3.eth.getGasPrice() * BigInt(50)).toString(),
     proxy: {
       proxyContract: "OptimizedTransparentProxy",
       owner: deployer,
-      // execute: {
-      //   methodName: "initialize",
-      //   args: [legacyDeployer, setting, verifierTerm, payment, router, weth],
-      // },
-    }
+      execute: {
+        methodName: "initialize",
+        args: [legacyDeployer, premiumSetting, verifier, payment, uniswapRouter, weth],
+      },
+    },
   });
 
 
@@ -33,19 +38,20 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   await saveContract(network.name, "DefaultProxyAdmin", data.args![1]);
   await saveContract(network.name, "TransferLegacyRouter", data.address, data.implementation!);
 
-  // Verify implementation only (proxy may use a different compiler)
-  try {
-    await hre.run("verify:verify", {
-      address: data.implementation,
-      constructorArguments: [],
-    });
-  } catch (e) {
-    console.log(e);
+  if (shouldVerify(network.name)) {
+    try {
+      await hre.run("verify:verify", {
+        address: data.implementation,
+        constructorArguments: [],
+      });
+    } catch (e) {
+      console.warn("Verify failed:", e);
+    }
   }
 
   const apiKey = process.env.API_KEY_ETHERSCAN;
   const chainId = network.config?.chainId;
-  if (apiKey && chainId != null && data.address && data.implementation) {
+  if (shouldVerify(network.name) && apiKey && chainId != null && data.address && data.implementation) {
     try {
       const result = await verifyProxyOnEtherscan(
         data.address,
@@ -65,4 +71,5 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 };
 
 deploy.tags = ["TransferLegacyRouter"];
+deploy.dependencies = ["LegacyDeployer", "PremiumSetting", "EIP712LegacyVerifier", "Payment"];
 export default deploy;

@@ -9,7 +9,7 @@ contract MockERC1155 is ERC1155 {
   constructor() ERC1155("https://uri.sotatek.works") {}
 
   function mint(address user, uint256 amount) public {
-    _mint(user, tokenId, 5, "");
+    _mint(user, tokenId, amount, "");
     tokenId++;
   }
 }
