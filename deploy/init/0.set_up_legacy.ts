@@ -22,6 +22,13 @@ const VerifierTerm = JSON.parse(
     )
 ).abi;
 
+const PremiumSetting = JSON.parse(
+    fs.readFileSync(
+        "./artifacts/contracts/premium/PremiumSetting.sol/PremiumSetting.json",
+        "utf-8"
+    )
+).abi;
+
 async function setRouterAtVerifierTerm(
     verifier: string,
     transferEOALegacyRouter: string,
@@ -59,6 +66,25 @@ async function setParamsAtLegacyDeployer(
 
 }
 
+async function setParamsAtPremiumSetting(
+    premiumSetting: string,
+    premiumRegistry: string,
+    transferLegacyRouter: string,
+    transferEOALegacyRouter: string,
+    multisigLegacyRouter: string
+) {
+    console.log("Calling setParams at PremiumSetting...");
+    const { wallet } = getProvider();
+    const contract = new ethers.Contract(premiumSetting, PremiumSetting, wallet);
+
+    const tx = await contract.setParams(premiumRegistry, transferLegacyRouter, transferEOALegacyRouter, multisigLegacyRouter);
+
+    console.log("Raw data:", tx?.data);
+
+    const receipt = await tx.wait();
+    console.log("Receipt:", receipt);
+}
+
 async function main() {
     const contracts = getContracts();
     const networkContracts = contracts[network.name];
@@ -67,12 +93,15 @@ async function main() {
     }
     const verifier = networkContracts["EIP712LegacyVerifier"].address;
     const legacyDeployer = networkContracts["LegacyDeployer"].address;
+    const premiumSetting = networkContracts["PremiumSetting"].address;
+    const premiumRegistry = networkContracts["PremiumRegistry"].address;
     const multisigLegacyRouter = networkContracts["MultisigLegacyRouter"].address;
     const transferLegacyRouter = networkContracts["TransferLegacyRouter"].address;
     const transferEOALegacyRouter = networkContracts["TransferEOALegacyRouter"].address;
 
     await setRouterAtVerifierTerm(verifier, transferEOALegacyRouter, transferLegacyRouter, multisigLegacyRouter);
     await setParamsAtLegacyDeployer(legacyDeployer, multisigLegacyRouter, transferLegacyRouter, transferEOALegacyRouter);
+    await setParamsAtPremiumSetting(premiumSetting, premiumRegistry, transferLegacyRouter, transferEOALegacyRouter, multisigLegacyRouter);
 }
 
 if (require.main === module) {

@@ -1,0 +1,278 @@
+{
+  "hardhat": {
+    "Payment": {
+      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    },
+    "DefaultProxyAdmin": {
+      "address": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"
+    },
+    "EIP712LegacyVerifier": {
+      "address": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
+      "implementation": "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+    },
+    "LegacyDeployer": {
+      "address": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
+      "implementation": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"
+    },
+    "PremiumSetting": {
+      "address": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e",
+      "implementation": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+    },
+    "MultisigLegacyRouter": {
+      "address": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
+      "implementation": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0"
+    },
+    "TransferLegacyRouter": {
+      "address": "0x0B306BF915C4d645ff596e518fAf3F9669b97016",
+      "implementation": "0x9A676e781A523b5d0C0e43731313A708CB607508"
+    },
+    "TransferEOALegacyRouter": {
+      "address": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+      "implementation": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1"
+    },
+    "TokenWhiteList": {
+      "address": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed"
+    },
+    "Banner": {
+      "address": "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
+      "implementation": "0x59b670e9fA9D0A427751Af201D676719a970857b"
+    },
+    "PremiumRegistry": {
+      "address": "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
+      "implementation": "0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44"
+    },
+    "PremiumAutomationManager": {
+      "address": "0x7a2088a1bFc9d81c55368AE168C2C02570cB814F",
+      "implementation": "0x4A679253410272dd5232B3Ff7cF5dbB88f295319"
+    },
+    "PremiumSendMail": {
+      "address": "0x09635F643e140090A9A8Dcd712eD6285858ceBef"
+    },
+    "PremiumMailRouter": {
+      "address": "0x67d269191c92Caf3cD7723F116c85e6E9bf55933",
+      "implementation": "0xc5a5C42992dECbae36851359345FE25997F5C42d"
+    },
+    "PremiumMailBeforeActivation": {
+      "address": "0xc3e53F4d16Ae77Db1c982e75a937B9f60FE63690",
+      "implementation": "0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E"
+    },
+    "PremiumMailReadyToActivate": {
+      "address": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042",
+      "implementation": "0x84eA74d481Ee0A5332c457a4d796187F6Ba67fEB"
+    },
+    "PremiumMailActivated": {
+      "address": "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8",
+      "implementation": "0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9"
+    },
+    "TimeLockRouter": {
+      "address": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF",
+      "implementation": "0x99bbA657f2BbC93c02D617f8bA121cB8Fc104Acf"
+    },
+    "TimelockERC20": {
+      "address": "0xf5059a5D33d5853360D16C683c16e67980206f36",
+      "implementation": "0x851356ae760d987E095750cCeb3bC6014560891C"
+    },
+    "TimelockERC721": {
+      "address": "0x998abeb3E57409262aE5b751f60747921B33613E",
+      "implementation": "0x95401dc811bb5740090279Ba06cfA8fcF6113778"
+    },
+    "TimelockERC1155": {
+      "address": "0x4826533B4897376654Bb4d4AD88B7faFD0C98528",
+      "implementation": "0x70e0bA845a1A0F2DA3359C97E0285013525FFC49"
+    },
+    "ERC20Token_USDC": {
+      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    },
+    "ERC20Token_USDT": {
+      "address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+    },
+    "MockWETH": {
+      "address": "0x8f86403A4DE0BB5791fa46B8e795C547942fE4Cf"
+    },
+    "MockUniswapV2Router": {
+      "address": "0x9d4454B023096f34B160D6B654540c56A1F81688"
+    }
+  },
+  "sepolia": {
+    "Payment": {
+      "address": "0x51bCd8f02fc89484a911ddD8A96D1D5Cd6e4d52a"
+    },
+    "ERC20Token_USDC": {
+      "address": "0x2b4A37EF1f0ed36475601f445cD7E49DA2bfA898"
+    },
+    "ERC20Token_USDT": {
+      "address": "0xcd308C17C7681298E54e8f82C20bDc1B8DC30866"
+    },
+    "DefaultProxyAdmin": {
+      "address": "0x3A5a8f9fF56e214bbE1Ab56C320feACaCe7BBdC9"
+    },
+    "EIP712LegacyVerifier": {
+      "address": "0x9969448177bAAf87bce3Be1361653bC4862AEAd8",
+      "implementation": "0x013A08Ffb1D71A21C38a58b580Da21744f939D7d"
+    },
+    "LegacyDeployer": {
+      "address": "0x4400568Ab8d14d3Cf866aFc6aD9dd61F783b341B",
+      "implementation": "0xae21CF5CE210E7f8002DFe3E9089b5c09e055867"
+    },
+    "PremiumSetting": {
+      "address": "0x3bCdDC531215a67144bB30959b86311E10DfB81d",
+      "implementation": "0xFd73A29F2Bd8D7Abf79e5DDF12B3ddeb8131609D"
+    },
+    "MultisigLegacyRouter": {
+      "address": "0x8D795B12E45c020484edF4a7B37B0B14912bb644",
+      "implementation": "0x91AA45a84867C253606F6600dD6d761Df27C6aC0"
+    },
+    "TransferLegacyRouter": {
+      "address": "0x33dAc5303C3c1309Fe98aBC151C987A6EEF9D9bC",
+      "implementation": "0xf602cd16bfc2079A5524c54f33AC544554e44F68"
+    },
+    "TransferEOALegacyRouter": {
+      "address": "0xd4FF1FA9FA258a45aF5296B88Ed7e97233A7FE65",
+      "implementation": "0x915135b2F3495366a05Df12673416d1eCDa5fCEa"
+    },
+    "TokenWhiteList": {
+      "address": "0x91952bd6864077d5F3a57248e30e33b1481cE047"
+    },
+    "Banner": {
+      "address": "0x18Dd51818D2ed8CBdCC10d8817866B89b40232D4",
+      "implementation": "0x3bb44Ec5804077045DF8b55d6D378795B0060e0E"
+    },
+    "PremiumRegistry": {
+      "address": "0xc4ea3B86d16d4d8D8a929e6a20B7E533BC134958",
+      "implementation": "0xCf4610f710A95f470cd309dC53B632F40fa2730D"
+    },
+    "PremiumAutomationManager": {
+      "address": "0xea969f5019919d45fA19959d2b1a6b6726B88BA3",
+      "implementation": "0x2b4310D6E2C33544f38c181DB0cF16DCc12a1E7E"
+    },
+    "PremiumSendMail": {
+      "address": "0x5e7D6Ce893E7881c9ECC42445B10a9F99A57c589"
+    },
+    "PremiumMailRouter": {
+      "address": "0x8a61311a8cdbE3909292e5007f379C46bbFaEA59",
+      "implementation": "0x5c9CD3be8B82d98cfe4Cac3f5e441be47DC8765E"
+    },
+    "PremiumMailBeforeActivation": {
+      "address": "0xf3B9133fD48f73309c4342a80CD16e1DC3B384D4",
+      "implementation": "0xEdD7691E0e68993F45Fd28c6bD09B3F67D114925"
+    },
+    "PremiumMailReadyToActivate": {
+      "address": "0x08d96b6a1a312fAd195a48372c4f639Cd404c7B3",
+      "implementation": "0xF30D6745d1369312742B8B537863D99579F7F687"
+    },
+    "PremiumMailActivated": {
+      "address": "0xb7BccDb4bA1BeaE7fC0f0961F250d875d056F046",
+      "implementation": "0x2762B2a0cb641fF31201DC131bb5edCe1Ab7796F"
+    },
+    "TimeLockRouter": {
+      "address": "0x901E8FcC3ae1Bf98b0a4E2C337A0bD0A3188E7E1",
+      "implementation": "0xaF3bEF4C32d45FdC905C242F02FE2C18c12762d3"
+    },
+    "TimelockERC20": {
+      "address": "0x2C16FE07F18ad787b4bD9be6653924d4Eec5f189",
+      "implementation": "0xd0A9F76296DF418E3a310D1989C4934d36A57A99"
+    },
+    "TimelockERC721": {
+      "address": "0x657810AE2A37e35a3703748ba27d569143862Ba5",
+      "implementation": "0x060BaDB1b407aba0e4Cc4c885DcD06f98B47E4bC"
+    },
+    "TimelockERC1155": {
+      "address": "0x5fA942Ab13Ef87fB4AEC71D4b81265C8932b2F55",
+      "implementation": "0x5d1D0773f9F7AC02D0728EC901Ec8B773E3E3282"
+    }
+  },
+  "localhost": {
+    "Payment": {
+      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    },
+    "ERC20Token_USDC": {
+      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    },
+    "ERC20Token_USDT": {
+      "address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+    },
+    "DefaultProxyAdmin": {
+      "address": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"
+    },
+    "EIP712LegacyVerifier": {
+      "address": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
+      "implementation": "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+    },
+    "LegacyDeployer": {
+      "address": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
+      "implementation": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"
+    },
+    "PremiumSetting": {
+      "address": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e",
+      "implementation": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+    },
+    "MultisigLegacyRouter": {
+      "address": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
+      "implementation": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0"
+    },
+    "TransferLegacyRouter": {
+      "address": "0x0B306BF915C4d645ff596e518fAf3F9669b97016",
+      "implementation": "0x9A676e781A523b5d0C0e43731313A708CB607508"
+    },
+    "TransferEOALegacyRouter": {
+      "address": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+      "implementation": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1"
+    },
+    "TokenWhiteList": {
+      "address": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed"
+    },
+    "Banner": {
+      "address": "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
+      "implementation": "0x59b670e9fA9D0A427751Af201D676719a970857b"
+    },
+    "PremiumRegistry": {
+      "address": "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
+      "implementation": "0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44"
+    },
+    "PremiumAutomationManager": {
+      "address": "0x7a2088a1bFc9d81c55368AE168C2C02570cB814F",
+      "implementation": "0x4A679253410272dd5232B3Ff7cF5dbB88f295319"
+    },
+    "PremiumSendMail": {
+      "address": "0x09635F643e140090A9A8Dcd712eD6285858ceBef"
+    },
+    "PremiumMailRouter": {
+      "address": "0x67d269191c92Caf3cD7723F116c85e6E9bf55933",
+      "implementation": "0xc5a5C42992dECbae36851359345FE25997F5C42d"
+    },
+    "PremiumMailBeforeActivation": {
+      "address": "0xc3e53F4d16Ae77Db1c982e75a937B9f60FE63690",
+      "implementation": "0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E"
+    },
+    "PremiumMailReadyToActivate": {
+      "address": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042",
+      "implementation": "0x84eA74d481Ee0A5332c457a4d796187F6Ba67fEB"
+    },
+    "PremiumMailActivated": {
+      "address": "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8",
+      "implementation": "0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9"
+    },
+    "TimelockERC20": {
+      "address": "0xf5059a5D33d5853360D16C683c16e67980206f36",
+      "implementation": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+    },
+    "TimelockERC721": {
+      "address": "0x998abeb3E57409262aE5b751f60747921B33613E",
+      "implementation": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
+    },
+    "TimelockERC1155": {
+      "address": "0x4826533B4897376654Bb4d4AD88B7faFD0C98528",
+      "implementation": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+    },
+    "TimeLockRouter": {
+      "address": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF",
+      "implementation": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    },
+    "MockWETH": {
+      "address": "0x8f86403A4DE0BB5791fa46B8e795C547942fE4Cf"
+    },
+    "MockUniswapV2Router": {
+      "address": "0x9d4454B023096f34B160D6B654540c56A1F81688"
+    }
+  }
+}

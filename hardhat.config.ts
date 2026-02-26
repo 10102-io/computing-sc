@@ -75,6 +75,7 @@ const config: HardhatUserConfig = {
       }
       : {
         allowUnlimitedContractSize: true,
+        blockGasLimit: 50_000_000,
         mining: {
           auto: true,
           interval: 3000
