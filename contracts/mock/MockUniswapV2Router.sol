@@ -91,7 +91,8 @@ contract MockUniswapV2Router {
         IERC20(path[0]).safeTransferFrom(msg.sender, address(this), amountIn);
         uint256 ethOut = (amountIn * tokenToEthMultiplier) / 1e18;
         require(ethOut >= amountOutMin, "MockRouter: insufficient output");
-        payable(to).transfer(ethOut);
+        (bool ok,) = payable(to).call{value: ethOut}("");
+        require(ok, "MockRouter: ETH transfer failed");
         amounts = new uint256[](2);
         amounts[0] = amountIn;
         amounts[1] = ethOut;

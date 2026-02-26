@@ -684,6 +684,9 @@ describe("EOA Legacy autoSwap and unswap", async function () {
     // Set rate: 1 ETH = 2000 USDC (at 1e18 ETH → 2000 * 1e6 USDC units)
     const USDC_RATE = ethers.utils.parseUnits("2000", 6); // 2000e6
     await mockRouter.setMockRate(usdc.address, USDC_RATE);
+    // Set inverse rate: 2000e6 USDC → 1 ETH
+    // ethOut = (amountIn * multiplier) / 1e18, so for 2000e6 → 1e18: multiplier = 1e36/2e9 = 5e26
+    await mockRouter.setTokenToEthMultiplier(BigNumber.from("500000000000000000000000000")); // 5e26
     // Fund mock router with USDC (for autoSwap → transfer to owner)
     await usdc.mint(mockRouter.address, ethers.utils.parseUnits("1000000", 6));
     // Fund mock router with ETH (for unswap → send ETH back to owner)
@@ -751,6 +754,12 @@ describe("EOA Legacy autoSwap and unswap", async function () {
       .setParams(premiumRegistry.address, transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
     await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
     await verifierTerm.connect(treasury).setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+
+    // Set the EOA legacy creation code on the router (required for createLegacy via Create2).
+    // gasLimit is explicit because ethers auto-estimation fails for large calldata in the test env.
+    await transferEOALegacyRouter.connect(treasury).initializeV2(treasury.address);
+    const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
+    await transferEOALegacyRouter.connect(treasury).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
 
     // Create lifetime plan and subscribe user1
     await premiumRegistry.connect(treasury).createPlans([ethers.constants.MaxUint256], [1], [""], [""], [""]);
@@ -876,5 +885,150 @@ describe("EOA Legacy autoSwap and unswap", async function () {
       didRevert = true;
     }
     expect(didRevert).to.be.true;
+  });
+
+  // ── activeLegacyAndUnswap tests ──────────────────────────────────────────
+
+  it("activeLegacyAndUnswap: atomically swaps storage token to ETH and distributes to beneficiary", async function () {
+    const { user1, user2, usdc, transferEOALegacyRouter, legacyId, legacyAddress } =
+      await loadFixture(deploySwapFixture);
+
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+
+    // 1. Owner does autoSwap: 1 ETH → USDC in user1's wallet
+    await transferEOALegacyRouter.connect(user1).autoSwap(
+      legacyId,
+      { storageToken: usdc.address, amountOutMin: 0, deadline },
+      { value: ethers.utils.parseEther("1") }
+    );
+
+    const usdcBalance = await usdc.balanceOf(user1.address);
+    expect(usdcBalance.gt(0)).to.be.true;
+
+    // 2. Owner approves legacy contract to spend USDC (required for claim-time swap)
+    await usdc.connect(user1).approve(legacyAddress, usdcBalance);
+
+    // 3. Fast-forward past the activation trigger (2 days > 1 day trigger)
+    await increase(86400 * 2);
+
+    const ethBefore = await ethers.provider.getBalance(user2.address);
+
+    // 4. Beneficiary claims with atomic unswap — no ERC-20 assets (ETH-only distribution)
+    await transferEOALegacyRouter.connect(user2).activeLegacyAndUnswap(
+      legacyId,
+      [],
+      0,
+      deadline
+    );
+
+    const ethAfter = await ethers.provider.getBalance(user2.address);
+    // user2 received ETH (net of gas their balance should be higher)
+    expect(ethAfter.gt(ethBefore)).to.be.true;
+
+    // eoaStorageToken should be cleared
+    const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
+    expect((await legacy.eoaStorageToken()) === "0x0000000000000000000000000000000000000000").to.be.true;
+
+    // USDC should be gone from user1's wallet
+    expect((await usdc.balanceOf(user1.address)).toString() === "0").to.be.true;
+  });
+
+  it("activeLegacyAndUnswap: works with no active storage token (degrades to normal ETH distribution)", async function () {
+    const { user1, user2, transferEOALegacyRouter, legacyId, legacyAddress } =
+      await loadFixture(deploySwapFixture);
+
+    // Deposit ETH directly into the legacy contract
+    await user1.sendTransaction({ to: legacyAddress, value: ethers.utils.parseEther("1") });
+
+    await increase(86400 * 2);
+
+    const ethBefore = await ethers.provider.getBalance(user2.address);
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+
+    await transferEOALegacyRouter.connect(user2).activeLegacyAndUnswap(
+      legacyId,
+      [],
+      0,
+      deadline
+    );
+
+    const ethAfter = await ethers.provider.getBalance(user2.address);
+    expect(ethAfter.gt(ethBefore)).to.be.true;
+
+    const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
+    expect((await legacy.eoaStorageToken()) === "0x0000000000000000000000000000000000000000").to.be.true;
+  });
+
+  it("activeLegacy: clears eoaStorageToken when storage token is included in assets (claim-as-token path)", async function () {
+    const { user1, user2, usdc, transferEOALegacyRouter, legacyId, legacyAddress } =
+      await loadFixture(deploySwapFixture);
+
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+
+    // autoSwap: 1 ETH → USDC in user1's wallet
+    await transferEOALegacyRouter.connect(user1).autoSwap(
+      legacyId,
+      { storageToken: usdc.address, amountOutMin: 0, deadline },
+      { value: ethers.utils.parseEther("1") }
+    );
+
+    const usdcBalance = await usdc.balanceOf(user1.address);
+    expect(usdcBalance.gt(0)).to.be.true;
+
+    // Approve legacy contract so it can pull and distribute the token
+    await usdc.connect(user1).approve(legacyAddress, usdcBalance);
+
+    await increase(86400 * 2);
+
+    // Claim the storage token as-is by passing it in the assets array (isETH = false)
+    await transferEOALegacyRouter.connect(user2).activeLegacy(
+      legacyId,
+      [usdc.address],
+      false
+    );
+
+    const legacyContract = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
+
+    // eoaStorageToken flag should be cleared
+    expect((await legacyContract.eoaStorageToken()) === "0x0000000000000000000000000000000000000000").to.be.true;
+
+    // user2 should have received USDC (proportional to their 100% share minus fee)
+    expect((await usdc.balanceOf(user2.address)).gt(0)).to.be.true;
+  });
+
+  it("activeLegacyAndUnswap: skips swap and still distributes existing ETH when owner has no allowance", async function () {
+    const { user1, user2, usdc, transferEOALegacyRouter, legacyId, legacyAddress } =
+      await loadFixture(deploySwapFixture);
+
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+
+    // autoSwap but do NOT approve — pullAmount will be 0, swap is skipped
+    await transferEOALegacyRouter.connect(user1).autoSwap(
+      legacyId,
+      { storageToken: usdc.address, amountOutMin: 0, deadline },
+      { value: ethers.utils.parseEther("1") }
+    );
+
+    // Also deposit direct ETH so there's something to distribute
+    await user1.sendTransaction({ to: legacyAddress, value: ethers.utils.parseEther("0.5") });
+
+    await increase(86400 * 2);
+
+    const ethBefore = await ethers.provider.getBalance(user2.address);
+
+    // Should succeed — swap skipped, existing ETH is distributed
+    await transferEOALegacyRouter.connect(user2).activeLegacyAndUnswap(
+      legacyId,
+      [],
+      0,
+      deadline
+    );
+
+    const ethAfter = await ethers.provider.getBalance(user2.address);
+    expect(ethAfter.gt(ethBefore)).to.be.true;
+
+    // eoaStorageToken is still cleared (unconditionally inside the if block)
+    const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
+    expect((await legacy.eoaStorageToken()) === "0x0000000000000000000000000000000000000000").to.be.true;
   });
 });
