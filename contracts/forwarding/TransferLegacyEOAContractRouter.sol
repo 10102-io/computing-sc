@@ -75,6 +75,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   event EmailOwnerResetNotCompleted(address legacyAddress);
   event TransferEOALegacyAutoSwapped(uint256 legacyId, address storageToken, uint256 ethAmount, uint256 timestamp);
   event TransferEOALegacyUnswapped(uint256 legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
+  event TransferEOALegacyActivatedWithUnswap(uint256 legacyId, uint8 layer, uint256 timestamp);
 
     constructor () {
     _disableInitializers();
@@ -322,6 +323,33 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     if (beneLayer > currentLayer) revert CannotClaim();
     if (beneLayer == 0) revert OnlyBeneficaries();
     emit TransferEOALegacyActivated(legacyId_, beneLayer, block.timestamp);
+  }
+
+  /**
+   * @dev Beneficiary claims the legacy; if the owner has an active storage-token swap,
+   * it is atomically swapped back to ETH and distributed in the same transaction.
+   */
+  function activeLegacyAndUnswap(
+    uint256 legacyId_,
+    address[] calldata assets_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external {
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+
+    ITransferEOALegacy(legacyAddress).activeLegacyAndUnswap(
+      assets_,
+      msg.sender,
+      amountOutMin_,
+      deadline_
+    );
+
+    uint8 beneLayer = ITransferEOALegacy(legacyAddress).getBeneficiaryLayer(msg.sender);
+    uint8 currentLayer = ITransferEOALegacy(legacyAddress).getLayer();
+    if (beneLayer > currentLayer) revert CannotClaim();
+    if (beneLayer == 0) revert OnlyBeneficaries();
+
+    emit TransferEOALegacyActivatedWithUnswap(legacyId_, beneLayer, block.timestamp);
   }
 
   function deleteLegacy(uint256 legacyId_) external {
