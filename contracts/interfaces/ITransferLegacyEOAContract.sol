@@ -46,6 +46,13 @@ interface ITransferEOALegacy {
 
   function activeLegacy(address[] calldata assets_, bool isETH_, address bene_) external;
 
+  function activeLegacyAndUnswap(
+    address[] calldata assets_,
+    address bene_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external;
+
   function deleteLegacy(address sender_) external;
 
   function withdraw(address sender_, uint256 amount_) external;
