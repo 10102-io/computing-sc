@@ -520,16 +520,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       if (getIsActiveLegacy() == 1) {
         _setLegacyToInactive();
       }
-      // If the storage token is being claimed directly, clear the flag.
-      if (eoaStorageToken != address(0)) {
-        for (uint256 i = 0; i < assets_.length; ) {
-          if (assets_[i] == eoaStorageToken) {
-            eoaStorageToken = address(0);
-            break;
-          }
-          unchecked { i++; }
-        }
-      }
       _transferAssetToBeneficiaries(assets_, isETH_, bene);
     } else {
       revert NotEnoughContitionalActive();
@@ -715,6 +705,10 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
     for (uint256 i = 0; i < n; ) {
       address token = assets_[i];
+      // If this token is the storage-token being claimed directly, clear the flag.
+      if (token == eoaStorageToken) {
+        eoaStorageToken = address(0);
+      }
       uint256 allowanceAmountErc20 = IERC20(token).allowance(ownerAddress, address(this));
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
       uint256 totalAmount = balanceAmountErc20 > allowanceAmountErc20 ? allowanceAmountErc20 : balanceAmountErc20;
