@@ -8,7 +8,7 @@
  * Prerequisites: RPC and DEPLOYER_PRIVATE_KEY in .env; deployer must be owner of DefaultProxyAdmin.
  */
 import { network, ethers } from "hardhat";
-import { getContracts, saveContract } from "./utils";
+import { getContracts, saveContract, getExternalAddresses } from "./utils";
 
 async function main() {
   const contracts = getContracts()[network.name];
@@ -81,7 +81,42 @@ async function main() {
   saveContract(networkKey, "TimelockERC1155", timelockERC1155Addr, impl1155.address);
   console.log("Updated contract-addresses.json with new implementation addresses.");
 
-  console.log("Done. ETH→token timelocks should now work.");
+  // 4. Wire contracts: router ↔ timelocks
+  const router = await ethers.getContractAt("TimeLockRouter", routerAddr, signer as any);
+  const txSetTimelock = await router.setTimelock(timelockERC20Addr, timelockERC721Addr, timelockERC1155Addr);
+  await txSetTimelock.wait();
+  console.log("TimeLockRouter.setTimelock configured");
+
+  const timelockERC20 = await ethers.getContractAt("TimelockERC20", timelockERC20Addr, signer as any);
+  const txSetRouter20 = await timelockERC20.setRouterAddresses(routerAddr);
+  await txSetRouter20.wait();
+  console.log("TimelockERC20.setRouterAddresses set to router");
+
+  const timelockERC721 = await ethers.getContractAt("TimelockERC721", timelockERC721Addr, signer as any);
+  const txSetRouter721 = await timelockERC721.setRouterAddresses(routerAddr);
+  await txSetRouter721.wait();
+  console.log("TimelockERC721.setRouterAddresses set to router");
+
+  const timelockERC1155 = await ethers.getContractAt("TimelockERC1155", timelockERC1155Addr, signer as any);
+  const txSetRouter1155 = await timelockERC1155.setRouterAddresses(routerAddr);
+  await txSetRouter1155.wait();
+  console.log("TimelockERC1155.setRouterAddresses set to router");
+
+  // 5. Set Uniswap router on TimeLockRouter and TimelockERC20 (for ETH swaps)
+  const externalAddrs = getExternalAddresses(network.name);
+  if (externalAddrs.uniswapRouter && externalAddrs.uniswapRouter !== "0x0000000000000000000000000000000000000000") {
+    const txUniRouter = await router.setUniswapRouter(externalAddrs.uniswapRouter);
+    await txUniRouter.wait();
+    console.log("TimeLockRouter.setUniswapRouter set to:", externalAddrs.uniswapRouter);
+
+    const txUniERC20 = await timelockERC20.setUniswapRouter(externalAddrs.uniswapRouter);
+    await txUniERC20.wait();
+    console.log("TimelockERC20.setUniswapRouter set to:", externalAddrs.uniswapRouter);
+  } else {
+    console.log("Skipping uniswapRouter setup (not configured for this network)");
+  }
+
+  console.log("Done. All timelock contracts upgraded and wired.");
 }
 
 main()

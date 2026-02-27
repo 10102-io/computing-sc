@@ -14,6 +14,7 @@ import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Factory} from "../interfaces/IUniswapV2Factory.sol";
 import {NotifyLib} from "../libraries/NotifyLib.sol";
+import {IWETH} from "../interfaces/IWETH.sol";
 
 contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   using EnumerableSet for EnumerableSet.AddressSet;
@@ -108,16 +109,22 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     if (msg.value == 0) revert NotEnoughETH();
     if (swap_.storageToken == address(0)) revert AssetInvalid();
 
-    address[] memory path = new address[](2);
-    path[0] = weth;
-    path[1] = swap_.storageToken;
+    if (swap_.storageToken == weth) {
+      // ETH→WETH is 1:1 wrap; bypass Uniswap
+      IWETH(weth).deposit{value: msg.value}();
+      IERC20(weth).safeTransfer(sender_, msg.value);
+    } else {
+      address[] memory path = new address[](2);
+      path[0] = weth;
+      path[1] = swap_.storageToken;
 
-    IUniswapV2Router02(uniswapRouter).swapExactETHForTokens{value: msg.value}(
-      swap_.amountOutMin,
-      path,
-      sender_,
-      swap_.deadline
-    );
+      IUniswapV2Router02(uniswapRouter).swapExactETHForTokens{value: msg.value}(
+        swap_.amountOutMin,
+        path,
+        sender_,
+        swap_.deadline
+      );
+    }
 
     eoaStorageToken = swap_.storageToken;
     _lastTimestamp = block.timestamp;
