@@ -29,6 +29,13 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error OnlyBeneficaries();
   error CannotClaim();
   error InvalidSwapSettings();
+  error NotCodeAdmin();
+  error EmptyCode();
+
+  modifier onlyCodeAdmin() {
+    if (msg.sender != _codeAdmin) revert NotCodeAdmin();
+    _;
+  }
 
   /* Struct */
   struct LegacyMainConfig {
@@ -109,9 +116,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     _codeAdmin = codeAdmin_;
   }
 
-  function setLegacyCreationCode(bytes calldata code_) external {
-    require(msg.sender == _codeAdmin, "not code admin");
-    require(code_.length > 0, "empty code");
+
+  function setLegacyCreationCode(bytes calldata code_) external onlyCodeAdmin {
+    if (code_.length == 0) revert EmptyCode();
     legacyCreationCode = code_;
   }
 

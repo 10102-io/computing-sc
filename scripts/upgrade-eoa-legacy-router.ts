@@ -24,7 +24,7 @@ async function main() {
   const [signer] = await ethers.getSigners();
   console.log("Deployer:", signer.address);
 
-  const proxyAdminAbi = ["function upgrade(address proxy, address implementation) public"];
+  const proxyAdminAbi = ["function upgradeAndCall(address proxy, address implementation, bytes memory data) public payable"];
   const proxyAdmin = new ethers.Contract(proxyAdminAddr, proxyAdminAbi, signer as any);
 
   // Deploy new implementation
@@ -33,21 +33,17 @@ async function main() {
   await impl.deployed();
   console.log("TransferEOALegacyRouter implementation:", impl.address);
 
-  // Upgrade proxy
-  const tx = await proxyAdmin.upgrade(routerAddr, impl.address);
+  // Atomically upgrade proxy and initialize to prevent frontrunning of initializeV2
+  const initData = TransferEOALegacyRouter.interface.encodeFunctionData("initializeV2", [signer.address]);
+  const tx = await proxyAdmin.upgradeAndCall(routerAddr, impl.address, initData);
   await tx.wait();
-  console.log("Upgraded TransferEOALegacyRouter proxy");
+  console.log("Upgraded TransferEOALegacyRouter proxy and initialized code admin:", signer.address);
 
-  // Set up code admin and store creation code (storage slot added in this upgrade)
+  // Store creation code
   const routerAbi = [
-    "function initializeV2(address codeAdmin_) external",
     "function setLegacyCreationCode(bytes calldata code_) external",
   ];
   const router = new ethers.Contract(routerAddr, routerAbi, signer as any);
-
-  const txInit = await router.initializeV2(signer.address);
-  await txInit.wait();
-  console.log("initializeV2 done, code admin:", signer.address);
 
   const TransferEOALegacy = await ethers.getContractFactory("TransferEOALegacy");
   const txSetCode = await router.setLegacyCreationCode(TransferEOALegacy.bytecode);
