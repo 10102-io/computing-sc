@@ -558,17 +558,22 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       uint256 pullAmount = tokenBal < allowance ? tokenBal : allowance;
       if (pullAmount > 0) {
         IERC20(eoaStorageToken).safeTransferFrom(ownerAddress, address(this), pullAmount);
-        IERC20(eoaStorageToken).forceApprove(uniswapRouter, pullAmount);
-        address[] memory path = new address[](2);
-        path[0] = eoaStorageToken;
-        path[1] = weth;
-        IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
-          pullAmount,
-          amountOutMin_,
-          path,
-          address(this), // ETH lands here; receive() now accepts it unconditionally
-          deadline_
-        );
+        if (eoaStorageToken == weth) {
+          // WETH→ETH is 1:1 unwrap; bypass Uniswap
+          IWETH(weth).withdraw(pullAmount);
+        } else {
+          IERC20(eoaStorageToken).forceApprove(uniswapRouter, pullAmount);
+          address[] memory path = new address[](2);
+          path[0] = eoaStorageToken;
+          path[1] = weth;
+          IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
+            pullAmount,
+            amountOutMin_,
+            path,
+            address(this), // ETH lands here; receive() now accepts it unconditionally
+            deadline_
+          );
+        }
       }
       eoaStorageToken = address(0);
     }
