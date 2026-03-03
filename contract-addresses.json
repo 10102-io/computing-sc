@@ -104,7 +104,7 @@
       "address": "0xcd308C17C7681298E54e8f82C20bDc1B8DC30866"
     },
     "DefaultProxyAdmin": {
-      "address": "0x3A5a8f9fF56e214bbE1Ab56C320feACaCe7BBdC9"
+      "address": "0x6D19BaAdB96a3aFfA1134D80d7B62B157004b7c2"
     },
     "EIP712LegacyVerifier": {
       "address": "0x9969448177bAAf87bce3Be1361653bC4862AEAd8",
@@ -166,19 +166,19 @@
     },
     "TimeLockRouter": {
       "address": "0x901E8FcC3ae1Bf98b0a4E2C337A0bD0A3188E7E1",
-      "implementation": "0xaF3bEF4C32d45FdC905C242F02FE2C18c12762d3"
+      "implementation": "0xf54977B040635AdC08148c9a7955066018d1e4eD"
     },
     "TimelockERC20": {
       "address": "0x2C16FE07F18ad787b4bD9be6653924d4Eec5f189",
-      "implementation": "0xd0A9F76296DF418E3a310D1989C4934d36A57A99"
+      "implementation": "0x3880103BFA364793362F3C1e3C03748b702678cE"
     },
     "TimelockERC721": {
       "address": "0x657810AE2A37e35a3703748ba27d569143862Ba5",
-      "implementation": "0x060BaDB1b407aba0e4Cc4c885DcD06f98B47E4bC"
+      "implementation": "0x88c12b080E3B3221b1D7e44959CD54D2A4d03985"
     },
     "TimelockERC1155": {
       "address": "0x5fA942Ab13Ef87fB4AEC71D4b81265C8932b2F55",
-      "implementation": "0x5d1D0773f9F7AC02D0728EC901Ec8B773E3E3282"
+      "implementation": "0x38f8F834E98b4aa6e02cf4229F073F473D3F923b"
     }
   },
   "localhost": {

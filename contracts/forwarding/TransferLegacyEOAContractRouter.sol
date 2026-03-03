@@ -47,7 +47,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
   /* Event */
   event TransferEOALegacyCreated(
-    uint256 legacyId,
+    uint256 indexed legacyId,
     address legacyAddress,
     address creatorAddress,
     LegacyMainConfig mainConfig,
@@ -55,34 +55,34 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint256 timestamp
   );
   event TransferEOALegacyConfigUpdated(
-    uint256 legacyId,
+    uint256 indexed legacyId,
     LegacyMainConfig mainConfig,
     TransferLegacyStruct.LegacyExtraConfig extraConfig,
     uint256 timestamp
   );
   event TransferEOALegacyDistributionUpdated(
-    uint256 legacyId,
+    uint256 indexed legacyId,
     string[] nickNames,
     TransferLegacyStruct.Distribution[] distributions,
     uint256 timestamp
   );
-  event TransferEOALegacyTriggerUpdated(uint256 legacyId, uint128 lackOfOutgoingTxRange, uint256 timestamp);
-  event TransferEOALegacyNameNoteUpdated(uint256 legacyId, string name, string note, uint256 timestamp);
-  event TransferEOALegacyActivated(uint256 legacyId, uint8 layer, uint256 timestamp);
-  event TransferEOALegacyActivedAlive(uint256 legacyId, uint256 timestamp);
-  event TransferEOALegacyDeleted(uint256 legacyId, uint256 timestamp);
+  event TransferEOALegacyTriggerUpdated(uint256 indexed legacyId, uint128 lackOfOutgoingTxRange, uint256 timestamp);
+  event TransferEOALegacyNameNoteUpdated(uint256 indexed legacyId, string name, string note, uint256 timestamp);
+  event TransferEOALegacyActivated(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
+  event TransferEOALegacyActivedAlive(uint256 indexed legacyId, uint256 timestamp);
+  event TransferEOALegacyDeleted(uint256 indexed legacyId, uint256 timestamp);
   event TransferEOALegacyLayer23DistributionUpdated(
-    uint256 legacyId,
+    uint256 indexed legacyId,
     uint8 layer,
     string nickNames,
     TransferLegacyStruct.Distribution distribution,
     uint256 timestamp
   );
-  event TransferEOALegacyLayer23Created(uint256 legacyId, uint8 layer, TransferLegacyStruct.Distribution distribution, string nickName);
+  event TransferEOALegacyLayer23Created(uint256 indexed legacyId, uint8 layer, TransferLegacyStruct.Distribution distribution, string nickName);
   event EmailOwnerResetNotCompleted(address legacyAddress);
-  event TransferEOALegacyAutoSwapped(uint256 legacyId, address storageToken, uint256 ethAmount, uint256 timestamp);
-  event TransferEOALegacyUnswapped(uint256 legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
-  event TransferEOALegacyActivatedWithUnswap(uint256 legacyId, uint8 layer, uint256 timestamp);
+  event TransferEOALegacyAutoSwapped(uint256 indexed legacyId, address storageToken, uint256 ethAmount, uint256 timestamp);
+  event TransferEOALegacyUnswapped(uint256 indexed legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
+  event TransferEOALegacyActivatedWithUnswap(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
 
     constructor () {
     _disableInitializers();
