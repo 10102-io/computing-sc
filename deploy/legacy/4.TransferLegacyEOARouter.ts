@@ -1,21 +1,18 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts, getRpcUrl, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses } from "../../scripts/utils";
+import { saveContract, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const web3 = new Web3(process.env.RPC!);
-  const contracts = await getContracts();
-  const legacyDeployer = contracts[network.name].LegacyDeployer.address;
-  const setting = contracts[network.name].PremiumSetting.address;
-  const verifierTerm = contracts[network.name].EIP712LegacyVerifier.address;
-  const payment = contracts[network.name].Payment.address;
+  const legacyDeployer = (await deployments.get("LegacyDeployer")).address;
+  const setting = (await deployments.get("PremiumSetting")).address;
+  const verifierTerm = (await deployments.get("EIP712LegacyVerifier")).address;
+  const payment = (await deployments.get("Payment")).address;
   const { uniswapRouter, weth } = getExternalAddresses(network.name);
 
   const data = await deploy("TransferEOALegacyRouter", {

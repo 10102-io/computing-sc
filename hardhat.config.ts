@@ -75,8 +75,8 @@ const config: HardhatUserConfig = {
       : {
         mining: {
           auto: true,
-          interval: 3000
-        }
+        },
+        initialBaseFeePerGas: 0,
       },
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL ?? "",
