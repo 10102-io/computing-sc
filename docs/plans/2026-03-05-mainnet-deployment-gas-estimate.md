@@ -345,13 +345,11 @@ The deployer wallet becomes the owner/admin of most contracts via `initialize()`
 | TokenWhiteList | DEFAULT_ADMIN_ROLE | `addToken()`, `removeToken()` |
 | Payment | DEFAULT_ADMIN_ROLE, OPERATOR, WITHDRAWER | `setClaimFee()`, `withdraw()` |
 
-### Separate Team Wallet: `verifierTermOwner`
+### `verifierTermOwner` — Same as Deployer on Mainnet
 
-| Address | Contract | Role | Key Functions |
-|---|---|---|---|
-| `0x23b6c5dda751d4f9cd43e264687954ce47ce34d1` | EIP712LegacyVerifier | Owner | `setRouterAddresses()` |
+On mainnet, `verifierTermOwner` in `external-addresses.ts` is set to `0x23b6c5dda751d4f9cd43e264687954ce47ce34d1` — the same address used as the deployer (`"from"`) for all original mainnet transactions. This is **not** a separate wallet; the deployer already controls EIP712LegacyVerifier.
 
-This address is set via `external-addresses.ts` and passed as a constructor arg. It controls signature verification for legacy agreements. **The team must have the private key for this address.**
+(On Sepolia, `verifierTermOwner` is a different address `0x944A...`, which is why this was originally flagged as separate.)
 
 ### Chainlink Subscriptions
 
@@ -364,8 +362,7 @@ The team must own the Chainlink Functions subscription (ID 141) and have LINK to
 
 ### Summary of Required Private Keys
 
-1. **Deployer wallet** — controls proxy admin + all OwnableUpgradeable contracts + AccessControl admin roles
-2. **`0x23b6c5dda751d4f9cd43e264687954ce47ce34d1`** — verifierTermOwner for EIP712LegacyVerifier
+1. **Deployer wallet (`0x23b6c5dda751d4f9cd43e264687954ce47ce34d1`)** — controls proxy admin, all OwnableUpgradeable contracts, AccessControl admin roles, AND EIP712LegacyVerifier (verifierTermOwner = deployer on mainnet)
 
 > **Risk note:** All proxy upgrades and most admin functions are controlled by a single deployer EOA. Consider transferring DefaultProxyAdmin ownership to a multisig (e.g., Gnosis Safe) after deployment.
 

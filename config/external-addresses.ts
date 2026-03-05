@@ -20,8 +20,6 @@ export interface ExternalAddresses {
   usdcUsdPriceFeed: string;
   /** Chainlink ETH/USD price feed. */
   ethUsdPriceFeed: string;
-  /** Verifier term contract owner / init arg for EIP712LegacyVerifier. */
-  verifierTermOwner: string;
   /** Chainlink LINK token. */
   chainlinkLink: string;
   /** Chainlink Automation registrar. */
@@ -50,7 +48,7 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: ZERO,
     usdcUsdPriceFeed: ZERO,
     ethUsdPriceFeed: ZERO,
-    verifierTermOwner: ZERO,
+
     chainlinkLink: ZERO,
     chainlinkRegistrar: ZERO,
     chainlinkKeeperRegistry: ZERO,
@@ -68,7 +66,7 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: ZERO,
     usdcUsdPriceFeed: ZERO,
     ethUsdPriceFeed: ZERO,
-    verifierTermOwner: ZERO,
+
     chainlinkLink: ZERO,
     chainlinkRegistrar: ZERO,
     chainlinkKeeperRegistry: ZERO,
@@ -86,7 +84,6 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
     usdcUsdPriceFeed: "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
     ethUsdPriceFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-    verifierTermOwner: "0x944A402a91c3D6663f5520bFe23c1c1eE77BCa92",
     chainlinkLink: "0x779877A7B0D9E8603169DdbD7836e478b4624789",
     chainlinkRegistrar: "0xb0E49c5D0d05cbc241d68c05BC5BA1d1B7B72976",
     chainlinkKeeperRegistry: "0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad",
@@ -104,7 +101,6 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: "0x3E7d1eAB13ad0104d2750B8863b489D65364e32D",
     usdcUsdPriceFeed: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
     ethUsdPriceFeed: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
-    verifierTermOwner: "0x23b6c5dda751d4f9cd43e264687954ce47ce34d1",
     chainlinkLink: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
     chainlinkRegistrar: "0x6B0B234fB2f380309D47A7E9391E29E9a179395a",
     chainlinkKeeperRegistry: "0x6593c7De001fC8542bB1703532EE1E5aA0D458fD",
