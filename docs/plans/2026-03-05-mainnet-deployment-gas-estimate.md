@@ -5,7 +5,7 @@
 
 ## Scope
 
-Production contracts only — excludes test ERC20 tokens (USDC, USDT) and MockPremiumSendMail.
+Production contracts only — excludes test ERC20 tokens (USDC, USDT).
 
 ## Contract Deployment Gas (from Sepolia receipts)
 
@@ -230,26 +230,20 @@ The hardhat-deploy script (`deploy/legacy/4.TransferLegacyEOARouter.ts`) is actu
 
 **Fix:** Delete or update the stale upgrade scripts to avoid confusion. The `deploy-eoa-router.ts` standalone deploy script also references `initializeV2`/`setLegacyCreationCode` and would fail.
 
-### Issue 3: `deploy/premium/3.SendMail.ts` deploys MockPremiumSendMail (ACCEPTABLE)
+### Issue 3: ~~`deploy/premium/3.SendMail.ts` deploys MockPremiumSendMail~~ (RESOLVED)
 
-**File:** `deploy/premium/3.SendMail.ts`
-
-Deploys `MockPremiumSendMail` on all networks. For mainnet, this is a placeholder — acceptable for now, to be upgraded later with a real implementation.
-
-**Decision:** Deploy MockPremiumSendMail for now. Upgrade later.
+**Status: DELETED** — `deploy/premium/3.SendMail.ts` removed. `MockPremiumSendMail` was never needed: nothing in the deploy or init pipeline consumes its address. The real email functionality is provided by `PremiumMailBeforeActivation`, `PremiumMailReadyToActivate`, and `PremiumMailActivated`, wired in via `PremiumMailRouter.setParams()`. A real `PremiumSendMail` contract never existed — the original deploy script referenced one that was never written.
 
 ### Issue 4: `set_up_reminder.ts` has commented-out init calls (INVESTIGATE)
 
 **File:** `deploy/init/2.set_up_reminder.ts` lines 217-221
 
-Three calls are commented out:
-- `setPramramPremiumSetting` — already handled by `init/0.set_up_legacy.ts`, so this is fine
-- `setUpReminder` — calls `PremiumSetting.setUpReminder(manager, sendMailRouter)` — **not called anywhere else**
-- `setParamsManager` — calls `PremiumAutomationManager.setParams(link, registrar, keeperRegistry, premiumSetting, baseGasLimit, sendMailRouter, 150)` — **not called anywhere else**
+**Status: FIXED** — `setUpReminder` and `setParamsManager` have been uncommented. All three calls now run:
+1. `setUpReminder` — wires `PremiumSetting` with automation manager + mail router
+2. `setParamsManager` — wires `PremiumAutomationManager` with Chainlink addresses + premium setting + mail router
+3. `setParamsMailRouter` — wires `PremiumMailRouter` with the three mail contracts + premium setting + manager
 
-Only `setParamsMailRouter` (calls `PremiumMailRouter.setParams(...)`) is active.
-
-**Fix:** Determine if `setUpReminder` and `setParamsManager` are needed for the premium/automation system to function. If yes, uncomment them. If Chainlink automation isn't needed at launch, these can stay commented.
+`setPramramPremiumSetting` remains excluded (already handled by `init/0.set_up_legacy.ts`).
 
 ### Issue 5: `set_up_reminder.ts` uses `PK` env var (MINOR)
 
@@ -300,7 +294,7 @@ The `interval: 3000` mining config on the non-fork hardhat network caused EIP-15
 ```
 Phase 1 — No dependencies (parallel):
   Payment, PremiumSetting, LegacyDeployer, EIP712LegacyVerifier,
-  PremiumAutomationManager, MockPremiumSendMail, PremiumMailRouter,
+  PremiumAutomationManager, PremiumMailRouter,
   Banner, TimeLockRouter
 
 Phase 2 — After Phase 1:

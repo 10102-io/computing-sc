@@ -4,7 +4,7 @@
 
 **Goal:** Fix the 5 issues preventing a clean mainnet deployment via `hardhat deploy --network mainnet`.
 
-**Architecture:** Patch existing deploy scripts and config — no new contracts or architecture changes. MockPremiumSendMail deployed for now, real implementation later.
+**Architecture:** Patch existing deploy scripts and config — no new contracts or architecture changes. MockPremiumSendMail deploy script removed (unused — real email functionality provided by PremiumMail* contracts).
 
 **Tech Stack:** Hardhat, hardhat-deploy, TypeScript, ethers.js
 
