@@ -9,6 +9,8 @@ const setUpLegacy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const multisigDeploy = await deployments.get("MultisigLegacyRouter");
   const transferDeploy = await deployments.get("TransferLegacyRouter");
   const transferEOADeploy = await deployments.get("TransferEOALegacyRouter");
+  const premiumRegistryDeploy = await deployments.get("PremiumRegistry");
+  const premiumSettingDeploy = await deployments.get("PremiumSetting");
 
   // EIP712LegacyVerifier.setRouterAddresses(transferEOA, transfer, multisig)
   console.log("Calling setRouterAddresses on EIP712LegacyVerifier...");
@@ -31,6 +33,18 @@ const setUpLegacy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   );
   await tx2.wait();
   console.log("setParams done, tx:", tx2.hash);
+
+  // PremiumSetting.setParams(premiumRegistry, transfer, transferEOA, multisig)
+  console.log("Calling setParams on PremiumSetting...");
+  const premiumSetting = await ethers.getContractAt("PremiumSetting", premiumSettingDeploy.address);
+  const tx3 = await premiumSetting.setParams(
+    premiumRegistryDeploy.address,
+    transferDeploy.address,
+    transferEOADeploy.address,
+    multisigDeploy.address
+  );
+  await tx3.wait();
+  console.log("PremiumSetting.setParams done, tx:", tx3.hash);
 };
 
 setUpLegacy.tags = ["init", "set_up_legacy"];
@@ -40,6 +54,8 @@ setUpLegacy.dependencies = [
   "MultisigLegacyRouter",
   "TransferLegacyRouter",
   "TransferEOALegacyRouter",
+  "PremiumRegistry",
+  "PremiumSetting",
 ];
 setUpLegacy.id = "set_up_legacy";
 export default setUpLegacy;

@@ -3,8 +3,6 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { saveContract, verifyProxyOnEtherscan, shouldVerify } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
-
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy } = deployments;
@@ -14,7 +12,6 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const setting = (await deployments.get("PremiumSetting")).address;
   const verifierTerm = (await deployments.get("EIP712LegacyVerifier")).address;
 
-  const isLocal = !network.live;
   const deployOptions: Parameters<typeof deploy>[1] = {
     from: deployer,
     args: [],
@@ -29,11 +26,6 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
       },
     },
   };
-  if (!isLocal && process.env.RPC) {
-    const web3 = new Web3(process.env.RPC);
-    deployOptions.gasPrice = (await web3.eth.getGasPrice()).toString();
-  }
-
   const data = await deploy("MultisigLegacyRouter", deployOptions);
 
   console.log("MultisigLegacyRouter deployed to:", data.address);
