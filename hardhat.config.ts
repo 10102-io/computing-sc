@@ -12,6 +12,17 @@ import "@nomicfoundation/hardhat-toolbox";
 
 dotenv.config();
 
+// Patch ethers v5 Formatter to handle RPC providers that return "" instead of null
+// for the "to" field on contract creation transactions (known ethers v5 bug).
+import { ethers } from "ethers";
+const origFormatter = ethers.providers.Formatter.prototype.transactionResponse;
+ethers.providers.Formatter.prototype.transactionResponse = function (transaction: any) {
+  if (transaction.to === "" || transaction.to === "0x") {
+    transaction.to = null;
+  }
+  return origFormatter.call(this, transaction);
+};
+
 /** Public Sepolia RPC used as default when fork-block.json specifies sepolia and no env RPC is set. */
 const DEFAULT_SEPOLIA_RPC = "https://rpc.sepolia.org";
 
@@ -78,8 +89,8 @@ const config: HardhatUserConfig = {
         blockGasLimit: 50_000_000,
         mining: {
           auto: true,
-          interval: 3000
-        }
+        },
+        initialBaseFeePerGas: 0,
       },
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL ?? "",
@@ -88,9 +99,8 @@ const config: HardhatUserConfig = {
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
     },
     mainnet: {
-      url: "https://ethereum-rpc.publicnode.com",
+      url: process.env.RPC ?? "https://ethereum-rpc.publicnode.com",
       chainId: 1,
-      gasPrice: "auto",
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
     },
   },

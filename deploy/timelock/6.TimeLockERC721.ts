@@ -1,8 +1,7 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { getContracts, saveContract, getRpcUrl, verifyProxyOnEtherscan, shouldVerify } from "../../scripts/utils";
+import { saveContract, verifyProxyOnEtherscan, shouldVerify } from "../../scripts/utils";
 import * as dotenv from "dotenv";
-import Web3 from "web3";
 dotenv.config();
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
@@ -10,13 +9,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const web3 = new Web3(process.env.RPC!);
-
-  const contracts = getContracts();
-  const router = contracts[network.name]?.TimeLockRouter?.address;
-  if (!router) {
-    throw new Error(`TimeLockRouter not found for ${network.name}. Deploy TimeLockRouter first (it must run before TimelockERC721).`);
-  }
+  const router = (await deployments.get("TimeLockRouter")).address;
 
   const result = await deploy("TimelockERC721", {
     from: deployer,
@@ -24,7 +17,6 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     log: true,
     deterministicDeployment: false,
     skipIfAlreadyDeployed: true,
-    gasPrice: (await web3.eth.getGasPrice()).toString(),
     proxy: {
       proxyContract: "OptimizedTransparentProxy",
       owner: deployer,

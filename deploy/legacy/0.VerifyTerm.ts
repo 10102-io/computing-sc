@@ -6,7 +6,6 @@ import {
   shouldVerify,
   getBumpedGasPrice,
   sleep,
-  getExternalAddresses,
 } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
@@ -28,7 +27,6 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     await sleep(8000);
   }
 
-  const { verifierTermOwner } = getExternalAddresses(network.name);
   const data = await deploy("EIP712LegacyVerifier", {
     from: deployer,
     args: [],
@@ -40,7 +38,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
       owner: deployer,
       execute: {
         methodName: "initialize",
-        args: [verifierTermOwner],
+        args: [deployer], // OwnableUpgradeable — can transferOwnership() later if needed
       },
     }
   });

@@ -20,8 +20,6 @@ export interface ExternalAddresses {
   usdcUsdPriceFeed: string;
   /** Chainlink ETH/USD price feed. */
   ethUsdPriceFeed: string;
-  /** Verifier term contract owner / init arg for EIP712LegacyVerifier. */
-  verifierTermOwner: string;
   /** Chainlink LINK token. */
   chainlinkLink: string;
   /** Chainlink Automation registrar. */
@@ -50,7 +48,7 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: ZERO,
     usdcUsdPriceFeed: ZERO,
     ethUsdPriceFeed: ZERO,
-    verifierTermOwner: ZERO,
+
     chainlinkLink: ZERO,
     chainlinkRegistrar: ZERO,
     chainlinkKeeperRegistry: ZERO,
@@ -68,7 +66,7 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: ZERO,
     usdcUsdPriceFeed: ZERO,
     ethUsdPriceFeed: ZERO,
-    verifierTermOwner: ZERO,
+
     chainlinkLink: ZERO,
     chainlinkRegistrar: ZERO,
     chainlinkKeeperRegistry: ZERO,
@@ -86,7 +84,6 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     usdtUsdPriceFeed: "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
     usdcUsdPriceFeed: "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
     ethUsdPriceFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-    verifierTermOwner: "0x974763b760d566154B1767534cF9537CEe2f886f",
     chainlinkLink: "0x779877A7B0D9E8603169DdbD7836e478b4624789",
     chainlinkRegistrar: "0xb0E49c5D0d05cbc241d68c05BC5BA1d1B7B72976",
     chainlinkKeeperRegistry: "0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad",
@@ -101,16 +98,15 @@ export const EXTERNAL_ADDRESSES: Record<string, ExternalAddresses> = {
     weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
     usdt: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    usdtUsdPriceFeed: ZERO,
-    usdcUsdPriceFeed: ZERO,
-    ethUsdPriceFeed: ZERO,
-    verifierTermOwner: ZERO,
-    chainlinkLink: ZERO,
-    chainlinkRegistrar: ZERO,
-    chainlinkKeeperRegistry: ZERO,
-    chainlinkFunctionsRouter: ZERO,
-    chainlinkDonId: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    chainlinkSubscriptionId: 0,
+    usdtUsdPriceFeed: "0x3E7d1eAB13ad0104d2750B8863b489D65364e32D",
+    usdcUsdPriceFeed: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
+    ethUsdPriceFeed: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+    chainlinkLink: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+    chainlinkRegistrar: "0x6B0B234fB2f380309D47A7E9391E29E9a179395a",
+    chainlinkKeeperRegistry: "0x6593c7De001fC8542bB1703532EE1E5aA0D458fD",
+    chainlinkFunctionsRouter: "0x65Dcc24F8ff9e51F10DCc7Ed1e4e2A61e6E14bd6",
+    chainlinkDonId: "0x66756e2d657468657265756d2d6d61696e6e65742d3100000000000000000000",
+    chainlinkSubscriptionId: 141,
     chainlinkBaseGasLimit: "1500000",
     chainlinkGasLimit: "300000",
   },
