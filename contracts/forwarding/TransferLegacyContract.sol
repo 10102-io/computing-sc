@@ -621,7 +621,7 @@ contract TransferLegacy is GenericLegacy, ITransferLegacy {
     );
 
     if (!transferErc20Success || (returnData.length != 0 && !abi.decode(returnData, (bool)))) return 0;
-    return amountSent;
+    return amount;
 
   }
 

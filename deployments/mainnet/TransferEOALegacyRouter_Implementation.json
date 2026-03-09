@@ -23,6 +23,11 @@
     },
     {
       "inputs": [],
+      "name": "EmptyCode",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "InvalidInitialization",
       "type": "error"
     },
@@ -34,6 +39,11 @@
     {
       "inputs": [],
       "name": "LegacyNotFound",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotCodeAdmin",
       "type": "error"
     },
     {
@@ -97,7 +107,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -122,7 +132,32 @@
       "anonymous": false,
       "inputs": [
         {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "legacyId",
+          "type": "uint256"
+        },
+        {
           "indexed": false,
+          "internalType": "uint8",
+          "name": "layer",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TransferEOALegacyActivatedWithUnswap",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -141,7 +176,38 @@
       "anonymous": false,
       "inputs": [
         {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "legacyId",
+          "type": "uint256"
+        },
+        {
           "indexed": false,
+          "internalType": "address",
+          "name": "storageToken",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "ethAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TransferEOALegacyAutoSwapped",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -223,7 +289,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -317,7 +383,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -336,7 +402,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -379,7 +445,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -422,7 +488,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -471,7 +537,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -502,7 +568,7 @@
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "uint256",
           "name": "legacyId",
           "type": "uint256"
@@ -521,6 +587,37 @@
         }
       ],
       "name": "TransferEOALegacyTriggerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "legacyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "storageToken",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "tokenAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TransferEOALegacyUnswapped",
       "type": "event"
     },
     {
@@ -570,6 +667,69 @@
       "name": "activeLegacy",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "legacyId_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address[]",
+          "name": "assets_",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountOutMin_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "deadline_",
+          "type": "uint256"
+        }
+      ],
+      "name": "activeLegacyAndUnswap",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "legacyId_",
+          "type": "uint256"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "storageToken",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amountOutMin",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deadline",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TransferLegacyStruct.EOALegacyETHSwap",
+          "name": "swap_",
+          "type": "tuple"
+        }
+      ],
+      "name": "autoSwap",
+      "outputs": [],
+      "stateMutability": "payable",
       "type": "function"
     },
     {
@@ -749,6 +909,30 @@
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "ethAmount_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "outputToken_",
+          "type": "address"
+        }
+      ],
+      "name": "getEthToTokenAmountOut",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "address",
           "name": "sender_",
           "type": "address"
@@ -760,6 +944,30 @@
           "internalType": "address",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenAmount_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "token_",
+          "type": "address"
+        }
+      ],
+      "name": "getTokenToEthAmountOut",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -807,6 +1015,19 @@
       "inputs": [
         {
           "internalType": "address",
+          "name": "codeAdmin_",
+          "type": "address"
+        }
+      ],
+      "name": "initializeV2",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
           "name": "",
           "type": "address"
         }
@@ -836,6 +1057,19 @@
           "internalType": "address",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "legacyCreationCode",
+      "outputs": [
+        {
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
         }
       ],
       "stateMutability": "view",
@@ -1116,6 +1350,19 @@
     {
       "inputs": [
         {
+          "internalType": "bytes",
+          "name": "code_",
+          "type": "bytes"
+        }
+      ],
+      "name": "setLegacyCreationCode",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint256",
           "name": "legacyId_",
           "type": "uint256"
@@ -1182,6 +1429,34 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "legacyId_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountIn_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountOutMin_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "deadline_",
+          "type": "uint256"
+        }
+      ],
+      "name": "unswap",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {

@@ -17,4 +17,10 @@ library TransferLegacyStruct {
     address router;
     address weth;
   }
+
+  struct EOALegacyETHSwap {
+    address storageToken;
+    uint256 amountOutMin;
+    uint256 deadline;
+  }
 }
