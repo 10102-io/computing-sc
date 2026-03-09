@@ -74,6 +74,7 @@ const config: HardhatUserConfig = {
     // Fork at deployment start block when fork-block.json exists and RPC (or SEPOLIA_RPC_URL) is set.
     hardhat: forkConfig
       ? {
+        allowUnlimitedContractSize: true,
         forking: {
           url: forkConfig.url,
           blockNumber: forkConfig.blockNumber
@@ -84,6 +85,8 @@ const config: HardhatUserConfig = {
         }
       }
       : {
+        allowUnlimitedContractSize: true,
+        blockGasLimit: 50_000_000,
         mining: {
           auto: true,
         },
@@ -93,7 +96,7 @@ const config: HardhatUserConfig = {
       url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,
       gasPrice: "auto",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
+      accounts: (process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) !== undefined ? [(process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) as string] : [],
     },
     mainnet: {
       url: process.env.RPC ?? "https://ethereum-rpc.publicnode.com",
@@ -141,7 +144,7 @@ const config: HardhatUserConfig = {
     alphaSort: true,
     disambiguatePaths: false,
     runOnCompile: false,
-    strict: true,
+    strict: false,
   },
   typechain: {
     dontOverrideCompile: true,

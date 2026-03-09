@@ -22,7 +22,9 @@
     "check-upkeep": "npx ts-node scripts/reminder/11.check_keep_up.ts",
     "perform-upkeep": "npx ts-node scripts/reminder/13.peform_keepup.ts",
     "sync-ui": "npx ts-node scripts/sync-ui.ts",
-    "investigate:swap": "npx ts-node scripts/investigate-uniswap-swap.ts"
+    "investigate:swap": "npx ts-node scripts/investigate-uniswap-swap.ts",
+    "upgrade-timelock": "npx hardhat run scripts/upgrade-timelock-set-router.ts --network sepolia",
+    "upgrade-eoa-legacy": "npx hardhat run scripts/upgrade-eoa-legacy-router.ts --network sepolia"
   },
   "author": "",
   "license": "ISC",
