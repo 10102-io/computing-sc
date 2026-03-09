@@ -1,9 +1,8 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, getContracts, sleep, getRpcUrl, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses } from "../../scripts/utils";
+import { saveContract, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
@@ -12,8 +11,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 
   const externalAddrs = getExternalAddresses(network.name);
   const { chainlinkFunctionsRouter: router, chainlinkSubscriptionId: subcriptionId, chainlinkDonId: donID, chainlinkGasLimit: gasLimit } = externalAddrs;
-  const contracts = getContracts();
-  const sendMailRouter = contracts[network.name]["PremiumMailRouter"].address;
+  const sendMailRouter = (await deployments.get("PremiumMailRouter")).address;
 
 
   const data = await deploy("PremiumMailBeforeActivation", {
@@ -71,4 +69,5 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 };
 
 deploy.tags = ["PremiumMailBeforeActivation"];
+deploy.dependencies = ["PremiumMailRouter"];
 export default deploy;

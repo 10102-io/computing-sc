@@ -66,7 +66,7 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 | Contract | Purpose |
 |----------|---------|
 | **PremiumRegistry** | Premium plans and payment. Holds USDT/USDC and Chainlink price feeds (USD, ETH); defines plans (USD price, duration, active). DEPOSITOR/OPERATOR roles; users subscribe to plans; receives payments and can deposit to Payment contract. |
-| **PremiumSetting** | Central premium and notification config. Stores per-user: premium expiry, name/email, “time prior to activation”; per-legacy: cosigners, beneficiaries, second/third line contacts, watchers, private codes. Links to PremiumRegistry, the three legacy routers, PremiumAutomationManager, and PremiumSendMail. |
+| **PremiumSetting** | Central premium and notification config. Stores per-user: premium expiry, name/email, “time prior to activation”; per-legacy: cosigners, beneficiaries, second/third line contacts, watchers, private codes. Links to PremiumRegistry, the three legacy routers, and PremiumAutomationManager. |
 
 ---
 
@@ -74,12 +74,11 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 
 | Contract | Purpose |
 |----------|---------|
-| **PremiumAutomationManager** | Chainlink Automation (upkeeps) for premium users. Creates per-user “cronjob” contracts; registers upkeeps with a registrar; adds legacies to upkeeps for reminder/activation checks. Tracks nonces and notifies via PremiumSendMail. |
+| **PremiumAutomationManager** | Chainlink Automation (upkeeps) for premium users. Creates per-user “cronjob” contracts; registers upkeeps with a registrar; adds legacies to upkeeps for reminder/activation checks. Tracks nonces and notifies via PremiumMailRouter. |
 | **PremiumMailRouter** | Dispatches which mail contract to use. Called by PremiumSetting and PremiumAutomationManager; forwards to MailBeforeActivation, MailReadyToActivate, or MailActivated depending on context. |
-| **PremiumMailBeforeActivation** | Sends “before activation” emails (e.g. reminder that a legacy is about to activate). |
-| **PremiumMailReadyToActivate** | Sends “ready to activate” emails. |
-| **PremiumMailActivated** | Sends “activated” emails (e.g. legacy has activated). |
-| **MockPremiumSendMail** | Mock mail sender for tests/dev (deployed as PremiumSendMail in some envs). |
+| **PremiumMailBeforeActivation** | Sends “before activation” emails via Chainlink Functions + Mailjet API. |
+| **PremiumMailReadyToActivate** | Sends “ready to activate” emails via Chainlink Functions + Mailjet API. |
+| **PremiumMailActivated** | Sends “activated” emails via Chainlink Functions + Mailjet API. |
 
 ---
 

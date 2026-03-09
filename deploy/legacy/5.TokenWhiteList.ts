@@ -8,25 +8,17 @@ import {
 } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
-
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network, ethers } = hre;
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const isLocal = !network.live;
   const deployOptions: Parameters<typeof deploy>[1] = {
     from: deployer,
     args: [deployer],
     log: true,
     deterministicDeployment: false,
   };
-  if (!isLocal && process.env.RPC) {
-    const web3 = new Web3(process.env.RPC);
-    deployOptions.gasPrice = (await web3.eth.getGasPrice()).toString();
-  }
-
   const data = await deploy("TokenWhiteList", deployOptions);
 
   console.log("TokenWhiteList deployed to:", data.address);

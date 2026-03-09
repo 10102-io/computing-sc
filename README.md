@@ -176,8 +176,7 @@ Deploy contracts in the following order using the `--tags` parameter:
 12. `PremiumRegistry` - Premium Registry
 13. `PremiumSetting` - Premium Setting
 14. `PremiumAutomationManager` - Premium Automation Manager
-15. `PremiumSendMail` - Premium Send Mail
-16. `PremiumMailRouter` - Premium Mail Router
+15. `PremiumMailRouter` - Premium Mail Router
 17. `PremiumMailBeforeActivation` - Premium Mail Before Activation
 18. `PremiumMailReadyToActivate` - Premium Mail Ready To Activate
 19. `PremiumMailActivated` - Premium Mail Activated
@@ -202,7 +201,6 @@ npx hardhat deploy --network sepolia --tags TimelockERC721
 npx hardhat deploy --network sepolia --tags TimelockERC1155
 npx hardhat deploy --network sepolia --tags PremiumRegistry
 npx hardhat deploy --network sepolia --tags PremiumAutomationManager
-npx hardhat deploy --network sepolia --tags PremiumSendMail
 npx hardhat deploy --network sepolia --tags PremiumMailRouter
 npx hardhat deploy --network sepolia --tags PremiumMailBeforeActivation
 npx hardhat deploy --network sepolia --tags PremiumMailReadyToActivate

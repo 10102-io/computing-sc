@@ -2,8 +2,6 @@ import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import {
   saveContract,
-  getContracts,
-  getRpcUrl,
   verifyProxyOnEtherscan,
   shouldVerify,
   shouldRunTestERC20,
@@ -11,39 +9,29 @@ import {
 } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const web3 = new Web3(process.env.RPC!);
-
-  const contracts = getContracts();
-  const networkContracts = contracts[network.name] ?? {};
   const externalAddrs = getExternalAddresses(network.name);
-  const useTestTokens =
-    shouldRunTestERC20(network.name) &&
-    networkContracts.ERC20Token_USDC?.address &&
-    networkContracts.ERC20Token_USDT?.address;
 
-  const usdt = useTestTokens
-    ? networkContracts.ERC20Token_USDT!.address
-    : externalAddrs.usdt;
-  const usdc = useTestTokens
-    ? networkContracts.ERC20Token_USDC!.address
-    : externalAddrs.usdc;
+  const usdcDeploy = await deployments.getOrNull("ERC20Token_USDC");
+  const usdtDeploy = await deployments.getOrNull("ERC20Token_USDT");
+  const useTestTokens = shouldRunTestERC20(network.name) && usdcDeploy && usdtDeploy;
+
+  const usdt = useTestTokens ? usdtDeploy!.address : externalAddrs.usdt;
+  const usdc = useTestTokens ? usdcDeploy!.address : externalAddrs.usdc;
   const { usdtUsdPriceFeed, usdcUsdPriceFeed, ethUsdPriceFeed } = externalAddrs;
-  const setting = contracts[network.name]["PremiumSetting"].address;
-  const payment = contracts[network.name]["Payment"].address;
+  const setting = (await deployments.get("PremiumSetting")).address;
+  const payment = (await deployments.get("Payment")).address;
 
   const data = await deploy("PremiumRegistry", {
     from: deployer,
     args: [],
     log: true,
     deterministicDeployment: false,
-    gasPrice: (await web3.eth.getGasPrice()).toString(),
     proxy: {
       proxyContract: "OptimizedTransparentProxy",
       owner: deployer,

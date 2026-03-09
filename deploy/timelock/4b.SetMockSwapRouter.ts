@@ -136,6 +136,6 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 };
 
 deploy.tags = ["SetMockSwapRouter"];
-deploy.dependencies = ["TimeLockRouter", "TestERC20"];
+deploy.dependencies = ["TimeLockRouter", "TestERC20", "TimelockERC20", "TimelockERC721", "TimelockERC1155", "TokenWhiteList"];
 
 export default deploy;

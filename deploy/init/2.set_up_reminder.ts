@@ -1,235 +1,72 @@
-import * as dotenv from "dotenv";
 import { DeployFunction } from "hardhat-deploy/dist/types";
-import Web3 from "web3";
-dotenv.config();
+import { HardhatRuntimeEnvironment } from "hardhat/types";
+import { getExternalAddresses } from "../../scripts/utils";
 
-import * as fs from "fs";
-import { network } from "hardhat";
-import { getContracts, getExternalAddresses } from "../../scripts/utils";
+const ZERO = "0x0000000000000000000000000000000000000000";
 
-function getWeb3(): Web3 {
-    const rpc = process.env.RPC;
-    if (!rpc) throw new Error("Set RPC in .env");
-    return new Web3(rpc);
-}
+const setUpReminder: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
+  const { deployments, ethers, network } = hre;
 
-function getUserAddress(): string {
-    const userPk = process.env.PK;
-    if (!userPk) throw new Error("Set PK in .env");
-    return getWeb3().eth.accounts.privateKeyToAccount(userPk).address;
-}
+  const premiumSettingDeploy = await deployments.get("PremiumSetting");
+  const managerDeploy = await deployments.get("PremiumAutomationManager");
+  const mailRouterDeploy = await deployments.get("PremiumMailRouter");
+  const mailBeforeDeploy = await deployments.get("PremiumMailBeforeActivation");
+  const mailActivatedDeploy = await deployments.get("PremiumMailActivated");
+  const mailReadyDeploy = await deployments.get("PremiumMailReadyToActivate");
 
-const Manager = JSON.parse(
-    fs.readFileSync(
-        "./artifacts/contracts/premium/PremiumAutomationManager.sol/PremiumAutomationManager.json",
-        "utf-8"
-    )
-).abi;
+  // 1. PremiumSetting.setUpReminder(manager, sendMailRouter)
+  console.log("Calling setUpReminder on PremiumSetting...");
+  const premiumSetting = await ethers.getContractAt("PremiumSetting", premiumSettingDeploy.address);
+  const tx1 = await premiumSetting.setUpReminder(managerDeploy.address, mailRouterDeploy.address);
+  await tx1.wait();
+  console.log("setUpReminder done, tx:", tx1.hash);
 
+  // 2. PremiumAutomationManager.setParams — requires real Chainlink on-chain.
+  //    Skipped on local/hardhat networks where Chainlink contracts don't exist.
+  const isLocalNetwork = ["hardhat", "localhost"].includes(network.name);
+  const externalAddrs = getExternalAddresses(network.name);
+  const chainlinkLink = externalAddrs.chainlinkLink;
 
-
-const PremiumMailRouter = JSON.parse(
-    fs.readFileSync(
-        "./artifacts/contracts/premium/PremiumMailRouter.sol/PremiumMailRouter.json",
-        "utf-8"
-    )
-).abi;
-
-const Setting = JSON.parse(
-    fs.readFileSync(
-        "./artifacts/contracts/premium/PremiumSetting.sol/PremiumSetting.json",
-        "utf-8"
-    )
-).abi;
-
-async function setPramramPremiumSetting(
-    web3: Web3,
-    user: string,
-    userPk: string,
-    premiumSetting: string,
-    registry: string,
-    transferLegacyRouter: string,
-    transferEOALegacyRouter: string,
-    multisigLegacyRouter: string
-) {
-    console.log('setPramramPremiumSetting...');
-    const txCount = await web3.eth.getTransactionCount(user);
-
-    const contract = new web3.eth.Contract(Setting);
-
-    const txData = contract.methods
-        .setParams(registry, transferLegacyRouter, transferEOALegacyRouter, multisigLegacyRouter).encodeABI();
-
-    const txObj = {
-        nonce: txCount,
-        gas: web3.utils.toHex(1000000),
-        gasPrice: await web3.eth.getGasPrice(),
-        data: txData,
-        to: premiumSetting,
-        from: user,
-    };
-
-    const signedTx = await web3.eth.accounts.signTransaction(txObj, userPk);
-
-    const result = await web3.eth.sendSignedTransaction(signedTx.rawTransaction!);
-    console.log(result);
-}
-
-
-async function setUpReminder(
-    web3: Web3,
-    user: string,
-    userPk: string,
-    premiumSetting: string,
-    manager: string,
-    sendMailRouter: string
-) {
-    console.log('setUpReminder... at PremiumSetting');
-    const txCount = await web3.eth.getTransactionCount(user);
-
-    const contract = new web3.eth.Contract(Setting);
-
-    const txData = contract.methods
-        .setUpReminder(manager, sendMailRouter).encodeABI();
-
-    const txObj = {
-        nonce: txCount,
-        gas: web3.utils.toHex(1000000),
-        gasPrice: await web3.eth.getGasPrice(),
-        data: txData,
-        to: premiumSetting,
-        from: user,
-    };
-
-    const signedTx = await web3.eth.accounts.signTransaction(txObj, userPk);
-
-    const result = await web3.eth.sendSignedTransaction(signedTx.rawTransaction!);
-    console.log(result);
-}
-
-async function setParamsManager(
-    web3: Web3,
-    user: string,
-    userPk: string,
-    manager: string,
-    premiumSetting: string,
-    sendMailRouter: string,
-    chainlink: { link: string; registrar: string; keeperRegistry: string; baseGasLimit: string }
-) {
-    console.log('Set up Manager Params...');
-    const txCount = await web3.eth.getTransactionCount(user);
-    const contract = new web3.eth.Contract(Manager, manager);
-
-    const txData = await contract.methods
-        .setParams(chainlink.link, chainlink.registrar, chainlink.keeperRegistry, premiumSetting, chainlink.baseGasLimit, sendMailRouter, 150).encodeABI();
-    console.log(txData);
-    const txObj = {
-        nonce: txCount,
-        gas: web3.utils.toHex(4000000),
-        gasPrice: await web3.eth.getGasPrice(),
-        data: txData,
-        to: manager,
-        from: user,
-    };
-
-    const signedTx = await web3.eth.accounts.signTransaction(txObj, userPk);
-
-    const result = await web3.eth.sendSignedTransaction(signedTx.rawTransaction!);
-    console.log(result);
-
-}
-
-async function setParamsMailRouter(
-    web3: Web3,
-    user: string,
-    userPk: string,
-    sendMailRouter: string,
-    mailBeforeActivation: string,
-    mailActivated: string,
-    mailReadyToActivate: string,
-    premiumSetting: string,
-    manager: string
-) {
-    console.log('Setting params at PremiumMailRouter');
-
-    const txCount = await web3.eth.getTransactionCount(user);
-
-    const contract = new web3.eth.Contract(PremiumMailRouter, sendMailRouter);
-
-    const txData = contract.methods
-        .setParams(mailBeforeActivation, mailActivated, mailReadyToActivate, premiumSetting, manager)
-        .encodeABI();
-    console.log(txData);
-
-    const txObj = {
-        nonce: txCount,
-        gas: web3.utils.toHex(4000000),
-        gasPrice: (await web3.eth.getGasPrice()).toString(),
-        data: txData,
-        to: sendMailRouter,
-        from: user,
-    };
-
-    const signedTx = await web3.eth.accounts.signTransaction(txObj, userPk);
-
-    const result = await web3.eth.sendSignedTransaction(
-        signedTx.rawTransaction!
+  if (!isLocalNetwork && chainlinkLink !== ZERO) {
+    console.log("Calling setParams on PremiumAutomationManager...");
+    const manager = await ethers.getContractAt("PremiumAutomationManager", managerDeploy.address);
+    const tx2 = await manager.setParams(
+      chainlinkLink,
+      externalAddrs.chainlinkRegistrar,
+      externalAddrs.chainlinkKeeperRegistry,
+      premiumSettingDeploy.address,
+      externalAddrs.chainlinkBaseGasLimit,
+      mailRouterDeploy.address,
+      150
     );
-    console.log(result);
+    await tx2.wait();
+    console.log("setParams (manager) done, tx:", tx2.hash);
+  } else {
+    console.log("Skipping setParamsManager — Chainlink not available on this network");
+  }
 
-
-
-}
-
-
-
-
-async function main() {
-    const contracts = getContracts();
-    const networkContracts = contracts[network.name];
-    if (!networkContracts) {
-        throw new Error(`No contract addresses found for network: ${network.name}. Deploy contracts first.`);
-    }
-    const premiumSetting = networkContracts["PremiumSetting"].address;
-    const registry = networkContracts["PremiumRegistry"].address;
-    const multisigLegacyRouter = networkContracts["MultisigLegacyRouter"].address;
-    const transferLegacyRouter = networkContracts["TransferLegacyRouter"].address;
-    const transferEOALegacyRouter = networkContracts["TransferEOALegacyRouter"].address;
-    const manager = networkContracts["PremiumAutomationManager"].address;
-    const sendMailRouter = networkContracts["PremiumMailRouter"].address;
-    const mailBeforeActivation = networkContracts["PremiumMailBeforeActivation"].address;
-    const mailActivated = networkContracts["PremiumMailActivated"].address;
-    const mailReadyToActivate = networkContracts["PremiumMailReadyToActivate"].address;
-
-    const web3 = getWeb3();
-    const user = getUserAddress();
-    const userPk = process.env.PK!;
-
-    // Setting contract
-    const externalAddrs = getExternalAddresses(network.name);
-    const chainlink = {
-        link: externalAddrs.chainlinkLink,
-        registrar: externalAddrs.chainlinkRegistrar,
-        keeperRegistry: externalAddrs.chainlinkKeeperRegistry,
-        baseGasLimit: externalAddrs.chainlinkBaseGasLimit,
-    };
-
-    // await setPramramPremiumSetting(web3, user, userPk, premiumSetting, registry, transferLegacyRouter, transferEOALegacyRouter, multisigLegacyRouter);
-    // await setUpReminder(web3, user, userPk, premiumSetting, manager, sendMailRouter);
-    // await setParamsManager(web3, user, userPk, manager, premiumSetting, sendMailRouter, chainlink);
-
-    await setParamsMailRouter(web3, user, userPk, sendMailRouter, mailBeforeActivation, mailActivated, mailReadyToActivate, premiumSetting, manager);
-}
-if (require.main === module) {
-    main().catch((error) => {
-        console.error(error);
-        process.exitCode = 1;
-    });
-}
-
-const deployFunc: DeployFunction = async () => {
-    /* Run via: npx hardhat run deploy/init/2.set_up_reminder.ts --network <network> */
+  // 3. PremiumMailRouter.setParams(mailBefore, mailActivated, mailReady, premiumSetting, manager)
+  console.log("Calling setParams on PremiumMailRouter...");
+  const mailRouter = await ethers.getContractAt("PremiumMailRouter", mailRouterDeploy.address);
+  const tx3 = await mailRouter.setParams(
+    mailBeforeDeploy.address,
+    mailActivatedDeploy.address,
+    mailReadyDeploy.address,
+    premiumSettingDeploy.address,
+    managerDeploy.address
+  );
+  await tx3.wait();
+  console.log("setParams (mail router) done, tx:", tx3.hash);
 };
-deployFunc.tags = ["init", "set_up_reminder"];
-deployFunc.id = "set_up_reminder";
-export default deployFunc;
+
+setUpReminder.tags = ["init", "set_up_reminder"];
+setUpReminder.dependencies = [
+  "PremiumSetting",
+  "PremiumAutomationManager",
+  "PremiumMailRouter",
+  "PremiumMailBeforeActivation",
+  "PremiumMailActivated",
+  "PremiumMailReadyToActivate",
+];
+setUpReminder.id = "set_up_reminder";
+export default setUpReminder;
