@@ -4,7 +4,7 @@
       "address": "0x51bCd8f02fc89484a911ddD8A96D1D5Cd6e4d52a"
     },
     "DefaultProxyAdmin": {
-      "address": "0x3A5a8f9fF56e214bbE1Ab56C320feACaCe7BBdC9"
+      "address": "0x6D19BaAdB96a3aFfA1134D80d7B62B157004b7c2"
     },
     "ERC20Token_USDC": {
       "address": "0x2b4A37EF1f0ed36475601f445cD7E49DA2bfA898"
@@ -30,7 +30,7 @@
     },
     "TransferLegacyRouter": {
       "address": "0x33dAc5303C3c1309Fe98aBC151C987A6EEF9D9bC",
-      "implementation": "0xf602cd16bfc2079A5524c54f33AC544554e44F68"
+      "implementation": "0x1be70cB4213d54bF7335019817f1E5D7CE2dB608"
     },
     "PremiumAutomationManager": {
       "address": "0xea969f5019919d45fA19959d2b1a6b6726B88BA3",
@@ -82,13 +82,13 @@
   },
   "localhost": {
     "Payment": {
-      "address": "0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650"
+      "address": "0xf825ac88B042e9E31Ce18bAaE18EF8c31Eae7C8f"
     },
     "ERC20Token_USDC": {
-      "address": "0xc351628EB244ec633d5f21fBD6621e1a683B1181"
+      "address": "0x1B12E8EF4710Fe37Bc5D6094FAB9D6c1881E97E6"
     },
     "ERC20Token_USDT": {
-      "address": "0xFD471836031dc5108809D173A067e8486B9047A3"
+      "address": "0x1A9a6FABC4412dd3f829a1be122Ff0A081a2412b"
     },
     "DefaultProxyAdmin": {
       "address": "0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07"
