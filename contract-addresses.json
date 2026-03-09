@@ -203,11 +203,11 @@
     },
     "TransferLegacyRouter": {
       "address": "0x7e173738f0bE8B4bDbA28CF91b0F5B0263Aa4b0C",
-      "implementation": "0x4E8b4d91fE59b7816BF470769800147cC8aa7088"
+      "implementation": "0x96F781752d2E8322961b57ba8eaac9D65356B3D3"
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0x17015e2be08D2E9fef20a3eE422413753172F7de"
+      "implementation": "0x62d2a4a6675E98DB610Aa855780C506914721dc7"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
