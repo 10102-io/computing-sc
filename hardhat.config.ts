@@ -96,7 +96,7 @@ const config: HardhatUserConfig = {
       url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,
       gasPrice: "auto",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
+      accounts: (process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) !== undefined ? [(process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) as string] : [],
     },
     mainnet: {
       url: process.env.RPC ?? "https://ethereum-rpc.publicnode.com",
