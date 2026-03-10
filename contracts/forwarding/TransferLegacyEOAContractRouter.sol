@@ -112,7 +112,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     weth = weth_;
   }
 
-  function initializeV2(address codeAdmin_) external reinitializer(2) {
+  function initializeV2(address codeAdmin_) external reinitializer(3) {
     _codeAdmin = codeAdmin_;
   }
 
