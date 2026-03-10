@@ -14,6 +14,7 @@ import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Factory} from "../interfaces/IUniswapV2Factory.sol";
 import {NotifyLib} from "../libraries/NotifyLib.sol";
+import {IWETH} from "../interfaces/IWETH.sol";
 
 contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   using EnumerableSet for EnumerableSet.AddressSet;
@@ -41,7 +42,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   /* State variable */
   uint128 public constant LEGACY_TYPE = 3;
-  uint128 public constant MAX_TRANSFER = 2;
+  uint128 public constant MAX_TRANSFER = 10;
   uint256 public adminFeePercent; // Store fee percentage at initialization
   address public paymentContract; // Store address for fee transfers
   address public uniswapRouter; // Uniswap router address for swapping
@@ -62,6 +63,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   IPremiumSetting public premiumSetting;
   address public creator;
+  address public eoaStorageToken; // address(0) means no active swap
 
   modifier onlyLive() {
     if (!isLive()) {
@@ -93,6 +95,72 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     {} catch {
       IERC20(token).safeTransfer(paymentContract, amountIn);
     }
+  }
+
+  /**
+   * @dev Owner swaps ETH (sent as msg.value) into a storage token via Uniswap V2.
+   * The resulting tokens are sent directly to the owner's wallet, not held by this contract.
+   * Sets eoaStorageToken so the system knows a swap is active.
+   */
+  function autoSwap(
+    address sender_,
+    TransferLegacyStruct.EOALegacyETHSwap calldata swap_
+  ) external payable onlyRouter onlyLive onlyOwner(sender_) {
+    if (msg.value == 0) revert NotEnoughETH();
+    if (swap_.storageToken == address(0)) revert AssetInvalid();
+
+    if (swap_.storageToken == weth) {
+      // ETH→WETH is 1:1 wrap; bypass Uniswap
+      IWETH(weth).deposit{value: msg.value}();
+      IERC20(weth).safeTransfer(sender_, msg.value);
+    } else {
+      address[] memory path = new address[](2);
+      path[0] = weth;
+      path[1] = swap_.storageToken;
+
+      IUniswapV2Router02(uniswapRouter).swapExactETHForTokens{value: msg.value}(
+        swap_.amountOutMin,
+        path,
+        sender_,
+        swap_.deadline
+      );
+    }
+
+    eoaStorageToken = swap_.storageToken;
+    _lastTimestamp = block.timestamp;
+  }
+
+  /**
+   * @dev Owner reverses a previous autoSwap: pulls storage token from owner's wallet
+   * (requires prior ERC-20 approval), swaps back to ETH via Uniswap V2, sends ETH to owner.
+   * Clears eoaStorageToken on completion.
+   */
+  function unswap(
+    address sender_,
+    uint256 amountIn_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external onlyRouter onlyLive onlyOwner(sender_) {
+    if (eoaStorageToken == address(0)) revert AssetInvalid();
+    if (amountIn_ == 0) revert AssetInvalid();
+
+    IERC20(eoaStorageToken).safeTransferFrom(sender_, address(this), amountIn_);
+    IERC20(eoaStorageToken).forceApprove(uniswapRouter, amountIn_);
+
+    address[] memory path = new address[](2);
+    path[0] = eoaStorageToken;
+    path[1] = weth;
+
+    IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
+      amountIn_,
+      amountOutMin_,
+      path,
+      sender_,
+      deadline_
+    );
+
+    eoaStorageToken = address(0);
+    _lastTimestamp = block.timestamp;
   }
 
   /* View functions to support premium */
@@ -433,8 +501,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     payable(sender_).transfer(address(this).balance);
   }
 
-  receive() external payable onlyLive {
-    if (msg.sender == getLegacyOwner()) {
+  receive() external payable {
+    if (isLive() && msg.sender == getLegacyOwner()) {
       _lastTimestamp = block.timestamp;
     }
   }
@@ -463,6 +531,58 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     } else {
       revert NotEnoughContitionalActive();
     }
+  }
+
+  /**
+   * @dev Beneficiary claims the legacy, atomically swapping the storage token back to ETH first.
+   * If eoaStorageToken == address(0) the function behaves identically to activeLegacy with isETH_=true.
+   * ETH from the swap is received by this contract (via receive()) and then distributed proportionally
+   * to all beneficiaries by the existing _transferAssetToBeneficiaries logic.
+   * @param assets_       ERC-20 token addresses to distribute from the owner's wallet
+   * @param bene_         The beneficiary address (caller, forwarded from router)
+   * @param amountOutMin_ Minimum ETH out from the swap (0 = no slippage check, acceptable at claim time)
+   * @param deadline_     Uniswap swap deadline (unix timestamp)
+   */
+  function activeLegacyAndUnswap(
+    address[] calldata assets_,
+    address bene_,
+    uint256 amountOutMin_,
+    uint256 deadline_
+  ) external onlyRouter {
+    if (!(_checkActiveLegacy() && _isLive == 1)) revert NotEnoughContitionalActive();
+
+    if (eoaStorageToken != address(0)) {
+      address ownerAddress = getLegacyOwner();
+      uint256 tokenBal = IERC20(eoaStorageToken).balanceOf(ownerAddress);
+      uint256 allowance = IERC20(eoaStorageToken).allowance(ownerAddress, address(this));
+      uint256 pullAmount = tokenBal < allowance ? tokenBal : allowance;
+      if (pullAmount > 0) {
+        IERC20(eoaStorageToken).safeTransferFrom(ownerAddress, address(this), pullAmount);
+        if (eoaStorageToken == weth) {
+          // WETH→ETH is 1:1 unwrap; bypass Uniswap
+          IWETH(weth).withdraw(pullAmount);
+        } else {
+          IERC20(eoaStorageToken).forceApprove(uniswapRouter, pullAmount);
+          address[] memory path = new address[](2);
+          path[0] = eoaStorageToken;
+          path[1] = weth;
+          IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
+            pullAmount,
+            amountOutMin_,
+            path,
+            address(this), // ETH lands here; receive() now accepts it unconditionally
+            deadline_
+          );
+        }
+      }
+      eoaStorageToken = address(0);
+    }
+
+    if (getIsActiveLegacy() == 1) {
+      _setLegacyToInactive();
+    }
+
+    _transferAssetToBeneficiaries(assets_, true, bene_);
   }
 
   function setLegacyName(string calldata legacyName_, address sender_) external onlyRouter onlyLive onlyOwner(sender_){
@@ -597,6 +717,10 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
     for (uint256 i = 0; i < n; ) {
       address token = assets_[i];
+      // If this token is the storage-token being claimed directly, clear the flag.
+      if (token == eoaStorageToken) {
+        eoaStorageToken = address(0);
+      }
       uint256 allowanceAmountErc20 = IERC20(token).allowance(ownerAddress, address(this));
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
       uint256 totalAmount = balanceAmountErc20 > allowanceAmountErc20 ? allowanceAmountErc20 : balanceAmountErc20;

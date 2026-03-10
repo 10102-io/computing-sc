@@ -24,6 +24,12 @@ library TimelockHelper {
   error TimelockNotLive();
   error InvalidStatus();
   error ExecTransactionFromModuleFailed();
+  error NativeLockDeprecated();
+  error TokenNotWhitelisted();
+  error SwapNotConfigured();
+  error InvalidSwapIntent();
+  error EthSentWithoutSwap();
+  error NoTokensReceived();
 
   // ───────────── Enums ─────────────
   enum LockType {

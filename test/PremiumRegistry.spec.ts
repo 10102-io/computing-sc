@@ -135,17 +135,19 @@ describe("Premium Setting", async function () {
     );
 
     // Create a multisig legacy so tests have a valid multisig legacy address
-    const safeWallet = "0x2eC4C5abe5789d85b3f9E8FE4107F3ceD29B0740";
+    const MockSafeWallet = await ethers.getContractFactory("MockSafeWallet");
+    const mockSafeWallet = await MockSafeWallet.deploy([dev.address]);
     const multisigLegacyAddress = await multisignLegacyRouter.getNextLegacyAddress(dev.address);
     const msTimestamp = await currentTime();
     const msMsg = await genTransferEOAMessage(msTimestamp);
     const msSig = wallet.sign(msMsg).signature;
     await multisignLegacyRouter.connect(dev).createLegacy(
-      safeWallet,
+      mockSafeWallet.address,
       { name: "TestMultisig", note: "", nickNames: ["bene1", "bene2"], beneficiaries: [user1.address, user2.address] },
       { minRequiredSignatures: 1, lackOfOutgoingTxRange: 1 },
       msTimestamp, msSig
     );
+    await mockSafeWallet.enableModule(multisigLegacyAddress);
 
     return {
       usdt,

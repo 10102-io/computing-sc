@@ -4,6 +4,8 @@ node_modules
 # Hardhat files
 /cache
 /artifacts
+/deployments/localhost/*
+/deployments/sepolia/*
 
 # TypeChain files
 /typechain
@@ -15,3 +17,7 @@ node_modules
 .idea
 
 .vscode
+
+# sync-ui output (user copies into UI repo)
+/output
+deployments/localhost/

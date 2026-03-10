@@ -1,82 +1,61 @@
-import { ethers } from "ethers";
-import * as dotenv from "dotenv";
+import { DeployFunction } from "hardhat-deploy/dist/types";
+import { HardhatRuntimeEnvironment } from "hardhat/types";
 
-dotenv.config();
+const setUpLegacy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
+  const { deployments, ethers } = hre;
 
-import * as fs from "fs";
-import { getContracts, getProvider } from "../../scripts/utils";
-import { network } from "hardhat";
+  const verifierDeploy = await deployments.get("EIP712LegacyVerifier");
+  const legacyDeployerDeploy = await deployments.get("LegacyDeployer");
+  const multisigDeploy = await deployments.get("MultisigLegacyRouter");
+  const transferDeploy = await deployments.get("TransferLegacyRouter");
+  const transferEOADeploy = await deployments.get("TransferEOALegacyRouter");
+  const premiumRegistryDeploy = await deployments.get("PremiumRegistry");
+  const premiumSettingDeploy = await deployments.get("PremiumSetting");
 
-const LegacyDeployer = JSON.parse(
-    fs.readFileSync(
-        "./artifacts/contracts/common/LegacyDeployer.sol/LegacyDeployer.json",
-        "utf-8"
-    )
-).abi;
+  // EIP712LegacyVerifier.setRouterAddresses(transferEOA, transfer, multisig)
+  console.log("Calling setRouterAddresses on EIP712LegacyVerifier...");
+  const verifier = await ethers.getContractAt("EIP712LegacyVerifier", verifierDeploy.address);
+  const tx1 = await verifier.setRouterAddresses(
+    transferEOADeploy.address,
+    transferDeploy.address,
+    multisigDeploy.address
+  );
+  await tx1.wait();
+  console.log("setRouterAddresses done, tx:", tx1.hash);
 
-const VerifierTerm = JSON.parse(
-    fs.readFileSync(
-        "./artifacts/contracts/term/VerifierTerm.sol/EIP712LegacyVerifier.json",
-        "utf-8"
-    )
-).abi;
+  // LegacyDeployer.setParams(multisig, transfer, transferEOA)
+  console.log("Calling setParams on LegacyDeployer...");
+  const legacyDeployer = await ethers.getContractAt("LegacyDeployer", legacyDeployerDeploy.address);
+  const tx2 = await legacyDeployer.setParams(
+    multisigDeploy.address,
+    transferDeploy.address,
+    transferEOADeploy.address
+  );
+  await tx2.wait();
+  console.log("setParams done, tx:", tx2.hash);
 
-async function setRouterAtVerifierTerm(
-    verifier: string,
-    transferEOALegacyRouter: string,
-    transferLegacyRouter: string,
-    multisigLegacyRouter: string
-) {
-    console.log("Calling setRouterAtVerifierTerm at VerifierTerm...")
-    const { wallet } = getProvider();
-    const contract = new ethers.Contract(verifier, VerifierTerm, wallet);
-    const tx = await contract.setRouterAddresses(transferEOALegacyRouter, transferLegacyRouter, multisigLegacyRouter);
+  // PremiumSetting.setParams(premiumRegistry, transfer, transferEOA, multisig)
+  console.log("Calling setParams on PremiumSetting...");
+  const premiumSetting = await ethers.getContractAt("PremiumSetting", premiumSettingDeploy.address);
+  const tx3 = await premiumSetting.setParams(
+    premiumRegistryDeploy.address,
+    transferDeploy.address,
+    transferEOADeploy.address,
+    multisigDeploy.address
+  );
+  await tx3.wait();
+  console.log("PremiumSetting.setParams done, tx:", tx3.hash);
+};
 
-    console.log("Raw data:", tx?.data);
-    
-    const receipt = await tx.wait();
-    console.log("Receipt:", receipt);
-}
-
-async function setParamsAtLegacyDeployer(
-    legacyDeployer: string,
-    multisigLegacyRouter: string,
-    transferLegacyRouter: string,
-    transferEOALegacyRouter: string
-) {
-    console.log("Calling setParams at LegacyDeployer...");
-    const { wallet } = getProvider();
-    const contract = new ethers.Contract(legacyDeployer, LegacyDeployer, wallet);
-
-    const tx = await contract.setParams(multisigLegacyRouter, transferLegacyRouter, transferEOALegacyRouter);
-
-    console.log("Raw data:", tx?.data);
-    
-    const receipt = await tx.wait();
-    console.log("Receipt:", receipt);
-
-
-}
-
-async function main() {
-    const contracts = getContracts();
-    const networkContracts = contracts[network.name];
-    if (!networkContracts) {
-        throw new Error(`No contract addresses found for network: ${network.name}. Deploy contracts first.`);
-    }
-    const verifier = networkContracts["EIP712LegacyVerifier"].address;
-    const legacyDeployer = networkContracts["LegacyDeployer"].address;
-    const multisigLegacyRouter = networkContracts["MultisigLegacyRouter"].address;
-    const transferLegacyRouter = networkContracts["TransferLegacyRouter"].address;
-    const transferEOALegacyRouter = networkContracts["TransferEOALegacyRouter"].address;
-
-    await setRouterAtVerifierTerm(verifier, transferEOALegacyRouter, transferLegacyRouter, multisigLegacyRouter);
-    await setParamsAtLegacyDeployer(legacyDeployer, multisigLegacyRouter, transferLegacyRouter, transferEOALegacyRouter);
-}
-
-if (require.main === module) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-}
+setUpLegacy.tags = ["init", "set_up_legacy"];
+setUpLegacy.dependencies = [
+  "EIP712LegacyVerifier",
+  "LegacyDeployer",
+  "MultisigLegacyRouter",
+  "TransferLegacyRouter",
+  "TransferEOALegacyRouter",
+  "PremiumRegistry",
+  "PremiumSetting",
+];
+setUpLegacy.id = "set_up_legacy";
+export default setUpLegacy;
