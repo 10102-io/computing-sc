@@ -79,7 +79,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   }
 };
 
-deploy.tags = ["SetSepoliaSwapRouter"];
+deploy.tags = ["SetTimelockSwapRouter"];
 deploy.dependencies = [
   "TimeLockRouter",
   "TimelockERC20",
