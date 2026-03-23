@@ -10,65 +10,47 @@ npx hardhat compile
 npx hardhat test
 ```
 
-## License and Copyright
-
-Copyright © 2026 10102.io - All rights reserved.
-
-This software and associated documentation files are not licensed under any open-source license. No part of this repository may be copied, modified, distributed, or used for commercial purposes without the express written permission of the copyright holder.
-
-## Disclaimer: Use at your own risk
-
-IMPORTANT: The smart contracts in this repository are provided "as is", without warranty of any kind, express or implied.
-
-Financial Risk: Interacting with smart contracts involves inherent risks, including but not limited to technical vulnerabilities, bugs, and permanent loss of funds.
-No Liability: In no event shall 10102 or the contributors be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
-
-## Security
-
-- Keep private keys and `.env` files out of version control.
-- Always test on testnets before deploying to mainnet.
-- Treat contract upgrades and admin keys as production-critical.
-
 ## Technical Architecture
 
-The Computing ecosystem is a modular suite of smart contracts centered around the SafeGuard core. It manages digital assets through various "Legacy" modules:
+The Computing ecosystem is a modular suite of smart contracts organised around digital-asset legacy management. Users create "legacy" contracts that govern how their assets are distributed under configurable conditions (multisig, direct transfer, or timelock).
 
-| Module      | Purpose           | Key functionality                                         |
-| ----------- | ----------------- | --------------------------------------------------------- |
-| Forwarding  | Transfer legacy   | Handles direct transfer of assets to designated heirs.    |
-| Inheritance | Multisig legacy   | Implements multi-signature logic for distributed control. |
-| Timelock    | Delayed execution | Enforces mandatory waiting periods before actions.        |
-| Premium     | Paid features     | Manages advanced or subscription-based features.          |
-| Term        | Compliance        | Verifies off-chain signatures for Terms of Service.       |
+### Module Overview
 
-Core component: SafeGuard
+| Module | Purpose | Key Contracts |
+| ----------- | ---------------------------------------- | ------------------------------------------------------------ |
+| Common | Core factories and infrastructure | LegacyDeployer, LegacyFactory, EOALegacyFactory, Payment |
+| Forwarding | Direct transfer legacies | TransferLegacyContractRouter, TransferLegacyEOAContractRouter |
+| Inheritance | Multisig (Safe-based) legacies | MultisigLegacyContractRouter |
+| Timelock | Delayed release of ERC-20/721/1155 assets | TimeLockRouter, TimeLockERC20, TimeLockERC721, TimeLockERC1155 |
+| Premium | Subscription features and notifications | PremiumRegistry, PremiumSetting, PremiumAutomationManager |
+| Term | EIP-712 Terms-of-Service verification | EIP712LegacyVerifier (VerifierTerm) |
+| Whitelist | Token allowlisting for timelock swaps | TokenWhiteList |
 
-- Central hub: SafeGuard.sol acts as the main entry point for user interactions.
-- Access control: Manages permissions and owner configurations for individual safeguards.
-- Module integration: Orchestrates calls between compliance checks and execution logic.
+### Core Components
+
+- **SafeGuard** — Gnosis Safe Guard that tracks `lastTimestampTxs` and enforces inactivity-trigger rules for Safe-based legacies.
+- **LegacyDeployer** — Create2 factory callable only by the three legacy routers; deploys per-user legacy contracts from deterministic salts.
+- **Payment** — Central fee and withdrawal contract with WITHDRAWER/OPERATOR roles, claim-fee basis points, and ERC-20/ETH withdrawal.
+- **Banner** — Configurable UI banner contract.
+
+### External Integrations
+
+- **Uniswap V2** — Token swaps within transfer legacy and timelock flows (router address per network in `config/external-addresses.ts`).
+- **Chainlink** — Automation (keeper registry), Functions, and price feeds (ETH/USD, USDT/USD, USDC/USD).
+- **OpenZeppelin** — Upgradeable contracts (UUPS proxies), access control, and standard token interfaces.
+- **Safe (Gnosis)** — Smart-account wallets for multisig and transfer legacies.
 
 ## Getting Started
 
-### 1. Clone the repo
-
-```bash
-git clone <repo-url>
-cd <repo-name>
-```
-
-> **Placeholders:** replace `<repo-url>` and `<repo-name>` with your repo URL and folder name.
-
-### 2. Install dependencies
+### 1. Install dependencies
 
 ```bash
 npm install
-# or
-yarn install
 ```
 
-### 3. Environment configuration
+### 2. Environment configuration
 
-Create a `.env` file in the root directory with the following variables:
+Create a `.env` file in the root directory:
 
 ```bash
 # Required for deployment
@@ -76,22 +58,24 @@ DEPLOYER_PRIVATE_KEY=your_private_key_here
 
 # Required for contract verification
 API_KEY_ETHERSCAN=your_etherscan_api_key_here
+
+# Required for premium setup script
+PK=your_private_key_here
+RPC=your_rpc_url_here
 ```
 
-**Environment variables:**
+### 3. Network configuration
 
-- **DEPLOYER_PRIVATE_KEY**: Wallet private key used for deployments. **Never commit this to version control.**
-- **API_KEY_ETHERSCAN**: Etherscan API key used for contract verification.
+Configured in `hardhat.config.ts`:
 
-### Network configuration
+| Network | Chain ID | Notes |
+| --------- | -------- | ----------------------------------------------------------- |
+| hardhat | 31337 | Local dev network; supports mainnet fork via `fork-block.json` |
+| localhost | 31337 | Local node (`npx hardhat node`) |
+| sepolia | 11155111 | Public testnet |
+| mainnet | 1 | Ethereum mainnet |
 
-The project supports the following networks (configured in `hardhat.config.ts`):
-
-- **hardhat**: Local development network (default)
-- **sepolia**: Sepolia testnet (public RPC)
-- **mainnet**: Ethereum mainnet
-
-To add or modify network configurations, update the `networks` section in `hardhat.config.ts`.
+Solidity compiler: **0.8.20** (primary, via IR) and **0.8.22**. Optimiser enabled with 200 runs.
 
 ### 4. Compile contracts
 
@@ -99,229 +83,178 @@ To add or modify network configurations, update the `networks` section in `hardh
 npx hardhat compile
 ```
 
-### 5. Run unit tests
+### 5. Run tests
 
 ```bash
 npx hardhat test
 ```
 
-### 6. Deployment guide
+Active test files:
+
+- `Legacy.spec.ts` — Legacy creation and distribution flows
+- `PremiumAutomation.spec.ts` — Premium automation manager
+- `PremiumRegistry.spec.ts` — Premium registry
+- `TimeLockRouter.test.ts` — Timelock router
+- `TimelockERC20.test.ts` — Timelock ERC-20
+- `TokenWhiteList.test.ts` — Token whitelist
+- `FormatUnits.spec.ts` — Unit formatting library
+
+### 6. Deployment
+
+Deployment uses **hardhat-deploy** with tag-based scripts and automatic dependency ordering. See [docs/DEPLOY_DEPENDENCIES.md](docs/DEPLOY_DEPENDENCIES.md) for the full dependency graph.
 
 #### Prerequisites
 
-1. Ensure your `.env` file is properly configured with `DEPLOYER_PRIVATE_KEY`
-2. Make sure your deployer wallet has sufficient funds (ETH) for gas fees
-3. Verify the network configuration in `hardhat.config.ts` matches your target network
+1. `.env` configured with `DEPLOYER_PRIVATE_KEY`
+2. Deployer wallet funded with sufficient ETH for gas
+3. Network configuration verified in `hardhat.config.ts`
 
-#### Deployment steps
-
-1. Compile the contracts (if not already done):
+#### Deploy all contracts
 
 ```bash
-npx hardhat compile
+# Deploy everything to a network (respects dependency order automatically)
+npx hardhat deploy --network sepolia
+
+# Deploy a specific contract by tag
+npx hardhat deploy --network sepolia --tags Payment
 ```
 
-2. Deploy contracts in order (see Deployment tags for the complete list):
+#### Deployment tags (in dependency order)
 
-```bash
-# Deploy to Sepolia testnet
-npx hardhat deploy --network sepolia --tags <tag-name>
+**Independent (no dependencies)**
 
-# Deploy to Mainnet (be careful!)
-npx hardhat deploy --network mainnet --tags <tag-name>
-```
+- `Payment` — Central fee contract
+- `EIP712LegacyVerifier` — ToS signature verification
+- `LegacyDeployer` — Create2 legacy factory
+- `Banner` — UI banner
+- `PremiumSetting` — Premium configuration
+- `PremiumMailRouter`, `PremiumMailBeforeActivation`, `PremiumMailReadyToActivate`, `PremiumMailActivated` — Mail notification contracts
+- `PremiumAutomationManager` — Chainlink automation
+- `TimeLockRouter` — Timelock routing
 
-> **Placeholder:** replace `<tag-name>` with a tag from the list below.
+**Dependent**
 
-3. Verify contracts on Etherscan (after deployment):
+- `TokenWhiteList` — Depends on TestERC20
+- `PremiumRegistry` — Depends on PremiumSetting, Payment
+- `MultisigLegacyRouter` — Depends on PremiumSetting, LegacyDeployer, EIP712LegacyVerifier
+- `TransferLegacyRouter` — Depends on LegacyDeployer, PremiumSetting, EIP712LegacyVerifier
+- `TransferEOALegacyRouter` — Depends on LegacyDeployer, PremiumSetting, EIP712LegacyVerifier, Payment
+- `TimelockERC20`, `TimelockERC721`, `TimelockERC1155` — Depend on TimeLockRouter
+- `SetTimelockSwapRouter` — Runs on any network with a Uniswap router configured (sepolia, mainnet); wires timelock contracts (`setTimelock`), sets token whitelist, configures Uniswap router, and adds USDC/USDT to the whitelist
+
+#### Verify contracts
 
 ```bash
 npx hardhat verify --network <network-name> <contract-address> <constructor-args>
 ```
 
-4. **Sync UI config (after deployment):** To update the UI app with the new contract addresses and ABIs, run:
+Requires `API_KEY_ETHERSCAN` in `.env`. Sourcify verification is also enabled.
+
+#### Sync UI config
+
+After deployment, generate contract addresses and ABIs for the UI app:
 
 ```bash
 npm run sync-ui
 ```
 
-This writes `configs/contract-addresses.generated.ts` and ABI files under `output/sync-ui/` (in this repo). **Manually copy** the contents of `output/sync-ui/` into the UI repo so that `configs/` and `constants/` land under the UI's `src/` (e.g. copy into `10102-ui/src/` so that `output/sync-ui/configs/` → `10102-ui/src/configs/` and `output/sync-ui/constants/` → `10102-ui/src/constants/`). The UI reads contract addresses from the generated config; no address env vars are required.
+This writes files to `output/sync-ui/`. Copy the contents into the UI repo so that `configs/` and `constants/` land under the UI's `src/` directory.
 
-#### Deployment tags
+### 7. Post-deployment setup
 
-Deploy contracts in the following order using the `--tags` parameter:
+After deploying all contracts, run setup scripts to wire contracts together:
 
-**Core Contracts**
-
-1. `Banner` - Banner contract
-2. `EIP712LegacyVerifier` - Verify Terms of Service signature
-3. `LegacyDeployer` - Legacy Deployer contract
-4. `MultisigLegacyRouter` - Multisig Legacy Router
-5. `TransferLegacyRouter` - Transfer Legacy Router
-6. `TransferEOALegacyRouter` - Transfer EOA Legacy Router
-
-**Timelock Contracts**
-
-7. `TimeLockRouter` - Timelock Router
-8. `TimelockERC20` - Timelock ERC20
-9. `TimelockERC721` - Timelock ERC721
-10. `TimelockERC1155` - Timelock ERC1155
-
-**Payment**
-
-11. `Payment` - Payment contract
-
-**Premium Contracts**
-
-12. `PremiumRegistry` - Premium Registry
-13. `PremiumSetting` - Premium Setting
-14. `PremiumAutomationManager` - Premium Automation Manager
-15. `PremiumMailRouter` - Premium Mail Router
-17. `PremiumMailBeforeActivation` - Premium Mail Before Activation
-18. `PremiumMailReadyToActivate` - Premium Mail Ready To Activate
-19. `PremiumMailActivated` - Premium Mail Activated
-
-#### Deployment template
-
-Use this template to deploy all contracts in order:
+#### Setup Legacy Contracts
 
 ```bash
-# Example: Deploy to Sepolia testnet
-npx hardhat deploy --network sepolia --tags Payment
-npx hardhat deploy --network sepolia --tags Banner
-npx hardhat deploy --network sepolia --tags EIP712LegacyVerifier
-npx hardhat deploy --network sepolia --tags LegacyDeployer
-npx hardhat deploy --network sepolia --tags PremiumSetting
-npx hardhat deploy --network sepolia --tags MultisigLegacyRouter
-npx hardhat deploy --network sepolia --tags TransferLegacyRouter
-npx hardhat deploy --network sepolia --tags TransferEOALegacyRouter
-npx hardhat deploy --network sepolia --tags TimeLockRouter
-npx hardhat deploy --network sepolia --tags TimelockERC20
-npx hardhat deploy --network sepolia --tags TimelockERC721
-npx hardhat deploy --network sepolia --tags TimelockERC1155
-npx hardhat deploy --network sepolia --tags PremiumRegistry
-npx hardhat deploy --network sepolia --tags PremiumAutomationManager
-npx hardhat deploy --network sepolia --tags PremiumMailRouter
-npx hardhat deploy --network sepolia --tags PremiumMailBeforeActivation
-npx hardhat deploy --network sepolia --tags PremiumMailReadyToActivate
-npx hardhat deploy --network sepolia --tags PremiumMailActivated
-```
-
-> **Note:** Replace `sepolia` with your target network (e.g., `mainnet`) and ensure each deployment completes successfully before proceeding to the next one.
-
-### Post-deployment setup
-
-> **IMPORTANT:** Before running setup scripts, ensure:
->
-> - All contracts have been deployed successfully
-> - Your `.env` file is properly configured with:
->   - `DEPLOYER_PRIVATE_KEY` (required for all setup scripts)
->   - `PK` (required for premium setup script)
->   - `RPC` (required for premium setup script)
-> - The network configuration matches your deployment network
-> - Contract addresses are saved in `contract-addresses.json`
-
-After deploying all contracts, run the following setup scripts in order:
-
-#### 1. Setup Legacy Contracts
-
-```bash
-# Set up legacy contracts (MultisigLegacyRouter, TransferLegacyRouter, TransferEOALegacyRouter)
 npx hardhat run deploy/init/0.set_up_legacy.ts --network <network-name>
-
-# Example:
-npx hardhat run deploy/init/0.set_up_legacy.ts --network sepolia
-
-# Or using npm script:
-npm run set-up-legacy -- --network <network-name>
+# Or: npm run set-up-legacy -- --network <network-name>
 ```
 
-This script configures:
+Configures: EIP712LegacyVerifier, LegacyDeployer, MultisigLegacyRouter, TransferLegacyRouter, TransferEOALegacyRouter.
 
-- EIP712LegacyVerifier
-- LegacyDeployer
-- MultisigLegacyRouter
-- TransferLegacyRouter
-- TransferEOALegacyRouter
-
-#### 2. Setup Timelock Contracts
+#### Setup Premium Contracts
 
 ```bash
-# Set up timelock contracts (TimelockERC20, TimelockERC721, TimelockERC1155)
-npx hardhat run deploy/init/1.setTimelock.ts --network <network-name>
-
-# Example:
-npx hardhat run deploy/init/1.setTimelock.ts --network sepolia
-
-# Or using npm script:
-npm run set-up-timelock -- --network <network-name>
-```
-
-This script configures:
-
-- TimeLockRouter with TimelockERC20, TimelockERC721, and TimelockERC1155 addresses
-
-> **Note:** On Sepolia and mainnet, timelock setup (setTimelock, setTokenWhitelist, setUniswapRouter, and adding external USDC/USDT to the whitelist) is handled automatically by the deploy script `SetSepoliaSwapRouter`. You only need to run `set-up-timelock` manually for other networks where that script does not run.
-
-#### 3. Setup Premium Contracts
-
-```bash
-# Set up premium contracts and reminder system
 npx hardhat run deploy/init/2.set_up_reminder.ts --network <network-name>
-
-# Example:
-npx hardhat run deploy/init/2.set_up_reminder.ts --network sepolia
-
-# Or using npm script:
-npm run set-up-premium -- --network <network-name>
+# Or: npm run set-up-premium -- --network <network-name>
 ```
 
-This script configures:
+Configures: PremiumSetting, PremiumRegistry, PremiumAutomationManager, PremiumMailRouter, PremiumMailBeforeActivation, PremiumMailActivated, and integration with legacy routers.
 
-- PremiumSetting
-- PremiumRegistry
-- PremiumAutomationManager
-- PremiumMailRouter
-- PremiumMailBeforeActivation
-- PremiumMailActivated
-- Integration with legacy routers
+> **Note:** On sepolia and mainnet, timelock wiring (setTimelock, setTokenWhitelist, setUniswapRouter, and adding USDC/USDT to the whitelist) is handled automatically by the `SetTimelockSwapRouter` deploy script. It runs on any network with a Uniswap router configured in `config/external-addresses.ts`.
 
-> **Note:** Run these scripts on the same network where you deployed the contracts. Each script will read contract addresses from `contract-addresses.json` for the specified network.
+### npm scripts
 
-### Important notes
+| Script | Description |
+| ----------------------- | --------------------------------------------------- |
+| `npm run compile` | Compile contracts |
+| `npm test` | Run tests |
+| `npm run node` | Start local Hardhat node (with mainnet fork) |
+| `npm run node:fresh` | Start local Hardhat node (no fork) |
+| `npm run deploy:local` | Deploy to localhost |
+| `npm run deploy:sepolia` | Deploy to Sepolia |
+| `npm run deploy:sepolia:fresh` | Deploy to Sepolia (reset all) |
+| `npm run set-up-legacy` | Post-deploy legacy wiring |
+| `npm run set-up-premium` | Post-deploy premium wiring |
+| `npm run sync-ui` | Generate UI config from deployments |
 
-- **Security**: Never share or commit your private keys or `.env` file
-- **Mainnet**: Always test thoroughly on testnets before deploying to mainnet
-- **Contract Addresses**: Deployed contract addresses are saved in `contract-addresses.json`
-- **Verification**: Contract verification requires `API_KEY_ETHERSCAN` in your `.env` file
-
-## Project structure
+## Project Structure
 
 ```
 .
-├── LICENSE.md
-├── README.md
-├── SECURITY.md
-├── contract-addresses.json     # Deployed contract addresses
+├── config/
+│   └── external-addresses.ts   # External contract addresses per network
 ├── contracts/
-│   ├── SafeGuard.sol
-│   ├── common/                 # Deployer, Factory, Generic Contracts
-│   ├── forwarding/             # Contracts for Transfer Legacy
-│   ├── inheritance/            # Contracts for Multisig Legacy
-│   ├── interfaces/
-│   ├── libraries/
-│   ├── mock/
-│   ├── premium/                # Contracts for premium features
-│   ├── term/                   # Verify Terms of Service signature
-│   └── timelock/               # Contracts for Timelock
+│   ├── SafeGuard.sol            # Gnosis Safe Guard
+│   ├── common/                  # Deployer, Factory, Router base, Payment, Banner
+│   ├── forwarding/              # Transfer legacy contracts and routers
+│   ├── inheritance/             # Multisig legacy contracts and routers
+│   ├── interfaces/              # All contract interfaces
+│   ├── libraries/               # ArrayUtils, FormatUnits, NotifyLib, structs
+│   ├── mock/                    # Test mocks (ERC-20/721/1155, Uniswap, Chainlink)
+│   ├── premium/                 # Premium features, automation, mail notifications
+│   ├── term/                    # EIP-712 ToS verifier
+│   ├── timelock/                # Timelock router and token-type handlers
+│   └── whitelist/               # Token whitelist for timelock swaps
 ├── deploy/
-│   ├── init/                   # Post-deployment setup scripts
-│   ├── legacy/                 # Legacy contract deployments
-│   ├── premium/                # Premium contract deployments
-│   └── timelock/               # Timelock contract deployments
+│   ├── init/                    # Post-deployment setup scripts
+│   ├── legacy/                  # Legacy contract deploy scripts
+│   ├── premium/                 # Premium contract deploy scripts
+│   └── timelock/                # Timelock contract deploy scripts
+├── deployments/                 # hardhat-deploy artefacts (per network)
+├── docs/                        # Architecture docs and deployment plans
+├── output/sync-ui/              # Generated UI config (ABIs + addresses)
+├── scripts/                     # Utility and upgrade scripts
+├── test/                        # Hardhat test suite
+├── contract-addresses.json      # Deployed contract addresses (all networks)
 ├── hardhat.config.ts
-├── package.json
-├── scripts/
-├── test/
-└── tsconfig.json
+├── slither.config.json          # Slither static analysis config
+└── compiler_config.json         # Solidity compiler config
 ```
+
+## Documentation
+
+- [CONTRACTS_REFERENCE.md](docs/CONTRACTS_REFERENCE.md) — Detailed reference for every deployed contract
+- [DEPLOY_DEPENDENCIES.md](docs/DEPLOY_DEPENDENCIES.md) — Deploy script dependency graph and resume behaviour
+- [SECURITY.md](SECURITY.md) — Vulnerability reporting policy
+
+## Security
+
+- Keep private keys and `.env` files out of version control.
+- Always test on testnets before deploying to mainnet.
+- Treat contract upgrades and admin keys as production-critical.
+- Report vulnerabilities to security@10102.io (see [SECURITY.md](SECURITY.md)).
+
+## Disclaimer: Use at Your Own Risk
+
+IMPORTANT: The smart contracts in this repository are provided "as is", without warranty of any kind, express or implied.
+
+Financial Risk: Interacting with smart contracts involves inherent risks, including but not limited to technical vulnerabilities, bugs, and permanent loss of funds.
+No Liability: In no event shall 10102 or the contributors be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
+
+## Licence and Copyright
+
+Copyright (c) 2026 10102.io - All rights reserved.
+
+This software and associated documentation files are not licensed under any open-source licence. No part of this repository may be copied, modified, distributed, or used for commercial purposes without the express written permission of the copyright holder.
