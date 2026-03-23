@@ -82,6 +82,11 @@ describe("Legacy contract", async function () {
       weth,
     ]);
 
+    // Set the EOA legacy creation code (required for createLegacy via Create2)
+    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
+    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
+
     const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
       legacyDeployer.address,
       premiumSetting.address,
@@ -108,7 +113,7 @@ describe("Legacy contract", async function () {
     await premiumRegistry.connect(dev).subrcribeByAdmin(dev.address, Number(planId) - 1, "USDC");
 
     const MockSafeWallet = await ethers.getContractFactory("MockSafeWallet");
-    const mockSafeWallet = await MockSafeWallet.deploy([dev.address]);
+    const mockSafeWallet = await MockSafeWallet.deploy([user1.address]);
 
     return {
       genericLegacy,
@@ -469,13 +474,13 @@ describe("Legacy contract", async function () {
     const nickName3 = "dat";
 
     const safeWallet = mockSafeWallet.address;
-    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
+    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(user1.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await user1.signMessage(message);
 
     await transferLegacyRouter
-      .connect(dev)
+      .connect(user1)
       .createLegacy(safeWallet, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     await mockSafeWallet.enableModule(legacyAddress);
@@ -538,13 +543,13 @@ describe("Legacy contract", async function () {
     const nickName3 = "dat";
 
     const safeWallet = mockSafeWallet.address;
-    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
+    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(user1.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await user1.signMessage(message);
 
     await transferLegacyRouter
-      .connect(dev)
+      .connect(user1)
       .createLegacy(safeWallet, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     await mockSafeWallet.enableModule(legacyAddress);
@@ -599,13 +604,13 @@ describe("Legacy contract", async function () {
     const nickName3 = "dat";
 
     const safeWallet = mockSafeWallet.address;
-    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
+    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(user1.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await user1.signMessage(message);
 
     await transferLegacyRouter
-      .connect(dev)
+      .connect(user1)
       .createLegacy(safeWallet, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     await mockSafeWallet.enableModule(legacyAddress);
@@ -635,7 +640,7 @@ describe("Legacy contract", async function () {
       name: "abc",
       note: "nothing",
       nickNames: ["dadad", "dadad"],
-      beneficiaries: [user1.address, user2.address],
+      beneficiaries: [user3.address, user2.address],
     };
 
     const extraConfig = {
@@ -644,12 +649,12 @@ describe("Legacy contract", async function () {
     };
 
     const safeWallet = mockSafeWallet.address;
-    const legacyAddress = await multisignLegacyRouter.getNextLegacyAddress(dev.address);
+    const legacyAddress = await multisignLegacyRouter.getNextLegacyAddress(user1.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await user1.signMessage(message);
 
-    await multisignLegacyRouter.connect(dev).createLegacy(safeWallet, mainConfig, extraConfig, currentTimestamp, signature);
+    await multisignLegacyRouter.connect(user1).createLegacy(safeWallet, mainConfig, extraConfig, currentTimestamp, signature);
 
     await mockSafeWallet.enableModule(legacyAddress);
 
@@ -677,9 +682,12 @@ describe("EOA Legacy autoSwap and unswap", async function () {
     const ERC20 = await ethers.getContractFactory("ERC20Token");
     const usdc = await ERC20.deploy("USDC", "USDC", 6);
 
+    // Arbitrary non-zero address — only stored by the mock, not called on-chain
+    const wethAddress = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
+
     // Deploy mock Uniswap router
     const MockRouter = await ethers.getContractFactory("MockUniswapV2Router");
-    const mockRouter = await MockRouter.deploy();
+    const mockRouter = await MockRouter.deploy(wethAddress);
 
     // Set rate: 1 ETH = 2000 USDC (at 1e18 ETH → 2000 * 1e6 USDC units)
     const USDC_RATE = ethers.utils.parseUnits("2000", 6); // 2000e6
@@ -695,8 +703,6 @@ describe("EOA Legacy autoSwap and unswap", async function () {
       mockRouter.address,
       "0x21E19E0C9BAB2400000", // 10000 ETH in hex
     ]);
-
-    const wethAddress = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"; // placeholder, not used by mock
 
     // Deploy infrastructure using treasury as admin (no impersonation needed)
     const premiumSetting = await deployProxy("PremiumSetting", [], "initialize", treasury);
