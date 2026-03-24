@@ -203,7 +203,7 @@
     },
     "TransferLegacyRouter": {
       "address": "0x7e173738f0bE8B4bDbA28CF91b0F5B0263Aa4b0C",
-      "implementation": "0x474C6A374641d0ff277530826Cdb584Dad8d1afE"
+      "implementation": "0xd2B8AADb77561F0999485E67D4EDEA66623EA985"
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
