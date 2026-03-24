@@ -106,6 +106,11 @@ describe("Premium Setting", async function () {
       weth,
     ]);
 
+    // Set the EOA legacy creation code (required for createLegacy via Create2)
+    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
+    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
+
     const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [legacyDeployer.address, setting.address, verifierTerm.address]);
 
     await legacyDeployer.setParams(multisignLegacyRouter.address, treasury.address, transferEOALegacyRouter.address);
@@ -114,19 +119,21 @@ describe("Premium Setting", async function () {
     await setting.setParams(registry.address, transferEOALegacyRouter.address, treasury.address, multisignLegacyRouter.address);
     await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.address, multisignLegacyRouter.address, transferEOALegacyRouter.address);
 
-    // Set dev as premium directly (impersonate registry to avoid conflicting with test subscriptions)
+    // Set dev and treasury as premium directly (impersonate registry to avoid conflicting with test subscriptions)
     await network.provider.request({ method: "hardhat_impersonateAccount", params: [registry.address] });
     await network.provider.send("hardhat_setBalance", [registry.address, "0x1000000000000000000"]);
     const registrySigner = await ethers.getSigner(registry.address);
     await setting.connect(registrySigner).updatePremiumTime(dev.address, ONE_YEAR);
+    await setting.connect(registrySigner).updatePremiumTime(treasury.address, ONE_YEAR);
     await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [registry.address] });
 
     // Create a transfer EOA legacy so tests have a valid legacy address
-    const transferEOALegacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
+    // Use treasury (a real Hardhat signer) so we can produce valid EIP-191 signatures
+    const transferEOALegacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(treasury.address);
     const eoaTimestamp = await currentTime();
     const eoaMsg = await genTransferEOAMessage(eoaTimestamp);
-    const eoaSig = await wallet.sign(eoaMsg).signature;
-    await transferEOALegacyRouter.connect(dev).createLegacy(
+    const eoaSig = await treasury.signMessage(eoaMsg);
+    await transferEOALegacyRouter.connect(treasury).createLegacy(
       { name: "TestEOA", note: "", nickNames: ["bene1"], distributions: [{ user: user1.address, percent: 1000000 }] },
       { lackOfOutgoingTxRange: 86400, delayLayer2: 86400, delayLayer3: 86400 },
       { user: user2.address, percent: 100 },
@@ -136,12 +143,12 @@ describe("Premium Setting", async function () {
 
     // Create a multisig legacy so tests have a valid multisig legacy address
     const MockSafeWallet = await ethers.getContractFactory("MockSafeWallet");
-    const mockSafeWallet = await MockSafeWallet.deploy([dev.address]);
-    const multisigLegacyAddress = await multisignLegacyRouter.getNextLegacyAddress(dev.address);
+    const mockSafeWallet = await MockSafeWallet.deploy([treasury.address]);
+    const multisigLegacyAddress = await multisignLegacyRouter.getNextLegacyAddress(treasury.address);
     const msTimestamp = await currentTime();
     const msMsg = await genTransferEOAMessage(msTimestamp);
-    const msSig = wallet.sign(msMsg).signature;
-    await multisignLegacyRouter.connect(dev).createLegacy(
+    const msSig = await treasury.signMessage(msMsg);
+    await multisignLegacyRouter.connect(treasury).createLegacy(
       mockSafeWallet.address,
       { name: "TestMultisig", note: "", nickNames: ["bene1", "bene2"], beneficiaries: [user1.address, user2.address] },
       { minRequiredSignatures: 1, lackOfOutgoingTxRange: 1 },
@@ -441,7 +448,7 @@ describe("Premium Setting", async function () {
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -463,7 +470,7 @@ describe("Premium Setting", async function () {
       const legacyData = [
         {
           cosigners: [
-            emailMapping("0x974763b760d566154B1767534cF9537CEe2f886f", "dat.tran2@sotatek.com", "dat"),
+            emailMapping(treasury.address, "dat.tran2@sotatek.com", "dat"),
           ],
           beneficiaries: [],
           secondLine: emailMapping(ethers.constants.AddressZero, "", ""),
@@ -471,10 +478,10 @@ describe("Premium Setting", async function () {
         },
       ];
 
-      // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      // treasury is premium and legacy creator from fixture — set config
+      await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
 
-      console.log(await setting.userConfigs(dev.address));
+      console.log(await setting.userConfigs(treasury.address));
 
       console.log(await setting.getCosignerData(legacyAddresses[0]));
       console.log(await setting.getBeneficiaryData(legacyAddresses[0]));
@@ -501,7 +508,7 @@ describe("Premium Setting", async function () {
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(user1.address));
 
@@ -510,7 +517,7 @@ describe("Premium Setting", async function () {
       console.log(await setting.getSecondLineData(legacyAddresses[0]));
       console.log(await setting.getThirdLineData(legacyAddresses[0]));
 
-      await setting.connect(dev).clearLegacyConfig(legacyAddresses);
+      await setting.connect(treasury).clearLegacyConfig(legacyAddresses);
 
       console.log(await setting.getCosignerData(legacyAddresses[0]));
       console.log(await setting.getBeneficiaryData(legacyAddresses[0]));
@@ -537,7 +544,7 @@ describe("Premium Setting", async function () {
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -566,7 +573,7 @@ describe("Premium Setting", async function () {
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -588,8 +595,8 @@ describe("Premium Setting", async function () {
       const legacyAddresses = [transferEOALegacyAddress];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setWatchers(legacyAddresses[0], ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
-      await setting.connect(dev).clearWatcher(legacyAddresses);
+      await setting.connect(treasury).setWatchers(legacyAddresses[0], ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
+      await setting.connect(treasury).clearWatcher(legacyAddresses);
     });
 
     it("should user set watcher for multisign legacy", async function () {
@@ -597,21 +604,21 @@ describe("Premium Setting", async function () {
 
       // Fixture already created plans, subscribed dev, and created a multisig legacy
       // set config
-      await setting.connect(dev).setWatchers(multisigLegacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
+      await setting.connect(treasury).setWatchers(multisigLegacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
     });
     it("should user set watcher for multisig legacy 2", async function () {
       const { usdt, usdc, registry, setting, treasury, user1, user2, user3, dev, multisigLegacyAddress } = await loadFixture(deployFixture);
 
       // dev is already premium from fixture
-      await setting.connect(dev).setWatchers(multisigLegacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
+      await setting.connect(treasury).setWatchers(multisigLegacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
     });
 
     it("should user clear watcher ", async function () {
       const { usdt, usdc, registry, setting, treasury, user1, user2, user3, dev, multisigLegacyAddress } = await loadFixture(deployFixture);
 
       // dev is already premium from fixture
-      await setting.connect(dev).setWatchers(multisigLegacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
-      await setting.connect(dev).clearWatcher([multisigLegacyAddress]);
+      await setting.connect(treasury).setWatchers(multisigLegacyAddress, ["Dat"], ["0xd1999d5a27378970420779b0722118f20858f198"], [true]);
+      await setting.connect(treasury).clearWatcher([multisigLegacyAddress]);
     });
   });
 
@@ -649,7 +656,7 @@ describe("Premium Setting", async function () {
   //     await registry.connect(dev).subcribeWithUSDC(0);
 
   //     // set config
-  //     await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+  //     await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
   //     let beneficiaryEmails = await setting.getBeneficiaryData(user1.address)
 
   //     //router update bene emails
