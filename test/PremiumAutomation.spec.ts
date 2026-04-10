@@ -53,20 +53,7 @@ describe("Premium Automation ", async function () {
     return { addr, email, name };
   }
   async function deployFixture() {
-    const [treasury, user1, user2, user3] = await ethers.getSigners(); // Get the first signer (default account)
-
-    await network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: ["0x974763b760d566154B1767534cF9537CEe2f886f"],
-    });
-
-    const dev = await ethers.getSigner("0x974763b760d566154B1767534cF9537CEe2f886f");
-
-    // Fund dev account with ETH for deployments
-    await network.provider.send("hardhat_setBalance", [
-      "0x974763b760d566154B1767534cF9537CEe2f886f",
-      "0x1000000000000000000", // 1 ETH
-    ]);
+    const [treasury, dev, user1, user2, user3] = await ethers.getSigners(); // local accounts
 
     // Deploy mock LINK token (18 decimals like real LINK)
     const MockLink = await ethers.getContractFactory("ERC20Token");
@@ -108,10 +95,10 @@ describe("Premium Automation ", async function () {
       dev
     );
 
-    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address]);
+    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address], "initialize", dev);
 
     // deployer contract
-    const legacyDeployer = await deployProxy("LegacyDeployer");
+    const legacyDeployer = await deployProxy("LegacyDeployer", [], "initialize", dev);
 
     const transferEOALegacyRouter = await deployProxy("TransferEOALegacyRouter", [
       legacyDeployer.address,
@@ -120,7 +107,12 @@ describe("Premium Automation ", async function () {
       payment.address,
       router,
       weth,
-    ]);
+    ], "initialize", dev);
+
+    // Required for CREATE2 EOA legacy deployments in tests
+    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
+    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
 
     const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
       legacyDeployer.address,
@@ -129,15 +121,20 @@ describe("Premium Automation ", async function () {
       payment.address,
       router,
       weth,
-    ]);
+    ], "initialize", dev);
 
-    const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [legacyDeployer.address, setting.address, verifierTerm.address]);
+    const multisignLegacyRouter = await deployProxy(
+      "MultisigLegacyRouter",
+      [legacyDeployer.address, setting.address, verifierTerm.address],
+      "initialize",
+      dev
+    );
 
     await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
 
     await verifierTerm
       .connect(dev)
-      .setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
+      .setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
 
     // Deploy mock mail contracts (no-op implementations)
     const MockMail = await ethers.getContractFactory("MockPremiumSendMail");
@@ -420,7 +417,7 @@ describe("Premium Automation ", async function () {
     console.log(legacyAddress);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
       .connect(dev)
@@ -585,7 +582,7 @@ describe("Premium Automation ", async function () {
     console.log(legacyAddress);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
       .connect(dev)
@@ -681,7 +678,7 @@ describe("Premium Automation ", async function () {
     const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
       .connect(dev)
@@ -756,7 +753,7 @@ describe("Premium Automation ", async function () {
     const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
       .connect(dev)
@@ -841,7 +838,7 @@ describe("Premium Automation ", async function () {
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferLegacyRouter
       .connect(dev)

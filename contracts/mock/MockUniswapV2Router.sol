@@ -14,11 +14,17 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract MockUniswapV2Router {
     using SafeERC20 for IERC20;
 
+    address public immutable WETH;
+
     // Mapping: output token => mock output amount per 1e18 ETH wei input
     mapping(address => uint256) public mockRate;
 
     uint256 public ethToTokenMultiplier = 1e18;
     uint256 public tokenToEthMultiplier = 1e18;
+
+    constructor(address weth_) {
+        WETH = weth_;
+    }
 
     receive() external payable {}
 
@@ -43,7 +49,10 @@ contract MockUniswapV2Router {
         require(path.length >= 2, "MockUniswapV2Router: invalid path");
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
-        amounts[1] = (amountIn * ethToTokenMultiplier) / 1e18;
+        // Heuristic: if swapping into WETH, treat it as token->ETH pricing.
+        // Otherwise treat it as ETH->token pricing.
+        uint256 multiplier = path[1] == WETH ? tokenToEthMultiplier : ethToTokenMultiplier;
+        amounts[1] = (amountIn * multiplier) / 1e18;
         for (uint256 i = 2; i < path.length; i++) {
             amounts[i] = amounts[i - 1];
         }

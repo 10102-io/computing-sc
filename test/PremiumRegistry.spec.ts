@@ -38,13 +38,13 @@ describe("Premium Setting", async function () {
   }
 
   async function deployFixture() {
-    const [treasury, user1, user2, user3] = await ethers.getSigners(); // Get the first signer (default account)
+    const [treasury, dev, user1, user2, user3] = await ethers.getSigners(); // local accounts
     //deploy mock tokens
     const ERC20 = await ethers.getContractFactory("ERC20Token");
     const usdt = await ERC20.deploy("USDT", "USDT", 6);
     const usdc = await ERC20.deploy("USDC", "USDC", 6);
 
-    const setting = await deployProxy("PremiumSetting");
+    const setting = await deployProxy("PremiumSetting", [], "initialize", dev);
 
     const Payment = await ethers.getContractFactory("Payment");
     const payment = await Payment.deploy();
@@ -75,25 +75,13 @@ describe("Premium Setting", async function () {
     await usdt.mint(user3.address, 100000 * 10 ** 6); // 100K usdt
     await usdc.mint(user3.address, 100000 * 10 ** 6); // 100K usdc
 
-    await network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: ["0x974763b760d566154B1767534cF9537CEe2f886f"],
-    });
-
-    const dev = await ethers.getSigner("0x974763b760d566154B1767534cF9537CEe2f886f");
-
-    // Fund dev account with ETH
-    await network.provider.send("hardhat_setBalance", [
-      "0x974763b760d566154B1767534cF9537CEe2f886f",
-      "0x1000000000000000000", // 1 ETH
-    ]);
     await usdt.mint(dev.address, 100000 * 10 ** 6); // 100K usdt
     await usdc.mint(dev.address, 100000 * 10 ** 6); // 100K usdc
 
-    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address]);
+    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address], "initialize", dev);
 
     // Deploy legacy infrastructure
-    const legacyDeployer = await deployProxy("LegacyDeployer");
+    const legacyDeployer = await deployProxy("LegacyDeployer", [], "initialize", dev);
 
     const weth = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 
@@ -104,15 +92,34 @@ describe("Premium Setting", async function () {
       payment.address,
       "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008", // Uniswap router (Sepolia)
       weth,
-    ]);
+    ], "initialize", dev);
 
-    const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [legacyDeployer.address, setting.address, verifierTerm.address]);
+    const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
+      legacyDeployer.address,
+      setting.address,
+      verifierTerm.address,
+      payment.address,
+      "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008",
+      weth,
+    ], "initialize", dev);
 
-    await legacyDeployer.setParams(multisignLegacyRouter.address, treasury.address, transferEOALegacyRouter.address);
+    const multisignLegacyRouter = await deployProxy(
+      "MultisigLegacyRouter",
+      [legacyDeployer.address, setting.address, verifierTerm.address],
+      "initialize",
+      dev
+    );
+
+    await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
 
     //set up
-    await setting.setParams(registry.address, transferEOALegacyRouter.address, treasury.address, multisignLegacyRouter.address);
-    await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.address, multisignLegacyRouter.address, transferEOALegacyRouter.address);
+    await setting.setParams(registry.address, transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+    await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+
+    // Required for CREATE2 EOA legacy deployments in tests
+    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
+    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
 
     // Set dev as premium directly (impersonate registry to avoid conflicting with test subscriptions)
     await network.provider.request({ method: "hardhat_impersonateAccount", params: [registry.address] });
@@ -125,7 +132,7 @@ describe("Premium Setting", async function () {
     const transferEOALegacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     const eoaTimestamp = await currentTime();
     const eoaMsg = await genTransferEOAMessage(eoaTimestamp);
-    const eoaSig = await wallet.sign(eoaMsg).signature;
+    const eoaSig = await dev.signMessage(eoaMsg);
     await transferEOALegacyRouter.connect(dev).createLegacy(
       { name: "TestEOA", note: "", nickNames: ["bene1"], distributions: [{ user: user1.address, percent: 1000000 }] },
       { lackOfOutgoingTxRange: 86400, delayLayer2: 86400, delayLayer3: 86400 },
@@ -140,7 +147,7 @@ describe("Premium Setting", async function () {
     const multisigLegacyAddress = await multisignLegacyRouter.getNextLegacyAddress(dev.address);
     const msTimestamp = await currentTime();
     const msMsg = await genTransferEOAMessage(msTimestamp);
-    const msSig = wallet.sign(msMsg).signature;
+    const msSig = await dev.signMessage(msMsg);
     await multisignLegacyRouter.connect(dev).createLegacy(
       mockSafeWallet.address,
       { name: "TestMultisig", note: "", nickNames: ["bene1", "bene2"], beneficiaries: [user1.address, user2.address] },
@@ -463,7 +470,7 @@ describe("Premium Setting", async function () {
       const legacyData = [
         {
           cosigners: [
-            emailMapping("0x974763b760d566154B1767534cF9537CEe2f886f", "dat.tran2@sotatek.com", "dat"),
+            emailMapping(dev.address, "dat.tran2@sotatek.com", "dat"),
           ],
           beneficiaries: [],
           secondLine: emailMapping(ethers.constants.AddressZero, "", ""),

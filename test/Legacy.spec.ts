@@ -26,7 +26,7 @@ describe("Legacy contract", async function () {
   this.timeout(150000);
 
   async function deployFixture() {
-    const [treasury, user1, user2, user3] = await ethers.getSigners(); // Get the first signer (default account)
+    const [treasury, dev, user1, user2, user3] = await ethers.getSigners(); // local accounts
     //deploy mock tokens
     const ERC20 = await ethers.getContractFactory("ERC20Token");
     const usdt = await ERC20.deploy("USDT", "USDT", 6);
@@ -34,19 +34,6 @@ describe("Legacy contract", async function () {
 
     const GenericLegacy = await ethers.getContractFactory("GenericLegacy");
     const genericLegacy = await GenericLegacy.deploy();
-
-    // Fund the account with ETH before impersonating
-    await network.provider.send("hardhat_setBalance", [
-      "0x974763b760d566154B1767534cF9537CEe2f886f",
-      "0x1000000000000000000", // 1 ETH
-    ]);
-
-    await network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: ["0x974763b760d566154B1767534cF9537CEe2f886f"],
-    });
-
-    const dev = await ethers.getSigner("0x974763b760d566154B1767534cF9537CEe2f886f");
 
     const premiumSetting = await deployProxy("PremiumSetting", [], "initialize", dev);
 
@@ -81,6 +68,11 @@ describe("Legacy contract", async function () {
       router,
       weth,
     ]);
+
+    // Required for CREATE2 EOA legacy deployments (legacyCreationCode is set post-deploy).
+    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
+    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
 
     const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
       legacyDeployer.address,
@@ -472,7 +464,7 @@ describe("Legacy contract", async function () {
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferLegacyRouter
       .connect(dev)
@@ -541,7 +533,7 @@ describe("Legacy contract", async function () {
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferLegacyRouter
       .connect(dev)
@@ -602,7 +594,7 @@ describe("Legacy contract", async function () {
     const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await transferLegacyRouter
       .connect(dev)
@@ -647,7 +639,7 @@ describe("Legacy contract", async function () {
     const legacyAddress = await multisignLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = wallet.sign(message).signature;
+    const signature = await dev.signMessage(message);
 
     await multisignLegacyRouter.connect(dev).createLegacy(safeWallet, mainConfig, extraConfig, currentTimestamp, signature);
 
@@ -677,9 +669,11 @@ describe("EOA Legacy autoSwap and unswap", async function () {
     const ERC20 = await ethers.getContractFactory("ERC20Token");
     const usdc = await ERC20.deploy("USDC", "USDC", 6);
 
+    const wethAddress = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"; // placeholder for mock router
+
     // Deploy mock Uniswap router
     const MockRouter = await ethers.getContractFactory("MockUniswapV2Router");
-    const mockRouter = await MockRouter.deploy();
+    const mockRouter = await MockRouter.deploy(wethAddress);
 
     // Set rate: 1 ETH = 2000 USDC (at 1e18 ETH → 2000 * 1e6 USDC units)
     const USDC_RATE = ethers.utils.parseUnits("2000", 6); // 2000e6
@@ -695,8 +689,6 @@ describe("EOA Legacy autoSwap and unswap", async function () {
       mockRouter.address,
       "0x21E19E0C9BAB2400000", // 10000 ETH in hex
     ]);
-
-    const wethAddress = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"; // placeholder, not used by mock
 
     // Deploy infrastructure using treasury as admin (no impersonation needed)
     const premiumSetting = await deployProxy("PremiumSetting", [], "initialize", treasury);
