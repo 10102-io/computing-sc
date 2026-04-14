@@ -99,7 +99,7 @@ const config: HardhatUserConfig = {
       accounts: (process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) !== undefined ? [(process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) as string] : [],
     },
     mainnet: {
-      url: process.env.RPC ?? "https://ethereum-rpc.publicnode.com",
+      url: process.env.MAINNET_RPC_URL ?? process.env.RPC ?? "https://ethereum-rpc.publicnode.com",
       chainId: 1,
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
     },
