@@ -89,8 +89,9 @@ describe("TimeLockRouter", function () {
 
       const tokenAmount = ethers.utils.parseEther("1000");
       // Mock: 1000 tokens -> 0.5 ETH => multiplier 5e14 (1000e18 * 5e14 / 1e18 = 5e17 = 0.5e18)
+      // getTokenToEthAmountOut calls getAmountsOut which uses ethToTokenMultiplier
       const multiplier = ethers.BigNumber.from(10).pow(14).mul(5);
-      await mockRouter.setTokenToEthMultiplier(multiplier.toString());
+      await mockRouter.setEthToTokenMultiplier(multiplier.toString());
 
       const ethOut = await router.getTokenToEthAmountOut(tokenAmount, storageToken.address);
       expect(ethOut).to.equal(ethers.utils.parseEther("0.5"));
