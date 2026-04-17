@@ -24,7 +24,11 @@
     "sync-ui": "npx ts-node scripts/sync-ui.ts",
     "investigate:swap": "npx ts-node scripts/investigate-uniswap-swap.ts",
     "upgrade-timelock": "npx hardhat run scripts/upgrade-timelock-set-router.ts --network sepolia",
-    "upgrade-eoa-legacy": "npx hardhat run scripts/upgrade-eoa-legacy-router.ts --network sepolia"
+    "upgrade-eoa-legacy": "npx hardhat run scripts/upgrade-eoa-legacy-router.ts --network sepolia",
+    "upgrade-multisig-router:sepolia": "npx hardhat run scripts/upgrade-multisig-legacy-router.ts --network sepolia",
+    "upgrade-multisig-router:mainnet": "npx hardhat run scripts/upgrade-multisig-legacy-router.ts --network mainnet",
+    "deploy-multisig-impl:sepolia": "npx hardhat run scripts/deploy-multisig-router-impl.ts --network sepolia",
+    "deploy-multisig-impl:mainnet": "npx hardhat run scripts/deploy-multisig-router-impl.ts --network mainnet"
   },
   "author": "",
   "license": "ISC",

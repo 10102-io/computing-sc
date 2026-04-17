@@ -21,3 +21,6 @@ node_modules
 # sync-ui output (user copies into UI repo)
 /output
 deployments/localhost/
+
+# Flattened contract artifacts (regenerate with `npx hardhat flatten`)
+flattened-*.sol

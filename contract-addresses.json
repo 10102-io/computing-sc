@@ -26,7 +26,7 @@
     },
     "MultisigLegacyRouter": {
       "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
-      "implementation": "0x95A0453c3aCd7dE30426cfc68a19Db4d761A55a9"
+      "implementation": "0x72037c89F1ba5257916399B38104287009F41e05"
     },
     "TransferLegacyRouter": {
       "address": "0x5Bd94c5ce2F9e703c911d77919856Bf6010f1b5e",
@@ -82,6 +82,50 @@
     "TimelockERC1155": {
       "address": "0x0B8B48b6be196F2C5e761C3b4fF508AD5b57f7b4",
       "implementation": "0x2db53a8e8aF1456Dca01529C048F3063F93Ea553"
+    },
+    "_deprecated": {
+      "_note": "Previous deployments superseded by the current addresses above. Legacies or timelocks created on these contracts are NOT indexed by the current subgraph.",
+      "TransferEOALegacyRouter_v1": {
+        "address": "0x71C62854F57891b9Eb542AB272Fa3f273245eEB3",
+        "replacedBy": "TransferEOALegacyRouter",
+        "note": "Original EOA router before CREATE2 redeployment (Apr 2025)"
+      },
+      "TransferLegacyRouter_v1": {
+        "address": "0x7d4b1fc665F94aF3682AD3A48c925f505DcE83b3",
+        "replacedBy": "TransferLegacyRouter"
+      },
+      "MultisigLegacyRouter_v1": {
+        "address": "0x68d02D85E1d43Fb83CD75633B2A65b8D2C236A5e",
+        "replacedBy": "MultisigLegacyRouter"
+      },
+      "PremiumSetting_v1": {
+        "address": "0x2623b985aD709c17e5b461c8746c642Ca840287e",
+        "replacedBy": "PremiumSetting"
+      },
+      "PremiumRegistry_v1": {
+        "address": "0x6495014E1970C8F36Cd4739a6E0b6e836317794d",
+        "replacedBy": "PremiumRegistry"
+      },
+      "TimeLockRouter_v1": {
+        "address": "0x0328F36ef7E9fb4dd3DdE77fE7e5573230756223",
+        "replacedBy": "TimeLockRouter"
+      },
+      "TimelockERC20_v1": {
+        "address": "0xaA8664eA057CD8752A20b4D8F9eb8f3D04807245",
+        "replacedBy": "TimelockERC20"
+      },
+      "TimelockERC721_v1": {
+        "address": "0xA87bD4AE205778Fc5244FF13333c36A86B3c0117",
+        "replacedBy": "TimelockERC721"
+      },
+      "TimelockERC1155_v1": {
+        "address": "0x763e05d915C3a5F5a55672e4765baf9c10Feb3ef",
+        "replacedBy": "TimelockERC1155"
+      },
+      "LegacyAgreement_v1": {
+        "address": "0x92a76FE89644F6aA9b8cE64b5a6E57B91A653Afc",
+        "note": "No current equivalent — feature removed or merged"
+      }
     }
   },
   "localhost": {
@@ -199,7 +243,7 @@
     },
     "MultisigLegacyRouter": {
       "address": "0x7c7bf503DF70eBE3520f65Cc0Ff1aF093Fa85038",
-      "implementation": "0x8e2A69165f4FD91bE48cF7bf5F571828653E0833"
+      "implementation": "0x4B8f4a2DE9A7eAD4fd0240502f20A2F815f95B05"
     },
     "TransferLegacyRouter": {
       "address": "0x7e173738f0bE8B4bDbA28CF91b0F5B0263Aa4b0C",
