@@ -21,7 +21,7 @@ interface IMultisigLegacy {
     string[] calldata nicknames_
   ) external returns (uint256 numberOfBeneficiaries);
 
-  function setActivationTrigger(address sender_, uint256 lackOfOutgoingTxRange_) external;
+  function setActivationTrigger(address sender_, uint128 lackOfOutgoingTxRange_) external;
 
   function activeLegacy(address guardAddress_) external returns (address[] memory newSigners, uint256 newThreshold);
 

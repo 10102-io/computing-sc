@@ -255,9 +255,10 @@ contract MultisigLegacyRouter is LegacyRouter, LegacyFactory, ReentrancyGuardUpg
 
     //Check activation trigger
     if (lackOfOutgoingTxRange_ == 0) revert ActivationTriggerInvalid();
+    if (lackOfOutgoingTxRange_ > type(uint128).max) revert ActivationTriggerInvalid();
 
     //Set lackOfOutgoingTxRange
-    IMultisigLegacy(legacyAddress).setActivationTrigger(msg.sender, lackOfOutgoingTxRange_);
+    IMultisigLegacy(legacyAddress).setActivationTrigger(msg.sender, uint128(lackOfOutgoingTxRange_));
 
     emit MultisigLegacyActivationTriggerUpdated(legacyId_, lackOfOutgoingTxRange_, block.timestamp);
   }

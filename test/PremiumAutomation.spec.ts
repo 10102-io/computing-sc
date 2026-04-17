@@ -53,20 +53,7 @@ describe("Premium Automation ", async function () {
     return { addr, email, name };
   }
   async function deployFixture() {
-    const [treasury, user1, user2, user3] = await ethers.getSigners(); // Get the first signer (default account)
-
-    await network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: ["0x974763b760d566154B1767534cF9537CEe2f886f"],
-    });
-
-    const dev = await ethers.getSigner("0x974763b760d566154B1767534cF9537CEe2f886f");
-
-    // Fund dev account with ETH for deployments
-    await network.provider.send("hardhat_setBalance", [
-      "0x974763b760d566154B1767534cF9537CEe2f886f",
-      "0x1000000000000000000", // 1 ETH
-    ]);
+    const [treasury, dev, user1, user2, user3] = await ethers.getSigners(); // local accounts
 
     // Deploy mock LINK token (18 decimals like real LINK)
     const MockLink = await ethers.getContractFactory("ERC20Token");
@@ -108,10 +95,10 @@ describe("Premium Automation ", async function () {
       dev
     );
 
-    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address]);
+    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address], "initialize", dev);
 
     // deployer contract
-    const legacyDeployer = await deployProxy("LegacyDeployer");
+    const legacyDeployer = await deployProxy("LegacyDeployer", [], "initialize", dev);
 
     const transferEOALegacyRouter = await deployProxy("TransferEOALegacyRouter", [
       legacyDeployer.address,
@@ -120,9 +107,9 @@ describe("Premium Automation ", async function () {
       payment.address,
       router,
       weth,
-    ]);
+    ], "initialize", dev);
 
-    // Set the EOA legacy creation code (required for createLegacy via Create2)
+    // Required for CREATE2 EOA legacy deployments in tests
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
     await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
@@ -134,15 +121,20 @@ describe("Premium Automation ", async function () {
       payment.address,
       router,
       weth,
-    ]);
+    ], "initialize", dev);
 
-    const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [legacyDeployer.address, setting.address, verifierTerm.address]);
+    const multisignLegacyRouter = await deployProxy(
+      "MultisigLegacyRouter",
+      [legacyDeployer.address, setting.address, verifierTerm.address],
+      "initialize",
+      dev
+    );
 
     await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
 
     await verifierTerm
       .connect(dev)
-      .setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
+      .setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
 
     // Deploy mock mail contracts (no-op implementations)
     const MockMail = await ethers.getContractFactory("MockPremiumSendMail");
@@ -195,17 +187,6 @@ describe("Premium Automation ", async function () {
     // user subcribe for plan
     await usdc.connect(dev).approve(registry.address, ethers.constants.MaxUint256);
     await registry.connect(dev).subcribeWithUSDC(0);
-
-    // Grant treasury premium time directly (treasury is a real Hardhat signer that can produce signatures)
-    await network.provider.request({ method: "hardhat_impersonateAccount", params: [registry.address] });
-    await network.provider.send("hardhat_setBalance", [registry.address, "0x1000000000000000000"]);
-    const registrySigner = await ethers.getSigner(registry.address);
-    await setting.connect(registrySigner).updatePremiumTime(treasury.address, ONE_YEAR);
-    await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [registry.address] });
-
-    // Mint tokens for treasury so it can create legacies
-    await usdt.mint(treasury.address, 100000 * 10 ** 6);
-    await usdc.mint(treasury.address, 100000 * 10 ** 6);
 
     return {
       dev,
@@ -399,7 +380,7 @@ describe("Premium Automation ", async function () {
   // })
 
   it("shoud send reminder transfer/ transfer EOA", async function () {
-    const { dev, treasury, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, premiumMailRouter, user3 } =
+    const { dev, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, premiumMailRouter, user3 } =
       await loadFixture(deployFixture);
 
     const mainConfig = {
@@ -432,14 +413,14 @@ describe("Premium Automation ", async function () {
 
     const nickName2 = "daddd";
     const nickName3 = "dat";
-    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(treasury.address);
+    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     console.log(legacyAddress);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await treasury.signMessage(message);
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
-      .connect(treasury)
+      .connect(dev)
       .createLegacy(mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     //set reminder config
@@ -455,17 +436,17 @@ describe("Premium Automation ", async function () {
       },
     ];
 
-    await usdc.mint(treasury.address, 1000 * 10 ** 6);
-    await usdc.connect(treasury).approve(legacyAddress, 1000 * 10 ** 6);
+    await usdc.mint(dev.address, 1000 * 10 ** 6);
+    await usdc.connect(dev).approve(legacyAddress, 1000 * 10 ** 6);
     await network.provider.send("hardhat_setBalance", [
       legacyAddress,
       "0x1000000000000000000", // 1 ETH
     ]);
 
-    await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
+    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
     //await premiumAutomationManager.connect(dev).addLegacyCronjob(dev.address, [legacyAddress]);
 
-    let cronjobAddress = await premiumAutomationManager.cronjob(treasury.address);
+    let cronjobAddress = await premiumAutomationManager.cronjob(dev.address);
     const cronjob = await ethers.getContractAt("PremiumAutomation", cronjobAddress);
 
     // console.log(await cronjob.legacyContracts(0));
@@ -563,7 +544,7 @@ describe("Premium Automation ", async function () {
   });
 
   it("should fund keepup if needed", async function () {
-    const { dev, treasury, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, mockKeeper } = await loadFixture(
+    const { dev, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, mockKeeper } = await loadFixture(
       deployFixture
     );
 
@@ -597,14 +578,14 @@ describe("Premium Automation ", async function () {
 
     const nickName2 = "daddd";
     const nickName3 = "dat";
-    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(treasury.address);
+    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     console.log(legacyAddress);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await treasury.signMessage(message);
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
-      .connect(treasury)
+      .connect(dev)
       .createLegacy(mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     //set reminder config
@@ -620,10 +601,10 @@ describe("Premium Automation ", async function () {
       },
     ];
 
-    await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
+    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
     //await premiumAutomationManager.connect(dev).addLegacyCronjob(dev.address, [legacyAddress]);
 
-    let cronjobAddress = await premiumAutomationManager.cronjob(treasury.address);
+    let cronjobAddress = await premiumAutomationManager.cronjob(dev.address);
     const cronjob = await ethers.getContractAt("PremiumAutomation", cronjobAddress);
     const keepUpId = await cronjob.keepupId();
     console.log("Keepup ID", keepUpId);
@@ -634,7 +615,7 @@ describe("Premium Automation ", async function () {
 
     const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
     console.log(await legacy.getTriggerActivationTimestamp());
-    console.log(await setting.getTimeAhead(treasury.address));
+    console.log(await setting.getTimeAhead(dev.address));
     let checkUpkeepData = await cronjob.checkUpkeep("0x");
     console.log(checkUpkeepData);
 
@@ -657,7 +638,7 @@ describe("Premium Automation ", async function () {
   });
 
   it("should trigger owner reset reminder", async function () {
-    const { dev, treasury, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, user2, user3, premiumMailRouter } =
+    const { dev, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, user2, user3, premiumMailRouter } =
       await loadFixture(deployFixture);
 
     const mainConfig = {
@@ -694,13 +675,13 @@ describe("Premium Automation ", async function () {
 
     const nickName2 = "daddd";
     const nickName3 = "dat";
-    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(treasury.address);
+    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await treasury.signMessage(message);
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
-      .connect(treasury)
+      .connect(dev)
       .createLegacy(mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     //set reminder config
@@ -732,7 +713,7 @@ describe("Premium Automation ", async function () {
   });
 
   it("should trigger activation reminder", async function () {
-    const { dev, treasury, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, user2, user3, premiumMailRouter } =
+    const { dev, premiumAutomationManager, transferEOALegacyRouter, link, setting, registry, usdc, user1, user2, user3, premiumMailRouter } =
       await loadFixture(deployFixture);
 
     const mainConfig = {
@@ -769,13 +750,13 @@ describe("Premium Automation ", async function () {
 
     const nickName2 = "daddd";
     const nickName3 = "dat";
-    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(treasury.address);
+    const legacyAddress = await transferEOALegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await treasury.signMessage(message);
+    const signature = await dev.signMessage(message);
 
     await transferEOALegacyRouter
-      .connect(treasury)
+      .connect(dev)
       .createLegacy(mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     //set reminder config
@@ -794,7 +775,7 @@ describe("Premium Automation ", async function () {
       },
     ];
 
-    await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
+    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
 
     await increase(86400);
 
@@ -808,7 +789,6 @@ describe("Premium Automation ", async function () {
   it("should not notify if guard is not set", async function () {
     const {
       dev,
-      treasury,
       premiumAutomationManager,
       transferEOALegacyRouter,
       link,
@@ -854,14 +834,14 @@ describe("Premium Automation ", async function () {
     const nickName3 = "dat";
 
     const MockSafeWallet = await ethers.getContractFactory("MockSafeWallet");
-    const mockSafeWallet = await MockSafeWallet.deploy([treasury.address]);
-    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(treasury.address);
+    const mockSafeWallet = await MockSafeWallet.deploy([dev.address]);
+    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
     const currentTimestamp = await currentTime();
     const message = await genMessage(currentTimestamp);
-    const signature = await treasury.signMessage(message);
+    const signature = await dev.signMessage(message);
 
     await transferLegacyRouter
-      .connect(treasury)
+      .connect(dev)
       .createLegacy(mockSafeWallet.address, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
 
     await mockSafeWallet.enableModule(legacyAddress);
@@ -881,9 +861,9 @@ describe("Premium Automation ", async function () {
       },
     ];
 
-    await setting.connect(treasury).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
+    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
 
-    let cronjobAddress = await premiumAutomationManager.cronjob(treasury.address);
+    let cronjobAddress = await premiumAutomationManager.cronjob(dev.address);
     const cronjob = await ethers.getContractAt("PremiumAutomation", cronjobAddress);
 
     await increase(3600 * 19);
