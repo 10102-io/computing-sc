@@ -8,8 +8,10 @@ const TOKEN_WHITELIST = "0xE7e5011263e862f964F608C26654edAD25497B8F";
 
 const TEST_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 const TEST_USDT = "0x02f62735EaF5fFB56B629bC529e72801713f27cd";
-// Canonical Sepolia Wrapped ETH
-const WETH_SEPOLIA = "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
+// Sepolia WETH9 — same address the UI hardcodes in constants/weth.ts and
+// constants/storageTokens.ts. Must match exactly or the ETH auto-swap
+// feature in Timelock and EOA Legacy will show an empty token dropdown.
+const WETH_SEPOLIA = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 // Sepolia wstETH (Lido)
 const WSTETH_SEPOLIA = "0xB82381A3fBD3FaFA77B3a7bE693342618240067b";
 
