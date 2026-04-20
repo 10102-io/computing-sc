@@ -95,7 +95,11 @@ const config: HardhatUserConfig = {
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL ?? "",
       chainId: 11155111,
-      gasPrice: "auto",
+      // Fixed gas price (3 gwei) with comfortable headroom. "auto" picks conservative
+      // values that collide with Sepolia's 12.5% replacement-fee bump rule when
+      // hardhat-deploy batches multiple deploys in quick succession. Override with
+      // SEPOLIA_GAS_PRICE_GWEI=<N> if you need to adjust.
+      gasPrice: (Number(process.env.SEPOLIA_GAS_PRICE_GWEI ?? "3")) * 1_000_000_000,
       accounts: (process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) !== undefined ? [(process.env.DEV_DEPLOYER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY) as string] : [],
     },
     mainnet: {

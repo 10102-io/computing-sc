@@ -16,6 +16,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     args: [],
     log: true,
     deterministicDeployment: false,
+    skipIfAlreadyDeployed: true,
   };
   if (!isLocal && process.env.RPC) {
     const web3 = new Web3(process.env.RPC);
