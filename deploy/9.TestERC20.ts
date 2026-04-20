@@ -23,6 +23,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     from: deployer,
     log: true,
     deterministicDeployment: false,
+    skipIfAlreadyDeployed: true,
   };
   if (!isLocal && process.env.RPC) {
     const web3 = new Web3(process.env.RPC);
@@ -40,10 +41,16 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     args: ["Test USDT", "USDT", DECIMALS],
   });
 
-  const usdcToken = await ethers.getContractAt("ERC20Token", usdc.address);
-  const usdtToken = await ethers.getContractAt("ERC20Token", usdt.address);
-  await usdcToken.mint(deployer, MINT_AMOUNT);
-  await usdtToken.mint(deployer, MINT_AMOUNT);
+  // Only mint on fresh deploys — otherwise we burn gas + nonce slots on every
+  // `deployments.run(["TokenWhiteList"])` that transitively depends on TestERC20.
+  if (usdc.newlyDeployed) {
+    const usdcToken = await ethers.getContractAt("ERC20Token", usdc.address);
+    await (await usdcToken.mint(deployer, MINT_AMOUNT)).wait();
+  }
+  if (usdt.newlyDeployed) {
+    const usdtToken = await ethers.getContractAt("ERC20Token", usdt.address);
+    await (await usdtToken.mint(deployer, MINT_AMOUNT)).wait();
+  }
 
   await saveContract(network.name, "ERC20Token_USDC", usdc.address);
   await saveContract(network.name, "ERC20Token_USDT", usdt.address);

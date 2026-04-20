@@ -40,7 +40,7 @@ async function main() {
     "function isCreateLegacy(address) view returns (bool)",
     "function legacyAddresses(uint256) view returns (address)",
   ];
-  const router = new ethers.Contract(routerAddress, minAbi, signer);
+  const router = await ethers.getContractAt(minAbi, routerAddress);
 
   // Pre-flight checks
   const isCreated = await router.isCreateLegacy(signer.address);

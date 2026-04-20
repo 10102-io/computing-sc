@@ -915,7 +915,7 @@ describe("EOA Legacy autoSwap and unswap", async function () {
 
     const ethAfter = await ethers.provider.getBalance(user2.address);
     // user2 received ETH (net of gas their balance should be higher)
-    expect(ethAfter.gt(ethBefore)).to.be.true;
+    expect(BigNumber.from(ethAfter).gt(BigNumber.from(ethBefore))).to.be.true;
 
     // eoaStorageToken should be cleared
     const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
@@ -945,7 +945,7 @@ describe("EOA Legacy autoSwap and unswap", async function () {
     );
 
     const ethAfter = await ethers.provider.getBalance(user2.address);
-    expect(ethAfter.gt(ethBefore)).to.be.true;
+    expect(BigNumber.from(ethAfter).gt(BigNumber.from(ethBefore))).to.be.true;
 
     const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);
     expect((await legacy.eoaStorageToken()) === "0x0000000000000000000000000000000000000000").to.be.true;
@@ -1017,7 +1017,7 @@ describe("EOA Legacy autoSwap and unswap", async function () {
     );
 
     const ethAfter = await ethers.provider.getBalance(user2.address);
-    expect(ethAfter.gt(ethBefore)).to.be.true;
+    expect(BigNumber.from(ethAfter).gt(BigNumber.from(ethBefore))).to.be.true;
 
     // eoaStorageToken is still cleared (unconditionally inside the if block)
     const legacy = await ethers.getContractAt("TransferEOALegacy", legacyAddress);

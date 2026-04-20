@@ -43,8 +43,7 @@ async function main() {
       "function getProxyImplementation(address) view returns (address)",
       "function upgrade(address,address)"
     ],
-    proxyAdminAddr,
-    deployer
+    proxyAdminAddr
   );
 
   const adminOwner = await proxyAdmin.owner();

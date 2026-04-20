@@ -9,7 +9,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect, use } from "chai";
 import { parseEther, parseUnits } from "ethers/lib/utils";
 import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
-import { PremiumMailRouter } from "../typechain-types";
+import type { Contract } from "ethers";
 
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
@@ -143,10 +143,10 @@ describe("Premium Automation ", async function () {
     const mockMailReadyToActivate = await MockMail.deploy();
 
     // Deploy PremiumMailRouter locally via proxy
-    const premiumMailRouter = (await deployProxy("PremiumMailRouter", [], "initialize", dev)) as PremiumMailRouter;
+    const premiumMailRouter = (await deployProxy("PremiumMailRouter", [], "initialize", dev)) as unknown as Contract;
 
     await premiumMailRouter
-      .connect(dev)
+      .connect(dev as any)
       .setParams(mockMailBeforeActivation.address, mockMailActivated.address, mockMailReadyToActivate.address, setting.address, premiumAutomationManager.address);
 
     // Deploy mock Chainlink Automation contracts

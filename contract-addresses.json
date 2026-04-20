@@ -1,13 +1,13 @@
 {
   "sepolia": {
     "Payment": {
-      "address": "0x7D783F61b92Ab940E6A71F072e83bf2E695fae8E"
+      "address": "0xd4bf99da7fBcb0A2Fd80754cB5CC9c7CDc9e8D78"
     },
     "ERC20Token_USDC": {
-      "address": "0x1f1D367555Ae0F0069fbC7f53A2fd10976090295"
+      "address": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
     },
     "ERC20Token_USDT": {
-      "address": "0x2aFD7FDe734209F38C4240C5848c9fFeB110780F"
+      "address": "0x02f62735EaF5fFB56B629bC529e72801713f27cd"
     },
     "DefaultProxyAdmin": {
       "address": "0x26e78E0A15ebBC48065Ed0527D74F28D1B53a1B6"
@@ -22,7 +22,7 @@
     },
     "PremiumSetting": {
       "address": "0xEA267a1F6D554dD416d26c60eFef9234ebfde95e",
-      "implementation": "0x1B544634873112843C0b68c2103F03FA4dfC7307"
+      "implementation": "0x1b544634873112843C0b68C2103f03FA4dfC7307"
     },
     "MultisigLegacyRouter": {
       "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
@@ -37,8 +37,8 @@
       "implementation": "0x79EcE3031d6596A8aBAEC5986A2a8dca4305eC46"
     },
     "PremiumRegistry": {
-      "address": "0x19dc9ea1Af43EcACda2F672769B8D9de27EaD60B",
-      "implementation": "0xC66bFe72eef5bBe787AdF4b4104Df4dbCD9c8A59"
+      "address": "0xC3c59ab1a146Da758fEf1f68Bd5F14189e5d0246",
+      "implementation": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b"
     },
     "PremiumAutomationManager": {
       "address": "0x5B2e634D1a22E74902408EA25D6E221B8A1DfcDE",
@@ -61,11 +61,11 @@
       "implementation": "0x75f2C582B411907bF6a8dD062c4DEb06124d43A4"
     },
     "TokenWhiteList": {
-      "address": "0x17126445d3D753EeFf803ADE4e82E11a1b1745b0"
+      "address": "0xE7e5011263e862f964F608C26654edAD25497B8F"
     },
     "Banner": {
-      "address": "0xf91c245bE0b0B3C8f6398d481Dea9325cC222471",
-      "implementation": "0x4877ce39a8095F11D773E9d6172810098Cfc82d2"
+      "address": "0x9055140Be419cC91e3C48EA005658D1D11C245b7",
+      "implementation": "0xD4099787c0491eE85CFbb6f1D8C7f07aF8BdA84f"
     },
     "TimeLockRouter": {
       "address": "0x04FB4160c519578E310ee9cC7b966B88291E5F20",
@@ -125,6 +125,63 @@
       "LegacyAgreement_v1": {
         "address": "0x92a76FE89644F6aA9b8cE64b5a6E57B91A653Afc",
         "note": "No current equivalent — feature removed or merged"
+      }
+    },
+    "_orphaned": {
+      "_note": "Contracts previously listed as active but orphaned (signer has no DEFAULT_ADMIN_ROLE). Three of these were just stale entries in this file: the actually-wired contracts above (Payment, TokenWhiteList, PremiumRegistry) were always fully controlled by the current admin. Only Banner_orphaned required a true redeployment.",
+      "Payment_orphaned": {
+        "address": "0x7D783F61b92Ab940E6A71F072e83bf2E695fae8E",
+        "replacedBy": "Payment",
+        "note": "Stale address in contract-addresses.json; OLD PremiumSetting.premiumRegistry already pointed at the wired Payment. Kept on-chain but unused."
+      },
+      "TokenWhiteList_orphaned": {
+        "address": "0x17126445d3D753EeFf803ADE4e82E11a1b1745b0",
+        "replacedBy": "TokenWhiteList",
+        "note": "Stale address in contract-addresses.json; TimeLockRouter.tokenWhitelist already pointed at the wired TokenWhiteList."
+      },
+      "PremiumRegistry_orphaned": {
+        "address": "0x19dc9ea1Af43EcACda2F672769B8D9de27EaD60B",
+        "replacedBy": "PremiumRegistry",
+        "note": "Stale address in contract-addresses.json; OLD PremiumSetting.premiumRegistry already pointed at the wired PremiumRegistry."
+      },
+      "Banner_orphaned": {
+        "address": "0xf91c245bE0b0B3C8f6398d481Dea9325cC222471",
+        "replacedBy": "Banner",
+        "note": "Truly orphaned (signer has no DEFAULT_ADMIN_ROLE); fresh Banner deployed and put into use."
+      },
+      "Payment_redeployed_unused": {
+        "address": "0x01C6a8dF590E706B8482B11c977757F5d52FCc3c",
+        "replacedBy": "Payment",
+        "note": "Accidentally redeployed while chasing the 'orphan' before realizing the wired Payment was healthy. Not wired into anything."
+      },
+      "TokenWhiteList_redeployed_unused": {
+        "address": "0x521D48eA3763Eed6A32B89fA8f7F6D5ad21108a1",
+        "replacedBy": "TokenWhiteList",
+        "note": "Accidentally redeployed. Not wired; wired TokenWhiteList remained healthy."
+      },
+      "PremiumRegistry_redeployed_unused": {
+        "address": "0x2A2280e3c90F09A3045CEDB95C628DEE58C62361",
+        "replacedBy": "PremiumRegistry",
+        "note": "Accidentally redeployed (upgradeable proxy). Points at PremiumSetting_redeployed_unused; isolated."
+      },
+      "PremiumSetting_redeployed_unused": {
+        "address": "0x8a87bA5f4Af63B2c80d3ddc5B9cb2B789F08FA15",
+        "implementation": "0xa524aB6711c068ab7eD9b5BFe33e23A9858501A2",
+        "replacedBy": "PremiumSetting",
+        "note": "Cascaded redeploy via hardhat-deploy dependency chain when the cached bytecode drifted. No routers reference it."
+      },
+      "DefaultProxyAdmin_redeployed_unused": {
+        "address": "0x87006D0F171332AFfe9c7D2DA6e9Da1f1ABDE1AA",
+        "replacedBy": "DefaultProxyAdmin",
+        "note": "Cascaded redeploy; owns PremiumRegistry_redeployed_unused and the new Banner proxy. The wired ecosystem uses the original DefaultProxyAdmin."
+      },
+      "ERC20Token_USDC_redeployed_unused": {
+        "address": "0xb10407Cc9dA55c994fB76Cc654E80c51D1fd2227",
+        "replacedBy": "ERC20Token_USDC"
+      },
+      "ERC20Token_USDT_redeployed_unused": {
+        "address": "0x6daeDfe66D5F2680dac816519b5cF2762Bb6918B",
+        "replacedBy": "ERC20Token_USDT"
       }
     }
   },
