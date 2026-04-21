@@ -49,7 +49,9 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   address public weth; // WETH address for swapping
 
   uint256 private _lastTimestamp;
-  uint256 private _isLive = 1;
+  // NOTE: do NOT rely on an inline initializer here. Clones deployed via EIP-1167
+  // never run creation code, so this slot must be written explicitly in initialize().
+  uint256 private _isLive;
 
   EnumerableSet.AddressSet private _beneficiariesSet;
   mapping(address beneficiaries => uint256) private _distributions;
@@ -284,6 +286,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     string calldata nickname3
   ) external notInitialized returns (uint256 numberOfBeneficiaries) {
     if (owner_ == address(0)) revert OwnerInvalid();
+    _isLive = 1;
     uniswapRouter = _uniswapRouter;
     weth = _weth;
     _setLegacyInfo(legacyId_, owner_, 1, config_.lackOfOutgoingTxRange, msg.sender);

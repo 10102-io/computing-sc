@@ -20,6 +20,12 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   bytes public legacyCreationCode;
   address private _codeAdmin;
 
+  // EIP-1167 minimal-proxy implementation. When set (non-zero), new legacies are
+  // created as clones pointing at this address instead of deploying the full
+  // `legacyCreationCode` bytecode. Existing legacies are unaffected — they remain
+  // full, independent contracts.
+  address public legacyImplementation;
+
   /* Error */
   error NumBeneficiariesInvalid();
   error NumAssetsInvalid();
@@ -113,6 +119,18 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   }
 
   function initializeV2(address codeAdmin_) external reinitializer(3) {
+    if (codeAdmin_ == address(0)) revert InvalidInitialization();
+    _codeAdmin = codeAdmin_;
+  }
+
+  // Additional rotation path for proxies whose `_initialized` counter has
+  // already advanced past 3 due to a prior reinitialization cycle performed on
+  // an earlier implementation. Use this when `initializeV2` is no longer
+  // callable (e.g. mainnet as of the EIP-1167 upgrade). Must be called
+  // atomically with the proxy upgrade (e.g. via `admin.upgradeAndCall`) to
+  // prevent any window for front-running.
+  function initializeV3(address codeAdmin_) external reinitializer(4) {
+    if (codeAdmin_ == address(0)) revert InvalidInitialization();
     _codeAdmin = codeAdmin_;
   }
 
@@ -123,9 +141,24 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   }
 
   /**
-   * @dev Get next legacy address that would be created for a sender
+   * @dev Point new legacies at an EIP-1167 minimal-proxy implementation. Once set,
+   * `createLegacy` deploys ~45-byte clones (~40k gas) instead of the full ~18KB
+   * bytecode (~6M gas). Pass `address(0)` to fall back to the legacy bytecode path.
+   * Existing legacies are unaffected by this change.
+   */
+  function setLegacyImplementation(address impl_) external onlyCodeAdmin {
+    legacyImplementation = impl_;
+  }
+
+  /**
+   * @dev Get next legacy address that would be created for a sender. Uses the
+   * clone prediction when `legacyImplementation` is set, otherwise falls back to
+   * the creation-code prediction.
    */
   function getNextLegacyAddress(address sender_) external view returns (address) {
+    if (legacyImplementation != address(0)) {
+      return _getNextCloneAddress(legacyImplementation, sender_);
+    }
     return _getNextAddress(legacyCreationCode, sender_);
   }
 
@@ -149,8 +182,11 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     //Check if msg.sender has already created a legacy
     if (_isCreateLegacy(msg.sender)) revert SenderIsCreatedLegacy(msg.sender);
 
-    // Create new legacy contract
-    (uint256 newLegacyId, address legacyAddress) = _createLegacy(legacyCreationCode, msg.sender);
+    // Create new legacy contract. Clone path (EIP-1167) when an implementation
+    // is configured, otherwise full-bytecode deploy for back-compat.
+    (uint256 newLegacyId, address legacyAddress) = legacyImplementation != address(0)
+      ? _cloneLegacy(legacyImplementation, msg.sender)
+      : _createLegacy(legacyCreationCode, msg.sender);
 
     //Verify + store user agreement signature
     verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);

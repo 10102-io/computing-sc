@@ -18,7 +18,7 @@
     },
     "LegacyDeployer": {
       "address": "0x0D33b36836d05549Cbd18379BC488D1Db90CEB07",
-      "implementation": "0xb1c54eD206f52e02B0324C82aEA676D4A8058303"
+      "implementation": "0x9A62F82733Feb27a5eB6E62A4c393678d02FD4Cc"
     },
     "PremiumSetting": {
       "address": "0xEA267a1F6D554dD416d26c60eFef9234ebfde95e",
@@ -34,7 +34,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x79EcE3031d6596A8aBAEC5986A2a8dca4305eC46"
+      "implementation": "0x42B23c6ccbAeDdE2291215d03A5A4B2EE43579E6"
     },
     "PremiumRegistry": {
       "address": "0xC3c59ab1a146Da758fEf1f68Bd5F14189e5d0246",
@@ -183,6 +183,9 @@
         "address": "0x6daeDfe66D5F2680dac816519b5cF2762Bb6918B",
         "replacedBy": "ERC20Token_USDT"
       }
+    },
+    "TransferEOALegacyImpl": {
+      "address": "0x590f3b379e4c7dCB1abE940F488759781A955329"
     }
   },
   "localhost": {
@@ -292,7 +295,7 @@
     },
     "LegacyDeployer": {
       "address": "0xdb6B6487e020479120dd3e596Ff5A530eD7C88a7",
-      "implementation": "0xd4bf99da7fBcb0A2Fd80754cB5CC9c7CDc9e8D78"
+      "implementation": "0x7F99873a7Fdf442ef906F7cAFcd35B3e22588151"
     },
     "PremiumSetting": {
       "address": "0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f",
@@ -308,7 +311,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0x78698F783C5C155c04D7C09c895183B5070929B4"
+      "implementation": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -356,6 +359,9 @@
     "TimelockERC1155": {
       "address": "0xa29Ac005e8Df0FFfB495c69f2C064c5a5F41261e",
       "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4"
+    },
+    "TransferEOALegacyImpl": {
+      "address": "0x314F512c2420b5F7548E95f5c5438FEDB2d9233C"
     }
   }
 }
