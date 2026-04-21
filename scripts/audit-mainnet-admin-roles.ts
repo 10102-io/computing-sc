@@ -20,6 +20,11 @@ import * as fs from "fs";
 import * as path from "path";
 
 const STALE_DEV = "0x974763b760d566154B1767534cF9537CEe2f886f".toLowerCase();
+const CONTRACTED_DEPLOYER = "0x89F544A2ecb12E37978F61aA47ACa64f81677944".toLowerCase();
+const FLAGGED_ADDRESSES: Record<string, string> = {
+  [STALE_DEV]: "STALE DEV WALLET",
+  [CONTRACTED_DEPLOYER]: "CONTRACTED DEPLOYER (0x89F544A2, handed off ProxyAdmin 2026-03-12)",
+};
 const INITIALIZABLE_SLOT =
   "0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00";
 
@@ -91,7 +96,7 @@ async function main() {
     initVersion: bigint | null;
     ownable: string | null;
     ownableIsStale: boolean;
-    staleSlots: Array<{ slot: number; value: string }>;
+    staleSlots: Array<{ slot: number; value: string; label: string }>;
   };
   const findings: Finding[] = [];
 
@@ -134,13 +139,13 @@ async function main() {
       } catch {}
       const ownableIsStale = !!ownable && ownable === STALE_DEV;
 
-      // Scan first 12 storage slots for appearances of the stale dev wallet
-      const staleSlots: Array<{ slot: number; value: string }> = [];
+      // Scan first 12 storage slots for appearances of ANY flagged wallet
+      const staleSlots: Array<{ slot: number; value: string; label: string }> = [];
       for (let i = 0; i < 12; i++) {
         const v = await ethers.provider.getStorageAt(proxy, i);
-        const asAddress = "0x" + v.slice(-40);
-        if (asAddress.toLowerCase() === STALE_DEV) {
-          staleSlots.push({ slot: i, value: v });
+        const asAddress = ("0x" + v.slice(-40)).toLowerCase();
+        if (FLAGGED_ADDRESSES[asAddress]) {
+          staleSlots.push({ slot: i, value: v, label: FLAGGED_ADDRESSES[asAddress] });
         }
       }
 
@@ -177,10 +182,12 @@ async function main() {
         console.log(`    owner():       ${ownable}${flag}`);
       }
       if (staleSlots.length > 0) {
-        console.log(`    ⚠ stale dev wallet found at storage slot(s): ${staleSlots.map((s) => s.slot).join(", ")}`);
-        console.log(`      (likely a _codeAdmin / _creator / similar role — requires rotation before mainnet deploy)`);
+        for (const s of staleSlots) {
+          console.log(`    ⚠ flagged address at slot ${s.slot}: ${s.label}`);
+        }
+        console.log(`      (likely a _codeAdmin / _creator / similar role — requires rotation)`);
       } else {
-        console.log(`    storage scan:  clean (stale wallet not in first 12 slots)`);
+        console.log(`    storage scan:  clean (no flagged addresses in first 12 slots)`);
       }
     }
   }
@@ -205,11 +212,13 @@ async function main() {
   }
 
   if (staleInSlots.length === 0) {
-    console.log(`  ✓ No stale-dev-wallet references found in scanned storage slots.`);
+    console.log(`  ✓ No flagged-wallet references found in scanned storage slots.`);
   } else {
-    console.log(`  ⚠ Stale-dev-wallet references in storage (likely _codeAdmin/_creator):`);
+    console.log(`  ⚠ Flagged-wallet references in storage (likely _codeAdmin/_creator):`);
     for (const f of staleInSlots) {
-      console.log(`      - ${f.name} @ slot ${f.staleSlots.map((s) => s.slot).join(", ")} (initialized=${f.initVersion})`);
+      for (const s of f.staleSlots) {
+        console.log(`      - ${f.name} @ slot ${s.slot}: ${s.label}  (initialized=${f.initVersion})`);
+      }
     }
   }
 
