@@ -57,6 +57,8 @@ user, amortised.
 
 ## Monitoring
 
+### On-demand (manual)
+
 Read-only scripts (work against whichever network `--network` resolves to):
 
 - `scripts/check-sepolia-link-funding.ts` — prints manager balance, the caller's
@@ -64,12 +66,37 @@ Read-only scripts (work against whichever network `--network` resolves to):
 - `scripts/check-mainnet-link-funding.ts` — same idea, and cross-checks the
   wired manager against the address in `contract-addresses.json`.
 
-Recommended cadence:
+### Continuous (automated, configured 2026-05-01)
 
-- **Mainnet:** weekly cron or a watcher alerting when balance drops below
-  5 LINK. 5 LINK buffers ~3-4 new paying users before the hard floor.
-- **Sepolia:** check before a demo / QA cycle. Re-fund from the deployer via
-  `scripts/fund-sepolia-manager-link.ts` (hard-codes a 10 LINK top-up).
+**Tenderly Alerts** watch the manager addresses on both networks and fire on
+LINK debits (every register-upkeep / addFunds is an outbound LINK transfer
+from the manager). The alert is configured per network:
+
+- **Mainnet manager**: `0x03db2dcED84AEcb21F9e399f4dC7B71302537265`
+- **Sepolia manager**: `0x5B2e634D1a22E74902408EA25D6E221B8A1DfcDE`
+- Trigger: ERC-20 Transfer event on the LINK token (`0x514910…986CA` mainnet
+  / `0x779877…4789` sepolia) where `from == manager`.
+- Channel: email to the operator inbox.
+
+This is **event-based** (not a threshold alert), so it doesn't directly say
+"you're low" — it says "LINK was just consumed". The operator's job on each
+fire is to run `check-mainnet-link-funding.ts` (or its sepolia sibling) to
+read the current balance and decide whether to top up.
+
+Why event-based instead of threshold: Tenderly's free tier supports event
+alerts but the threshold variant ("View Function Result < X") requires a
+paid Web3 Action. Event-based plus the existing scripts gets us 90% of the
+value at $0/month.
+
+Recommended cadence (post-alerting):
+
+- **On every alert email**: run the check script, top up if balance < 5 LINK
+  (mainnet) / 3 LINK (sepolia).
+- **Mainnet pre-marketing**: top up to **20× expected fresh-premium-user
+  count** in LINK (3 LINK per user + safety margin). For a campaign
+  expecting 50 conversions: ~150 LINK minimum, 200 LINK recommended.
+- **Sepolia pre-QA cycle**: keep ≥10 LINK headroom; re-fund from the
+  deployer via `scripts/fund-sepolia-manager-link.ts`.
 
 ## How to top up
 
@@ -100,24 +127,45 @@ Recommended cadence:
    `PremiumSetting` each time so we don't drift on a future re-wire.
 4. Re-run `scripts/check-mainnet-link-funding.ts` to confirm.
 
-## Long-term mitigations (not done yet)
+## Long-term mitigations
 
-- **Low-water alerting.** Off-chain watcher hitting
-  `PremiumAutomationManager.i_link.balanceOf(self)` and paging when < 5 LINK.
-  Cheapest fix.
+- **Low-water alerting.** ✅ shipped 2026-05-01 via Tenderly event alerts —
+  see "Continuous" monitoring above.
 - **Graceful degrade on LINK shortage.** Contract change: wrap the
   `registerUpkeep` call in a try/catch on `addLegacyCronjob` so a missing
   upkeep doesn't revert the whole subscribe. Trade-off: silently dropped
-  cronjob registration — only acceptable if we have monitoring that catches
-  it. Requires a `PremiumAutomationManager` upgrade.
+  cronjob registration — only acceptable because we now have alerting that
+  catches the burn. Requires a `PremiumAutomationManager` upgrade.
 - **Testnet skip flag.** Add an `onlyMainnet` / "skip automation" toggle so
   testnet never reaches the LINK pull path. This would also remove the need
   for the `VITE_FEATURE_EMAIL_REMINDERS_TESTNET` disclaimer in the consumer UI.
   Requires a `PremiumSetting` upgrade.
+- **Retire the LINK dependency entirely.** Cross-repo refactor: replace
+  Chainlink Functions (subscription 141) and Chainlink Automation upkeeps
+  with the existing Mailjet proxy + an off-chain cron worker reading
+  `MailRequested(...)` events. Eliminates the operational LINK tax. See
+  [`computing/docs/DEFERRED.md`](../../../computing/docs/DEFERRED.md#retire-chainlink-functions--automation-from-the-premium-flow).
+
+## Incident log
+
+- **2026-05-01** — manager depleted on Sepolia (2.77 LINK, below the
+  ~3 LINK demand for a fresh registration). Fresh-account QA test surfaced
+  the misleading `ERC20: transfer amount exceeds balance` revert from a
+  premium `createLegacy`. Diagnosed by enumerating manager events
+  (3 mainnet + 2 sepolia `CronjobCreated`-ever, none in 6 weeks → not a
+  registrar policy issue → balance issue). Manager topped up to ~39 LINK
+  on Sepolia; mainnet (7.07 LINK at the time, ≤2 fresh users of
+  headroom) flagged for top-up before any marketing push. Tenderly
+  alerts wired up so the next depletion is caught proactively rather
+  than via a user-facing revert. Confirmed end-to-end: fresh wallet
+  `0xc7495C…4159` successfully created Cronjob `0xe3d3…35ef` at block
+  10770747 post-fund.
 
 ## Related
 
 - `docs/plans/solc-upgrade.md` — existing notes on upgrade procedure.
+- `computing/docs/DEFERRED.md` — long-term refactor entry for retiring the
+  LINK dependency.
 - `computing/src/components/organisms/settings-tabs/email-reminder-settings/index.tsx`
   — UI disclaimer for the separate "Chainlink Automation upkeep itself is
   unfunded on Sepolia" issue. That is a different LINK pool (the upkeep's
