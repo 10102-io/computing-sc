@@ -63,14 +63,24 @@ next `release:` commit on `main` will fold them in.
 1. ✅ Sepolia: new impl `0x6bab4A27a0Eb5210B61e35E69331355dC2A74511`
    wired via `setLegacyImplementation` (tx
    `0x90fc34db427b9ff9723849d1389a7ca23a00b794748138321d09c6ea16721452`).
-   Etherscan verification deferred — tracked under the existing
-   `solc 0.8.20 + viaIR` determinism entry in `docs/DEFERRED.md`
-   (functional contract is unaffected).
-2. ⏳ Mainnet: deploy blocked on deployer balance (held ~0.00075 ETH at
-   2.3 gwei base fee; impl deploy needs ~0.008 ETH). Top up the
-   `0xfe8b…b630` deployer and re-run
-   `npx hardhat run scripts/deploy-eoa-clone-impl.ts --network mainnet`.
-3. `contract-addresses.json` is updated automatically by the script.
+2. ✅ Mainnet: new impl `0xD5bA2799fc2e5bc250a50251896A6d7E1c792200`
+   deployed (tx
+   `0x90f42c07647c1d2252bfdd8d59421a1ea536cc2d8858a9e316a9ccfdddbf5f29`)
+   and wired via `setLegacyImplementation` (tx
+   `0xba472d3b291c6faa22b00de37bd1727fd4d909bff5a575cafe6a99e889b43757`).
+   Confirmed on-chain — `legacyImplementation()` returns the new address
+   on the production router `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b`.
+   Replaces `0x314F512c2420b5F7548E95f5c5438FEDB2d9233C` as the clone
+   target for new EOA legacies; existing clones are bound to the old
+   impl per EIP-1167 and stay on the "claim as WETH then unwrap"
+   workaround.
+3. Etherscan verification deferred on both networks — same
+   `solc 0.8.20 + viaIR` determinism entry already tracked in
+   `docs/DEFERRED.md`. Functional contracts are unaffected; the proxy
+   ABI users interact with on Etherscan is the verified router proxy
+   itself, which is unchanged.
+4. `contract-addresses.json` updated by the deploy script for both
+   networks.
 
 ### EIP-1167 minimal proxies for EOA transfer legacies — gas cost ≈ −50% per create
 
