@@ -27,6 +27,44 @@ These commits are on `dev` and **live on mainnet** via a direct-from-dev
 deploy + upgrade. They have not yet been squash-merged into `main`. The
 next `release:` commit on `main` will fold them in.
 
+### EOA legacy "Claim as ETH" — `receive()` now fits the WETH 2300-gas stipend
+
+**What changed on-chain**
+- `TransferLegacyEOAContract.receive()` short-circuits when
+  `msg.sender == weth`. The previous body did `isLive() &&
+  msg.sender == getLegacyOwner()`, which on the WETH-unwrap callback
+  costs ~2.3-4.5k gas (a cold SLOAD on `_isActive`). Sepolia/mainnet
+  WETH9's `withdraw()` calls back via Solidity-0.4-style
+  `msg.sender.transfer(wad)`, which forwards exactly the 2300-gas
+  stipend, so the callback was reverting and bringing down the entire
+  `activeLegacyAndUnswap` path.
+- The early return preserves the existing semantics for owner deposits
+  (still bumps `_lastTimestamp` when the owner sends ETH directly),
+  it only suppresses the bookkeeping when the inbound ETH is the
+  contract unwrapping its own WETH balance during a beneficiary claim.
+
+**Why it matters**
+- "Claim as ETH" on EOA legacies whose storage token is WETH was
+  reverting at simulation (MetaMask never popped). Beneficiaries had
+  to fall back to "Claim as WETH" and unwrap themselves, which leaks
+  the abstraction the storage-token autoSwap is supposed to hide.
+- Mainnet impact assessment: the broken impl is at
+  `0x314F512c2420b5F7548E95f5c5438FEDB2d9233C` and is the clone target
+  for every EOA legacy created since `cd52a40`. Existing legacies are
+  permanently bound to that impl (EIP-1167 hardcodes the delegation
+  target in clone bytecode) — they cannot be retroactively patched
+  and remain on the workaround "Claim as WETH then unwrap on receipt".
+  The new impl unblocks **only** legacies created after the impl swap,
+  which is acceptable: the cohort of mainnet EOA legacies with
+  `eoaStorageToken == weth` is small and identifiable, and the
+  workaround is non-destructive.
+
+**Rollout (planned)**
+1. `npx hardhat run scripts/deploy-eoa-clone-impl.ts --network sepolia`
+   then re-test with a fresh Sepolia EOA legacy.
+2. Repeat on mainnet once Sepolia confirms the fix.
+3. Update `contract-addresses.json` (auto-recorded by the script).
+
 ### EIP-1167 minimal proxies for EOA transfer legacies — gas cost ≈ −50% per create
 
 Commit `cd52a40` (+ forensics `73267f9`, artifact hygiene `63a9be8`).

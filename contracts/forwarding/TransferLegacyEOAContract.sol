@@ -505,6 +505,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   }
 
   receive() external payable {
+    // WETH9.withdraw() forwards ETH back via Solidity-0.4-style `.transfer`,
+    // which caps the callee at 2300 gas. The owner/isLive checks below do
+    // multiple SLOADs (one of them cold) and exceed that stipend, which makes
+    // the whole `IWETH(weth).withdraw(...)` step revert and breaks the
+    // claim-as-ETH path. Short-circuit when the inbound ETH is the unwrap of
+    // our own WETH balance — `weth` is warm at that point so this stays well
+    // under 2300 gas. Activity timestamp is intentionally NOT bumped here
+    // because the deposit isn't a fresh signal of life from the owner.
+    if (msg.sender == weth) return;
     if (isLive() && msg.sender == getLegacyOwner()) {
       _lastTimestamp = block.timestamp;
     }
