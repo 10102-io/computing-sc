@@ -23,9 +23,33 @@ the headline story lives.
 
 ## [Unreleased on `main` — already live on mainnet]
 
-These commits are on `dev` and **live on mainnet** via a direct-from-dev
-deploy + upgrade. They have not yet been squash-merged into `main`. The
-next `release:` commit on `main` will fold them in.
+## 2026-05-04 — EOA receive() 2300-gas fix + create-flag self-service + EIP-1167 cutover
+
+This release folds three on-chain pieces into `main`. All three were
+already live on Sepolia and mainnet ahead of the squash-merge — the
+`main` commit is the bookkeeping that records what shipped.
+
+1. **EIP-1167 minimal-proxy clones for new EOA legacies.** Cuts
+   per-create gas roughly in half by replacing full-bytecode redeploys
+   with minimal clones pointing at a shared implementation. Existing
+   pre-cutover legacies are unaffected (full, independent contracts
+   still). Forensics + reconciliation tooling shipped in the same
+   bundle (`scripts/forensics-eoa-clones.ts`, artifact-hygiene audit).
+2. **EOA `receive()` fits the WETH 2300-gas stipend.** WETH9's
+   `withdraw()` calls back via `transfer()`, which forwards exactly
+   2300 gas; the old `receive()` did multiple SLOADs and reverted,
+   silently breaking the entire `claim-as-ETH` path. New impls deployed
+   on both networks; existing clones are bound to the old impl per
+   EIP-1167 immutability and stay on the "claim as WETH then unwrap"
+   workaround.
+3. **EOA `isCreateLegacy` no longer permanently locks out owners after
+   a beneficiary claim.** The router auto-clears the flag on successful
+   `activeLegacy*`, and a new self-service `releaseCreateFlag` lets
+   owners of pre-existing claimed legacies clear their own flag without
+   admin coordination.
+
+Detailed breakdown of each piece below (kept verbatim from the
+"unreleased on dev" entries for traceability).
 
 ### EOA legacy "create flag" — owners no longer locked out after a beneficiary claim
 
