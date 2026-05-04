@@ -25,8 +25,10 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
       proxyContract: "OptimizedTransparentProxy",
       owner: deployer,
       execute: {
-        methodName: "initialize",
-        args: [legacyDeployer, setting, verifierTerm, payment, uniswapRouter, weth],
+        init: {
+          methodName: "initialize",
+          args: [legacyDeployer, setting, verifierTerm, payment, uniswapRouter, weth],
+        },
       },
     },
   });
@@ -70,5 +72,9 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 };
 
 deploy.tags = ["TransferEOALegacyRouter"];
-deploy.dependencies = ["LegacyDeployer", "PremiumSetting", "EIP712LegacyVerifier", "Payment"];
+// NOTE: Dependencies intentionally omitted to prevent this tag from triggering
+// unrelated proxy upgrades (e.g. PremiumSetting) on networks where other
+// contracts have drifted bytecode since their last deploy. Fresh-network
+// deploys should instead use `hardhat deploy` without tags (which runs every
+// script in order) so dependencies are satisfied.
 export default deploy;

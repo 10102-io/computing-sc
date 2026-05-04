@@ -45,6 +45,23 @@ contract EOALegacyFactory {
   }
 
   /**
+   * @dev EIP-1167 clone counterpart of `_createLegacy`. Caller is responsible for
+   * invoking the implementation's initializer on the returned address.
+   */
+  function _cloneLegacy(address implementation_, address sender_) internal returns (uint256, address) {
+    _legacyId += 1;
+    address legacyAddress = ILegacyDeployer(legacyDeployerContract).cloneLegacy(implementation_, sender_);
+    legacyAddresses[_legacyId] = legacyAddress;
+    isCreateLegacy[sender_] = true;
+
+    return (_legacyId, legacyAddress);
+  }
+
+  function _getNextCloneAddress(address implementation_, address sender_) internal view returns (address) {
+    return ILegacyDeployer(legacyDeployerContract).getNextCloneAddress(implementation_, sender_);
+  }
+
+  /**
    * @dev Check whether legacy existed
    * @param legacyId_  legacy id
    */
