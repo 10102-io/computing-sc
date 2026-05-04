@@ -5,6 +5,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
 import {ITransferEOALegacy} from "../interfaces/ITransferLegacyEOAContract.sol";
+import {IPremiumLegacy} from "../interfaces/IPremiumLegacy.sol";
 import {TransferLegacyStruct} from "../libraries/TransferLegacyStruct.sol";
 import {IEIP712LegacyVerifier} from "../interfaces/IEIP712LegacyVerifier.sol";
 import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
@@ -37,6 +38,8 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error InvalidSwapSettings();
   error NotCodeAdmin();
   error EmptyCode();
+  error OnlyOwner();
+  error LegacyStillActive();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -89,6 +92,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   event TransferEOALegacyAutoSwapped(uint256 indexed legacyId, address storageToken, uint256 ethAmount, uint256 timestamp);
   event TransferEOALegacyUnswapped(uint256 indexed legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
   event TransferEOALegacyActivatedWithUnswap(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
+  event TransferEOALegacyCreateFlagReleased(uint256 indexed legacyId, address indexed owner, uint256 timestamp);
 
     constructor () {
     _disableInitializers();
@@ -365,6 +369,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint8 currentLayer = ITransferEOALegacy(legacyAddress).getLayer();
     if (beneLayer > currentLayer) revert CannotClaim();
     if (beneLayer == 0) revert OnlyBeneficaries();
+
+    // Activation is a one-way state change: the legacy's `_isActive` flips
+    // to 2 inside the call above and the contract becomes a tombstone
+    // (`deleteLegacy` is blocked from here on). Release the owner's
+    // create-flag so they can spin up a new legacy without coordinating
+    // with us. Idempotent — repeat calls (multi-tranche claims that
+    // re-enter activeLegacy) are no-ops. We read the owner via
+    // IPremiumLegacy because GenericLegacy's `getLegacyOwner` is non-virtual
+    // and ITransferEOALegacy can't redeclare it without an override clash.
+    isCreateLegacy[IPremiumLegacy(legacyAddress).getLegacyOwner()] = false;
+
     emit TransferEOALegacyActivated(legacyId_, beneLayer, block.timestamp);
   }
 
@@ -392,6 +407,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     if (beneLayer > currentLayer) revert CannotClaim();
     if (beneLayer == 0) revert OnlyBeneficaries();
 
+    // Same one-way-state-change reasoning as activeLegacy — release the
+    // owner so they aren't permanently locked out of creating a fresh one.
+    isCreateLegacy[IPremiumLegacy(legacyAddress).getLegacyOwner()] = false;
+
     emit TransferEOALegacyActivatedWithUnswap(legacyId_, beneLayer, block.timestamp);
   }
 
@@ -401,6 +420,36 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     ITransferEOALegacy(legacyAddress).deleteLegacy(msg.sender);
     emit TransferEOALegacyDeleted(legacyId_, block.timestamp);
+  }
+
+  /**
+   * @dev Self-service flag-release for owners of already-tombstoned legacies.
+   *
+   * `deleteLegacy` reverts on legacies that have already been activated
+   * (the underlying contract's `isActiveLegacy` modifier blocks delete after
+   * `_isActive == 2`), which historically left their owners with a stuck
+   * `isCreateLegacy[sender] = true` and no path back. This entry point lets
+   * the owner clear that flag for any of their legacies that the system
+   * itself considers no-longer-live (claimed by a beneficiary, or deleted
+   * via `deleteLegacy`).
+   *
+   * Authorization: caller must be the legacy's recorded owner. The
+   * `isLive()` check on the child contract returns false for both the
+   * `_isActive == 2` (claimed) and `_isLive == 2` (deleted) terminal
+   * states, so this covers every case where `isCreateLegacy[owner]` could
+   * have been left dangling.
+   *
+   * Idempotent and chain-safe: re-entering on a fresh legacy reverts
+   * `LegacyStillActive`; re-entering on the same dead legacy is a no-op
+   * write that keeps the flag false.
+   */
+  function releaseCreateFlag(uint256 legacyId_) external {
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+    IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
+    if (legacy.getLegacyOwner() != msg.sender) revert OnlyOwner();
+    if (legacy.isLive()) revert LegacyStillActive();
+    isCreateLegacy[msg.sender] = false;
+    emit TransferEOALegacyCreateFlagReleased(legacyId_, msg.sender, block.timestamp);
   }
 
   function withdraw(uint256 legacyId_, uint256 amount_) external {

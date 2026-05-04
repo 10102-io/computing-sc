@@ -27,6 +27,62 @@ These commits are on `dev` and **live on mainnet** via a direct-from-dev
 deploy + upgrade. They have not yet been squash-merged into `main`. The
 next `release:` commit on `main` will fold them in.
 
+### EOA legacy "create flag" — owners no longer locked out after a beneficiary claim
+
+**What changed on-chain**
+- `TransferEOALegacyRouter.activeLegacy(...)` and
+  `activeLegacyAndUnswap(...)` now clear `isCreateLegacy[owner] = false`
+  on success. Activation is a one-way state change (the underlying
+  contract's `_isActive` flips to 2 and `deleteLegacy` is blocked from
+  there on), so the owner had no path to release the flag and was
+  permanently locked out of `createLegacy`. The clear runs after the
+  beneficiary-layer / claim-eligibility checks, so it can't fire on a
+  reverting activation.
+- New self-service entry point: `releaseCreateFlag(uint256 legacyId_)`.
+  The recorded owner of any legacy that the system already considers
+  no-longer-live (`!IPremiumLegacy(legacy).isLive()` — i.e. claimed
+  *or* deleted) can call this to clear their own flag without admin
+  coordination. This covers legacies created **before** the
+  `activeLegacy*` auto-clear shipped, including the broken-impl cohort
+  on mainnet and Sepolia. Reverts `OnlyOwner` / `LegacyStillActive` for
+  bad callers; emits `TransferEOALegacyCreateFlagReleased`.
+- Storage layout unchanged. Router size: 13.06 → 13.25 KiB (+190 B,
+  well under EIP-170).
+- Scope: EOA router only. The Multisig router never gated `createLegacy`
+  on `isCreateLegacy` (so no symmetric bug). The Safe-source Transfer
+  router has the same shape but is being soft-sunset and its
+  `createLegacy` is hidden in the UI; left alone for now to keep the
+  diff minimal.
+
+**Why it matters**
+- This was the immediate blocker for QA against the freshly patched
+  EOA implementation: the test wallet's pre-fix legacy was already
+  claimed, `deleteLegacy` reverts, and the wallet couldn't create a
+  fresh legacy to actually exercise the `claim-as-ETH` fix.
+- Beyond QA, every owner whose legacy gets claimed in normal operation
+  was implicitly locked out of the product on that wallet — they would
+  have had to switch wallets to create a new one. This restores the
+  obvious mental model ("once a legacy is terminated I can start a new
+  one").
+
+**Rollout**
+1. ✅ Sepolia: router proxy `0xF9Eb0EB6B547c67413484FBD9856684F950768A7`
+   upgraded to new impl `0x7fA7287b2711b011D23E0DE69CD6bCd0d95A0D6D`
+   (impl tx `0x657f9146cdbacdfc64689fe73a4dad5861c003e5ca52faa4263ba5f2803a22c1`,
+   `DefaultProxyAdmin.upgrade` tx `0xcbcfd088ed77c0e2693e0b6c1213b9429ae6633b8fdcca7bf8da083ad3bed0c4`).
+   Etherscan-verified. EIP-1967 impl slot confirmed on-chain.
+2. ✅ Mainnet: router proxy `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b`
+   upgraded to new impl `0xa4D4813cFEf925410b2A533516979aCD6607Cd57`
+   (impl tx `0x345059c49aa107f32eaab5d6b38eae538bcf95c823e30999ab214ae2bafc2fb5`,
+   `DefaultProxyAdmin.upgrade` tx `0x83afadd0c949727263b45e19bf4ea22f3340ce2d0ac0d54b161fcb0cc68c72fe`).
+   Etherscan-verified. EIP-1967 impl slot confirmed on-chain.
+3. `contract-addresses.json` updated by hardhat-deploy for both networks.
+4. Helper script `scripts/release-eoa-create-flag.ts` added so any
+   stuck owner can run
+   `LEGACY_ID=<id> npx hardhat run scripts/release-eoa-create-flag.ts --network <net>`
+   from their own wallet to clear the flag without going through the
+   UI.
+
 ### EOA legacy "Claim as ETH" — `receive()` now fits the WETH 2300-gas stipend
 
 **What changed on-chain**

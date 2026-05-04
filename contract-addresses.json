@@ -34,7 +34,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x42B23c6ccbAeDdE2291215d03A5A4B2EE43579E6"
+      "implementation": "0x7fA7287b2711b011D23E0DE69CD6bCd0d95A0D6D"
     },
     "PremiumRegistry": {
       "address": "0xC3c59ab1a146Da758fEf1f68Bd5F14189e5d0246",
@@ -311,7 +311,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb"
+      "implementation": "0xa4D4813cFEf925410b2A533516979aCD6607Cd57"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
