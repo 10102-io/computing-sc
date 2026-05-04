@@ -59,11 +59,18 @@ next `release:` commit on `main` will fold them in.
   `eoaStorageToken == weth` is small and identifiable, and the
   workaround is non-destructive.
 
-**Rollout (planned)**
-1. `npx hardhat run scripts/deploy-eoa-clone-impl.ts --network sepolia`
-   then re-test with a fresh Sepolia EOA legacy.
-2. Repeat on mainnet once Sepolia confirms the fix.
-3. Update `contract-addresses.json` (auto-recorded by the script).
+**Rollout**
+1. ✅ Sepolia: new impl `0x6bab4A27a0Eb5210B61e35E69331355dC2A74511`
+   wired via `setLegacyImplementation` (tx
+   `0x90fc34db427b9ff9723849d1389a7ca23a00b794748138321d09c6ea16721452`).
+   Etherscan verification deferred — tracked under the existing
+   `solc 0.8.20 + viaIR` determinism entry in `docs/DEFERRED.md`
+   (functional contract is unaffected).
+2. ⏳ Mainnet: deploy blocked on deployer balance (held ~0.00075 ETH at
+   2.3 gwei base fee; impl deploy needs ~0.008 ETH). Top up the
+   `0xfe8b…b630` deployer and re-run
+   `npx hardhat run scripts/deploy-eoa-clone-impl.ts --network mainnet`.
+3. `contract-addresses.json` is updated automatically by the script.
 
 ### EIP-1167 minimal proxies for EOA transfer legacies — gas cost ≈ −50% per create
 
