@@ -7,6 +7,7 @@ import {TransferEOALegacy} from "../forwarding/TransferLegacyEOAContract.sol";
 import {MultisigLegacy} from "../inheritance/MultisigLegacyContract.sol";
 import {ILegacyDeployer} from "../interfaces/ILegacyDeployer.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 contract LegacyDeployer is OwnableUpgradeable, ILegacyDeployer {
@@ -50,5 +51,30 @@ contract LegacyDeployer is OwnableUpgradeable, ILegacyDeployer {
     if (msg.sender != transferEOALegacyRouter) {
       guardAddress = Create2.deploy(0, salt, type(SafeGuard).creationCode);
     }
+  }
+
+  /**
+   * @dev Predict the address of the next EIP-1167 minimal-proxy clone that
+   * `cloneLegacy(implementation, user)` would produce. Uses the same salt scheme
+   * as `getNextAddress` so callers can migrate without changing nonce semantics.
+   */
+  function getNextCloneAddress(address implementation, address user) external view returns (address) {
+    uint256 nextNonce = nonceByUsers[user] + 1;
+    bytes32 salt = keccak256(abi.encodePacked(user, nextNonce));
+    return Clones.predictDeterministicAddress(implementation, salt, address(this));
+  }
+
+  /**
+   * @dev Deploy a deterministic EIP-1167 minimal-proxy pointing at `implementation`.
+   * Caller is expected to invoke the implementation's initializer after this returns.
+   * Only usable by the EOA router today; Multisig / Transfer routers still rely on
+   * `createLegacy(bytes, address)` for their SafeGuard-paired deployments.
+   */
+  function cloneLegacy(address implementation, address user) external onlyRouter returns (address legacyAddress) {
+    require(msg.sender == transferEOALegacyRouter, "Clone path is EOA-only");
+    require(implementation != address(0), "Implementation=0");
+    nonceByUsers[user] += 1;
+    bytes32 salt = keccak256(abi.encodePacked(user, nonceByUsers[user]));
+    legacyAddress = Clones.cloneDeterministic(implementation, salt);
   }
 }

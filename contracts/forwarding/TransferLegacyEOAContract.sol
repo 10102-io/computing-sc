@@ -49,7 +49,9 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   address public weth; // WETH address for swapping
 
   uint256 private _lastTimestamp;
-  uint256 private _isLive = 1;
+  // NOTE: do NOT rely on an inline initializer here. Clones deployed via EIP-1167
+  // never run creation code, so this slot must be written explicitly in initialize().
+  uint256 private _isLive;
 
   EnumerableSet.AddressSet private _beneficiariesSet;
   mapping(address beneficiaries => uint256) private _distributions;
@@ -284,6 +286,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     string calldata nickname3
   ) external notInitialized returns (uint256 numberOfBeneficiaries) {
     if (owner_ == address(0)) revert OwnerInvalid();
+    _isLive = 1;
     uniswapRouter = _uniswapRouter;
     weth = _weth;
     _setLegacyInfo(legacyId_, owner_, 1, config_.lackOfOutgoingTxRange, msg.sender);
@@ -502,6 +505,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   }
 
   receive() external payable {
+    // WETH9.withdraw() forwards ETH back via Solidity-0.4-style `.transfer`,
+    // which caps the callee at 2300 gas. The owner/isLive checks below do
+    // multiple SLOADs (one of them cold) and exceed that stipend, which makes
+    // the whole `IWETH(weth).withdraw(...)` step revert and breaks the
+    // claim-as-ETH path. Short-circuit when the inbound ETH is the unwrap of
+    // our own WETH balance — `weth` is warm at that point so this stays well
+    // under 2300 gas. Activity timestamp is intentionally NOT bumped here
+    // because the deposit isn't a fresh signal of life from the owner.
+    if (msg.sender == weth) return;
     if (isLive() && msg.sender == getLegacyOwner()) {
       _lastTimestamp = block.timestamp;
     }

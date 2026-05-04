@@ -21,7 +21,11 @@ contract GenericLegacy {
   address public router;
   string private legacyName;
   mapping (address => string) private beneName;
-  uint256 internal  MAX_PERCENT = 1000000;
+  // `constant` so it lives in code rather than storage. Inline storage initializers
+  // only run during full contract creation (CREATE/CREATE2 bytecode path); they do
+  // NOT run for EIP-1167 minimal-proxy clones, which would otherwise read 0 here
+  // and revert every distribution check.
+  uint256 internal constant MAX_PERCENT = 1000000;
 
   /* Modifier */
   modifier onlyRouter() {

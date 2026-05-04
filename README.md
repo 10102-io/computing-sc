@@ -235,9 +235,31 @@ Configures: PremiumSetting, PremiumRegistry, PremiumAutomationManager, PremiumMa
 
 ## Documentation
 
+- [CHANGELOG.md](CHANGELOG.md) — Per-release narrative of what each deploy actually ships on-chain
 - [CONTRACTS_REFERENCE.md](docs/CONTRACTS_REFERENCE.md) — Detailed reference for every deployed contract
 - [DEPLOY_DEPENDENCIES.md](docs/DEPLOY_DEPENDENCIES.md) — Deploy script dependency graph and resume behaviour
 - [SECURITY.md](SECURITY.md) — Vulnerability reporting policy
+
+## Release hygiene
+
+Releases on `main` are squash-merges of `dev` with a `release:` prefix.
+The commit message on `main` is mechanical; the **narrative lives in
+[`CHANGELOG.md`](CHANGELOG.md)**.
+
+For every release:
+
+1. **Draft the `CHANGELOG.md` entry first** — headline the on-chain
+   behavior or cost change that matters, not the file list.
+2. **Send the draft to the maintainer for sign-off** before
+   squash-merging. The commit on `main` and the `CHANGELOG.md` entry
+   should land together in the same squash.
+3. Mainnet deploys that ship from `dev` ahead of a main-branch release
+   (as with the EIP-1167 cutover) get their own `[Unreleased on main —
+   already live on mainnet]` entry in `CHANGELOG.md` so the on-chain
+   story stays in sync with what users see.
+4. Frontend-side changes get their entry in
+   `computing/CHANGELOG.md`, not here. Cross-reference when the
+   contract and frontend stories are coupled.
 
 ## Security
 
