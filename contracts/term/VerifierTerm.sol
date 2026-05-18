@@ -50,7 +50,10 @@ contract EIP712LegacyVerifier is Initializable, ReentrancyGuardUpgradeable, Owna
   function setRouterAddresses(address _transferLegacyEOA, address _transferLegacy, address _multisigLegacy) external onlyOwner {
     //if (transferLegacyEOA != address(0)) revert AlreadyInit();
 
-    if (_transferLegacyEOA == address(0) || _transferLegacy == address(0) || _multisigLegacy == address(0)) {
+    // _transferLegacy is allowed to be address(0) since the Safe-source
+    // Transfer flow was sunset (v2026.05.18). The storage slot is
+    // preserved for upgradeability — see comment in LegacyDeployer.sol.
+    if (_transferLegacyEOA == address(0) || _multisigLegacy == address(0)) {
       revert ZeroAddressNotAllowed();
     }
 

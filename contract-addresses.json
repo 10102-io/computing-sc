@@ -14,39 +14,35 @@
     },
     "EIP712LegacyVerifier": {
       "address": "0x36e4A2f7d7c3Be6Bd8179FA110eFd9548E893442",
-      "implementation": "0x41E34E7E9d1E18864e807e655A6961F5217f37c0"
+      "implementation": "0x930e28A81D06065da0B477168a1837bFB1E47Adf"
     },
     "LegacyDeployer": {
       "address": "0x0D33b36836d05549Cbd18379BC488D1Db90CEB07",
-      "implementation": "0x9A62F82733Feb27a5eB6E62A4c393678d02FD4Cc"
+      "implementation": "0x726A374f01B16A52994f270e3ec3D874afC48F5a"
     },
     "PremiumSetting": {
       "address": "0xEA267a1F6D554dD416d26c60eFef9234ebfde95e",
-      "implementation": "0x1b544634873112843C0b68C2103f03FA4dfC7307"
+      "implementation": "0x7F99873a7Fdf442ef906F7cAFcd35B3e22588151"
     },
     "MultisigLegacyRouter": {
       "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
-      "implementation": "0x72037c89F1ba5257916399B38104287009F41e05"
-    },
-    "TransferLegacyRouter": {
-      "address": "0x5Bd94c5ce2F9e703c911d77919856Bf6010f1b5e",
-      "implementation": "0xd2ac5D33f9409d63Debfa15022ba8C23b31159e0"
+      "implementation": "0x1b3Bd777Ab62C42B3B74823Dc00361d0adD9A7a6"
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x7fA7287b2711b011D23E0DE69CD6bCd0d95A0D6D"
+      "implementation": "0xAe0066D8C9088df823d8D474f9756Cd462C49A52"
     },
     "PremiumRegistry": {
-      "address": "0xC3c59ab1a146Da758fEf1f68Bd5F14189e5d0246",
-      "implementation": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b"
+      "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
+      "implementation": "0x2f206a515F715efa84526738DD68341e849d181b"
     },
     "PremiumAutomationManager": {
       "address": "0x5B2e634D1a22E74902408EA25D6E221B8A1DfcDE",
-      "implementation": "0xd7Dcf3357B9d30D59eF7A6A435149d8b865F979C"
+      "implementation": "0xD5bA2799fc2e5bc250a50251896A6d7E1c792200"
     },
     "PremiumMailRouter": {
       "address": "0xceB74D10Db8b3050fb2FA10694d25f58d58Ac76f",
-      "implementation": "0xE3500b7123Cd57C0699ea3f8c011d9e73ECb6E3b"
+      "implementation": "0xa4D4813cFEf925410b2A533516979aCD6607Cd57"
     },
     "PremiumMailBeforeActivation": {
       "address": "0x7e82bc3a67B7126869Dc556B367c1907F1622328",
@@ -92,7 +88,13 @@
       },
       "TransferLegacyRouter_v1": {
         "address": "0x7d4b1fc665F94aF3682AD3A48c925f505DcE83b3",
-        "replacedBy": "TransferLegacyRouter"
+        "replacedBy": "TransferLegacyRouter_sunset",
+        "note": "Original Safe-source Transfer router. Replaced once, then the whole product line was hard-sunset in v2026.05.18 — see TransferLegacyRouter_sunset below."
+      },
+      "TransferLegacyRouter_sunset": {
+        "address": "0x5Bd94c5ce2F9e703c911d77919856Bf6010f1b5e",
+        "implementation": "0xd2ac5D33f9409d63Debfa15022ba8C23b31159e0",
+        "note": "Safe-source Transfer legacy router. Frontend-hidden v2026.05.01 (zero mainnet adoption since launch). Source-deleted v2026.05.18 — bytecode remains on-chain but is unreachable through the app and not referenced by any current source file."
       },
       "MultisigLegacyRouter_v1": {
         "address": "0x68d02D85E1d43Fb83CD75633B2A65b8D2C236A5e",
@@ -105,6 +107,11 @@
       "PremiumRegistry_v1": {
         "address": "0x6495014E1970C8F36Cd4739a6E0b6e836317794d",
         "replacedBy": "PremiumRegistry"
+      },
+      "PremiumRegistry_nonUpgradeable_v2": {
+        "address": "0xC3c59ab1a146Da758fEf1f68Bd5F14189e5d0246",
+        "replacedBy": "PremiumRegistry",
+        "note": "Deployed Apr 2026 as a non-proxied contract (manually-written deployment artifact, no _Proxy.json sibling, not managed by DefaultProxyAdmin). 7 premium users subscribed via this registry (their expiries persist in PremiumSetting and are preserved by the replacement). Plan 0 ('Dev Penny Plan', $0.01, 365d, isActive=true) is recreated identically on the new proxied PremiumRegistry. Redeployed v2026.05.18 to make Sepolia upgradeable again + carry the M-1 .call refund fix."
       },
       "TimeLockRouter_v1": {
         "address": "0x0328F36ef7E9fb4dd3DdE77fE7e5573230756223",
@@ -185,7 +192,7 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0x6bab4A27a0Eb5210B61e35E69331355dC2A74511"
+      "address": "0xe47742C94DC1D8B1a420193C94E823E8161f051e"
     }
   },
   "localhost": {
@@ -216,10 +223,6 @@
     "MultisigLegacyRouter": {
       "address": "0x21dF544947ba3E8b3c32561399E88B52Dc8b2823",
       "implementation": "0x4C4a2f8c81640e47606d3fd77B353E87Ba015584"
-    },
-    "TransferLegacyRouter": {
-      "address": "0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43",
-      "implementation": "0x2E2Ed0Cfd3AD2f1d34481277b3204d807Ca2F8c2"
     },
     "TransferEOALegacyRouter": {
       "address": "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02",
@@ -291,62 +294,58 @@
     },
     "EIP712LegacyVerifier": {
       "address": "0x3d6cC3782EC0DF21B58c4C9F5ecf23e485e05F9e",
-      "implementation": "0x03F48E99d8DDe06c1567C55E13FbCFAa9fe3BC2e"
+      "implementation": "0x1a603b73010A9422333c94bCd2B23264361f8169"
     },
     "LegacyDeployer": {
       "address": "0xdb6B6487e020479120dd3e596Ff5A530eD7C88a7",
-      "implementation": "0x7F99873a7Fdf442ef906F7cAFcd35B3e22588151"
+      "implementation": "0xfBC58F0B910046c441ecC34C82321c7C26f1477d"
     },
     "PremiumSetting": {
       "address": "0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f",
-      "implementation": "0xA8C79cCd27AB01200f20fb47B8B7F10929b31e81"
+      "implementation": "0xad8dB699556249a539c936467D6c95083A564Fb8"
     },
     "MultisigLegacyRouter": {
       "address": "0x7c7bf503DF70eBE3520f65Cc0Ff1aF093Fa85038",
-      "implementation": "0x4B8f4a2DE9A7eAD4fd0240502f20A2F815f95B05"
-    },
-    "TransferLegacyRouter": {
-      "address": "0x7e173738f0bE8B4bDbA28CF91b0F5B0263Aa4b0C",
-      "implementation": "0xd2B8AADb77561F0999485E67D4EDEA66623EA985"
+      "implementation": "0x0935720d098800Ca59567dde2D2BC3d74c80825e"
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0xa4D4813cFEf925410b2A533516979aCD6607Cd57"
+      "implementation": "0x9F8CC0a0f69Ae7d0b7201A86C969726E94ccB449"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
-      "implementation": "0x987A1B86ec84A5fa28ac530C688fF782d5b9abcd"
+      "implementation": "0x90A3574a88FB5cbEb3E220a212d94Bf3D1abBA69"
     },
     "PremiumMailRouter": {
       "address": "0x78D8eF582A0F1d1d817Cf25E03E4cAA3EB420F32",
-      "implementation": "0xFa31f769ec1833996C5f3e3609FDad21F736Ae38"
+      "implementation": "0xbF10F978dE45e76338C1558cc26Ca9feAFF69922"
     },
     "PremiumMailBeforeActivation": {
       "address": "0xe5822925f728A45b01229a476959306948AA2Aa3",
-      "implementation": "0x6647057CDB0d62a5E1a20a9edca5525e24645BC2"
+      "implementation": "0xb5773Aa9D3E599d9E6e498448Ff6773180D712ee"
     },
     "PremiumMailActivated": {
       "address": "0x650E07A06E0A627942C2fa1117a4950C50d2a5fE",
-      "implementation": "0x841E8e4CBC39dc3c147F3b32E3296D8f7632AAC7"
+      "implementation": "0xC1000617e198f0Ec7e33399C31CD07d5DeB9FAfF"
     },
     "PremiumMailReadyToActivate": {
       "address": "0x9675029f7107fbBEEf8e3303bd83c4844d6A9Ad3",
-      "implementation": "0x0bE1E5a4408E6A3efA3Da77267dc0e70934AFb5F"
+      "implementation": "0x1a7131b070b80A5467198ce671191eE14E3511e8"
     },
     "TokenWhiteList": {
-      "address": "0x72b6AD53533a618A6Fdc07d8D1b8A3C980F21993"
+      "address": "0x7812777A23877159861d3De567DD97f9d9f64FE9"
     },
     "Banner": {
       "address": "0x4F2fcaFaCD6FAEE5F6Aa8FD862f985420C3eBCe8",
-      "implementation": "0x8D1a88d1D1619734b3E331b80C53d683Dfc2C9cc"
+      "implementation": "0x3c71ABdA7B46FF0d78568a095035deD046095e1f"
     },
     "PremiumRegistry": {
       "address": "0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27",
-      "implementation": "0x9d4219abF57eA56462f2B842c64F2c77CCb18eFF"
+      "implementation": "0x0EaA09277B628b7bBC65763f79E99469989A4cB8"
     },
     "TimeLockRouter": {
       "address": "0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42",
-      "implementation": "0x5453a40c127B33c3CfB623Bbc32376Ce79a0F171"
+      "implementation": "0x2253cD35a312115Ea56B956dAd0A4823252730B3"
     },
     "TimelockERC20": {
       "address": "0xe809Bbc14bCF4ADd37377547B652DaF70B5939BF",
@@ -361,7 +360,21 @@
       "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4"
     },
     "TransferEOALegacyImpl": {
-      "address": "0xD5bA2799fc2e5bc250a50251896A6d7E1c792200"
+      "address": "0xC8ab95d850Fb7fAf5192B4e01D46008E053952d3",
+      "_note": "C-1 (MAX_TRANSFER 10→100) + M-4 (processedAmount tracks delivered) clone target. Wired into TransferEOALegacyRouter.legacyImplementation via setLegacyImplementation tx 0x56f7142f7a49c53d199c73704d6de346f152fa0a98465120001173b86ba0514e."
+    },
+    "_deprecated": {
+      "_note": "Replaced or superseded contracts kept for historical reference.",
+      "TokenWhiteList_pre_2026_05_18": {
+        "address": "0x72b6AD53533a618A6Fdc07d8D1b8A3C980F21993",
+        "replacedBy": "TokenWhiteList",
+        "note": "Hardhat-deploy redeployed TokenWhiteList as a fresh non-proxy contract during the Phase A mainnet rollout due to bytecode metadata drift. TimeLockRouter.tokenWhitelist was rewired to the new contract by deploy/timelock/4c.SetTimelockSwapRouter.ts. Whitelist parity was restored post-rollout (USDC, USDT, WETH, stETH; cbETH was explicitly removed before the rotation and intentionally not carried forward)."
+      },
+      "TransferEOALegacyImpl_pre_2026_05_18": {
+        "address": "0xD5bA2799fc2e5bc250a50251896A6d7E1c792200",
+        "replacedBy": "TransferEOALegacyImpl",
+        "note": "Pre-Phase-A EOA legacy clone implementation. MAX_TRANSFER was 10 and processedAmount tracked scheduled (not delivered) amounts. Existing clones already deployed against this impl are unaffected (impl is baked into clone bytecode); only new createLegacy calls switch to the new impl."
+      }
     }
   }
 }

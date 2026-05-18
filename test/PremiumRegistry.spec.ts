@@ -11,6 +11,7 @@ import { formatEther, formatUnits, parseEther, parseUnits } from "ethers/lib/uti
 import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
 import { deployProxy } from "./utils/proxy";
 import { genMessage as genTransferEOAMessage } from "../scripts/utils/genMsg";
+import { wireRouters } from "./fixtures/wiring";
 const web3 = new Web3(process.env.RPC || "http://localhost:8545");
 const user_pk = process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
@@ -94,15 +95,6 @@ describe("Premium Setting", async function () {
       weth,
     ], "initialize", dev);
 
-    const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
-      legacyDeployer.address,
-      setting.address,
-      verifierTerm.address,
-      payment.address,
-      "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008",
-      weth,
-    ], "initialize", dev);
-
     const multisignLegacyRouter = await deployProxy(
       "MultisigLegacyRouter",
       [legacyDeployer.address, setting.address, verifierTerm.address],
@@ -110,11 +102,19 @@ describe("Premium Setting", async function () {
       dev
     );
 
-    await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
-
-    //set up
-    await setting.setParams(registry.address, transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
-    await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+    // Wire all three setters in canonical order. Safe-source Transfer
+    // router was sunset in v2026.05.18 (sunsetTransferRouter defaults
+    // to AddressZero inside wireRouters). All three proxies are bound
+    // to `dev` via deployProxy(..., dev), so a single admin signer works.
+    await wireRouters({
+      admin: dev,
+      premiumSetting: setting,
+      premiumRegistry: registry,
+      legacyDeployer,
+      verifierTerm,
+      transferEOALegacyRouter,
+      multisigLegacyRouter: multisignLegacyRouter,
+    });
 
     // Required for CREATE2 EOA legacy deployments in tests
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
@@ -728,6 +728,61 @@ describe("Premium Setting", async function () {
   //         console.log({ thirdLineEmail });
   //     })
   // })
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Security-fix coverage (v2026.05.18 audit follow-up):
+  //   M-1: ETH refund path uses .call{value:} instead of .transfer
+  //        so smart-contract wallets (Safe, ERC-4337, multisig) can
+  //        receive their overpayment refund.
+  // ──────────────────────────────────────────────────────────────────────
+  describe("[M-1] ETH refund supports smart-contract wallets", function () {
+    it("a contract whose receive() does non-trivial work successfully gets refunded an ETH overpayment", async function () {
+      const { registry, setting, treasury, dev } = await loadFixture(deployFixture);
+
+      // Lifetime plan @ ONE_YEAR_PRICE for cheap, predictable ETH math.
+      // The fixture's first signer (treasury) is registry deployer and
+      // holds DEFAULT_ADMIN_ROLE — needed for createPlans.
+      await registry
+        .connect(treasury)
+        .createPlans([ethers.constants.MaxUint256], [ONE_YEAR_PRICE], ["LIFETIME"], [""], [""]);
+      const planPriceETH = await registry.getPlanPriceETH(0);
+
+      const SmartWallet = await ethers.getContractFactory("MockSmartWalletReceiver");
+      const wallet = await SmartWallet.deploy();
+
+      // Subscribe from the wallet, overpaying by 2× the plan price so
+      // the refund branch actually fires. The wallet's `receive()`
+      // writes two storage slots and emits an event — well beyond the
+      // 2300-gas stipend that `.transfer()` would forward. Pre-v2026.05.18
+      // this whole transaction would have reverted on the refund call;
+      // post-fix it uses `.call{value:}` and the refund lands cleanly.
+      const overpay = BigNumber.from(planPriceETH).mul(2);
+      const sendValue = BigNumber.from(planPriceETH).add(overpay);
+
+      // The transaction will throw on revert — reaching the next line
+      // already implies success.
+      await wallet.connect(dev).subscribe(registry.address, 0, { value: sendValue });
+
+      // 1) Wallet is now premium.
+      const expiry = await setting.premiumExpired(wallet.address);
+      assert(expiry.gt(0), "wallet should be premium after subscription");
+
+      // 2) The wallet's `receive()` ran with the refunded amount —
+      //    conclusive proof that the refund went through `.call` (which
+      //    forwards enough gas to execute non-trivial receiver code),
+      //    not `.transfer` (which would have reverted on the SSTORE
+      //    inside `receive()`).
+      assert((await wallet.receivedCount()).eq(1), "receive() should have run exactly once");
+      assert((await wallet.lastAmount()).eq(overpay), "receive() should have been called with the overpay amount");
+
+      // 3) Net asset flow: dev funded `sendValue` via the call's
+      //    msg.value, the wallet forwarded `sendValue` to the registry,
+      //    and the registry refunded `overpay` back to the wallet. So
+      //    the wallet's ending balance equals the refunded overpay.
+      const walletBal = await ethers.provider.getBalance(wallet.address);
+      assert(walletBal.eq(overpay), `wallet ending balance ${walletBal} should equal refunded overpay ${overpay}`);
+    });
+  });
 });
 
 // WucU6sHlFfMHUN-MX7BFTPhVvkkrNwIV

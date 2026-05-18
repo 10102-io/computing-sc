@@ -5,6 +5,7 @@ import { strict as assert } from "node:assert";
 import { currentTime, increase } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
+import { wireRouters } from "./fixtures/wiring";
 
 // Dummy Uniswap router + WETH. autoSwap/unswap/activeLegacyAndUnswap are not
 // exercised here; the lifecycle we assert on goes through the non-swap paths.
@@ -70,36 +71,26 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
       .connect(dev)
       .setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
 
-    const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
-      legacyDeployer.address,
-      premiumSetting.address,
-      verifierTerm.address,
-      payment.address,
-      router,
-      weth,
-    ]);
     const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [
       legacyDeployer.address,
       premiumSetting.address,
       verifierTerm.address,
     ]);
 
-    await premiumSetting
-      .connect(dev)
-      .setParams(
-        premiumRegistry.address,
-        transferEOALegacyRouter.address,
-        transferLegacyRouter.address,
-        multisignLegacyRouter.address
-      );
-    await legacyDeployer.setParams(
-      multisignLegacyRouter.address,
-      transferLegacyRouter.address,
-      transferEOALegacyRouter.address
-    );
-    await verifierTerm
-      .connect(dev)
-      .setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+    // Wire all three setters in canonical order. Safe-source Transfer
+    // router was sunset in v2026.05.18. legacyDeployer was deployed
+    // without a signer override, so its owner is `treasury` (the
+    // default signer), not `dev`.
+    await wireRouters({
+      admin: dev,
+      legacyDeployerAdmin: treasury,
+      premiumSetting,
+      premiumRegistry,
+      legacyDeployer,
+      verifierTerm,
+      transferEOALegacyRouter,
+      multisigLegacyRouter: multisignLegacyRouter,
+    });
 
     await premiumRegistry.connect(dev).createPlans([ethers.constants.MaxUint256], [1], [""], [""], [""]);
     const planId = await premiumRegistry.getNextPlanId();
@@ -291,5 +282,98 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
     await transferEOALegacyRouter.connect(user1).deleteLegacy(legacyId);
     assert.equal(await legacy.isLive(), false);
     assert.equal((await ethers.provider.getBalance(predicted)).toString(), "0");
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Security-fix coverage (v2026.05.18 audit follow-up):
+  //   C-1: MAX_TRANSFER lifted 10 → 100
+  //   H-2: try/catch around premiumSetting.setPrivateCodeAndCronjob
+  // ──────────────────────────────────────────────────────────────────────
+
+  it("[C-1] TransferEOALegacy.MAX_TRANSFER is 100 (was 10)", async function () {
+    const TransferEOALegacy = await ethers.getContractFactory("TransferEOALegacy");
+    const impl = await TransferEOALegacy.deploy();
+    const maxTransfer = await impl.MAX_TRANSFER();
+    assert.equal(maxTransfer.toString(), "100", "MAX_TRANSFER must be 100 to prevent underflow on ETH activation with realistic beneficiary counts");
+  });
+
+  it("[H-2] createLegacy still succeeds and emits PrivateCodeSetupNotCompleted when premiumSetting.setPrivateCodeAndCronjob reverts", async function () {
+    const [, dev, user1] = await ethers.getSigners();
+    const payment = await (await ethers.getContractFactory("Payment")).deploy();
+
+    // Real verifier + LegacyDeployer, but the PremiumSetting slot is a
+    // mock whose setPrivateCodeAndCronjob always reverts. Pre-v2026.05.18
+    // this revert bubbled out of createLegacy and bricked the legacy
+    // creation entirely.
+    const verifierTerm = await deployProxy("EIP712LegacyVerifier", [dev.address]);
+    const legacyDeployer = await deployProxy("LegacyDeployer");
+    const RevertingPremium = await ethers.getContractFactory("MockRevertingPremiumSetting");
+    const revertingPremium = await RevertingPremium.deploy();
+
+    const transferEOALegacyRouter = await deployProxy("TransferEOALegacyRouter", [
+      legacyDeployer.address,
+      revertingPremium.address,
+      verifierTerm.address,
+      payment.address,
+      router,
+      weth,
+    ]);
+    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+
+    const eoaImpl = await (await ethers.getContractFactory("TransferEOALegacy")).deploy();
+    await transferEOALegacyRouter.connect(dev).setLegacyImplementation(eoaImpl.address);
+
+    // The Safe-source Transfer router was sunset in v2026.05.18.
+    const sunsetTransferRouter = ethers.constants.AddressZero;
+    await legacyDeployer.setParams(
+      dev.address, // multisigLegacyRouter — wiring required, exact value irrelevant for this test
+      sunsetTransferRouter,
+      transferEOALegacyRouter.address
+    );
+    await verifierTerm
+      .connect(dev)
+      .setRouterAddresses(transferEOALegacyRouter.address, sunsetTransferRouter, dev.address);
+
+    const args = buildArgs();
+    const ts = await currentTime();
+    const sig = await user1.signMessage(await genMessage(ts));
+    const predicted: string = await transferEOALegacyRouter.getNextLegacyAddress(user1.address);
+
+    const tx = await transferEOALegacyRouter
+      .connect(user1)
+      .createLegacy(
+        args.mainConfig,
+        args.extraConfig,
+        args.layer2Distribution,
+        args.layer3Distribution,
+        args.nickName2,
+        args.nickName3,
+        ts,
+        sig
+      );
+    const receipt = await tx.wait();
+
+    // 1) The legacy contract exists at the predicted address.
+    const code: string = await ethers.provider.getCode(predicted);
+    assert.notEqual(code, "0x", "legacy not deployed");
+
+    // 2) PrivateCodeSetupNotCompleted was emitted from the router, with the
+    //    new legacy address in its (unindexed) data payload.
+    const eventSig = ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes("PrivateCodeSetupNotCompleted(address)")
+    );
+    const routerAddr = transferEOALegacyRouter.address.toLowerCase();
+    const matching = receipt.logs.find(
+      (l: any) =>
+        l.address.toLowerCase() === routerAddr &&
+        l.topics[0] === eventSig
+    );
+    assert(matching, "expected PrivateCodeSetupNotCompleted on the router");
+    const decoded = ethers.utils.defaultAbiCoder.decode(["address"], matching.data);
+    assert.equal(
+      decoded[0].toLowerCase(),
+      predicted.toLowerCase(),
+      "event must reference the newly created legacy"
+    );
   });
 });

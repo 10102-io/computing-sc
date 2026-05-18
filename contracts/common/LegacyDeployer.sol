@@ -2,7 +2,12 @@
 pragma solidity 0.8.20;
 
 import {SafeGuard} from "../SafeGuard.sol";
-import {TransferLegacy} from "../forwarding/TransferLegacyContract.sol";
+// TransferLegacy (Safe-source variant) was hard-sunset in v2026.05.18.
+// The storage slot `transferLegacyRouter` below is preserved for
+// upgradeability — removing it would shift every slot beneath it on
+// existing proxies. The slot can now be wired to address(0) on fresh
+// deployments; existing mainnet/Sepolia deployments retain whatever
+// dormant router address they were initialised with.
 import {TransferEOALegacy} from "../forwarding/TransferLegacyEOAContract.sol";
 import {MultisigLegacy} from "../inheritance/MultisigLegacyContract.sol";
 import {ILegacyDeployer} from "../interfaces/ILegacyDeployer.sol";
@@ -31,7 +36,11 @@ contract LegacyDeployer is OwnableUpgradeable, ILegacyDeployer {
   }
 
   function setParams(address _multisigLegacyRouter, address _transferLegacyRouter, address _transferEOALegacyRouter) public onlyOwner {
-    if (_multisigLegacyRouter == address(0) || _transferLegacyRouter == address(0) || _transferEOALegacyRouter == address(0)) revert InvalidParam();
+    // _transferLegacyRouter is allowed to be address(0) since the
+    // Safe-source Transfer flow was sunset (v2026.05.18). The other two
+    // routers are still required to be non-zero — they back the
+    // EOA-source Transfer and Multisig flows that remain active.
+    if (_multisigLegacyRouter == address(0) || _transferEOALegacyRouter == address(0)) revert InvalidParam();
     multisigLegacyRouter = _multisigLegacyRouter;
     transferLegacyRouter = _transferLegacyRouter;
     transferEOALegacyRouter = _transferEOALegacyRouter;

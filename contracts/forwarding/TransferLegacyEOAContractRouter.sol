@@ -89,6 +89,12 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   );
   event TransferEOALegacyLayer23Created(uint256 indexed legacyId, uint8 layer, TransferLegacyStruct.Distribution distribution, string nickName);
   event EmailOwnerResetNotCompleted(address legacyAddress);
+  /// @notice Emitted when post-create premium wiring (private code +
+  /// Chainlink Automation cronjob registration) failed for a legacy.
+  /// The legacy itself was created successfully — only the premium
+  /// reminder layer degraded. Off-chain ops can read this event to
+  /// surface degraded-mode legacies for follow-up.
+  event PrivateCodeSetupNotCompleted(address legacyAddress);
   event TransferEOALegacyAutoSwapped(uint256 indexed legacyId, address storageToken, uint256 ethAmount, uint256 timestamp);
   event TransferEOALegacyUnswapped(uint256 indexed legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
   event TransferEOALegacyActivatedWithUnswap(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
@@ -224,8 +230,16 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     emit TransferEOALegacyCreated(newLegacyId, legacyAddress, msg.sender, mainConfig_, _legacyExtraConfig, block.timestamp);
 
-    //set private code for legacy of premium user
-    IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender, legacyAddress);
+    // Set private code + register Chainlink Automation cronjob for premium
+    // users. Wrapped in try/catch so a transient downstream issue (LINK
+    // underfunded, registrar paused, Functions subscription exhausted)
+    // never blocks legacy creation — the legacy itself is fully functional
+    // without the premium reminder layer. Matches the activation-side
+    // pattern below (avtiveAlive → triggerOwnerResetReminder).
+    try IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender, legacyAddress)
+    {} catch {
+      emit PrivateCodeSetupNotCompleted(legacyAddress);
+    }
 
     // Emit layer2/3 created if needed
     uint256 distribution2 = ITransferEOALegacy(legacyAddress).getDistribution(2, layer2Distribution_.user);

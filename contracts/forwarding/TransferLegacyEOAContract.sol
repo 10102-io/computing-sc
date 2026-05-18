@@ -42,7 +42,12 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   /* State variable */
   uint128 public constant LEGACY_TYPE = 3;
-  uint128 public constant MAX_TRANSFER = 10;
+  // Per-tx state-changing transfer budget. Activation pagination divides this
+  // across (#beneficiaries × #assets [+ #beneficiaries for ETH]). Matches the
+  // documented "~100 transfers per batch" cap and gives strict headroom
+  // above BENEFICIARIES_LIMIT (32) so the ETH-branch subtraction below can
+  // never underflow for any input-valid config. See _transferAssetToBeneficiaries.
+  uint128 public constant MAX_TRANSFER = 100;
   uint256 public adminFeePercent; // Store fee percentage at initialization
   address public paymentContract; // Store address for fee transfers
   address public uniswapRouter; // Uniswap router address for swapping
@@ -681,6 +686,12 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     uint256 maxTransfer = MAX_TRANSFER;
 
     if (isETH_) {
+      // Defensive: BENEFICIARIES_LIMIT (32) is already well below
+      // MAX_TRANSFER (100), but if those constants ever change
+      // independently this guard turns a silent underflow panic into an
+      // explicit revert with a reason string. Surfaced at activation
+      // time so off-chain tooling can route around it.
+      require(beneficiaries.length < maxTransfer, "Too many beneficiaries for ETH activation");
       maxTransfer = maxTransfer - beneficiaries.length;
     }
     //actual number of assets claimed in this tranasaction
@@ -717,7 +728,13 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
             ? (distributableEth * getDistribution(beneLayer, beneficiaries[i])) / MAX_PERCENT
             : distributableEth - processedAmountETH;
           uint256 sentAmount = _transferEthToBeneficiary(beneficiaries[i], amount);
-          processedAmountETH += amount;
+          // Track *delivered* (sentAmount), not *scheduled* (amount). When a
+          // non-last beneficiary's call fails silently (sentAmount = 0), the
+          // residue carried forward into the last beneficiary's
+          // `distributableEth - processedAmountETH` would otherwise be
+          // understated and the failed share would be stranded in this
+          // contract. Mirrors the ERC-20 path below.
+          processedAmountETH += sentAmount;
           receipt[i].listAssetName[n] = "ETH";
           receipt[i].listAmount[n] = sentAmount;
           unchecked {
@@ -758,7 +775,10 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           uint256 amountSent = _transferErc20ToBeneficiary(token, ownerAddress, beneficiaries[j], amount);
           receipt[j].listAssetName[i] = symbol;
           receipt[j].listAmount[i] = amountSent;
-          processedAmountERC20 += amount;
+          // Track *delivered*, not *scheduled* — see ETH branch above.
+          // `_transferErc20ToBeneficiary` returns `amount_` on success and
+          // `0` on a caught revert (e.g. blacklisted recipient on USDC).
+          processedAmountERC20 += amountSent;
 
           unchecked {
             j++;

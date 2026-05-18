@@ -88,10 +88,14 @@ describe("TimeLockRouter", function () {
       await router.connect(owner as any).setUniswapRouter(mockRouter.address);
 
       const tokenAmount = ethers.utils.parseEther("1000");
-      // Mock: 1000 tokens -> 0.5 ETH => multiplier 5e14 (1000e18 * 5e14 / 1e18 = 5e17 = 0.5e18)
-      // getTokenToEthAmountOut calls getAmountsOut which uses ethToTokenMultiplier
+      // Mock: 1000 tokens -> 0.5 ETH => multiplier 5e14 (1000e18 * 5e14 / 1e18 = 5e17 = 0.5e18).
+      // `getTokenToEthAmountOut` builds path = [token, WETH], so the mock's
+      // `getAmountsOut` consults `tokenToEthMultiplier` (the `path[1] == WETH`
+      // branch in MockUniswapV2Router). Previously this used
+      // setEthToTokenMultiplier, leaving tokenToEthMultiplier at its default
+      // 1e18 and the assertion ~2000× off.
       const multiplier = ethers.BigNumber.from(10).pow(14).mul(5);
-      await mockRouter.setEthToTokenMultiplier(multiplier.toString());
+      await mockRouter.setTokenToEthMultiplier(multiplier.toString());
 
       const ethOut = await router.getTokenToEthAmountOut(tokenAmount, storageToken.address);
       expect(ethOut).to.equal(ethers.utils.parseEther("0.5"));

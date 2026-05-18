@@ -191,9 +191,15 @@ contract PremiumRegistry is OwnableUpgradeable, AccessControlUpgradeable {
     uint256 ethAmount = getPlanPriceETH(plan);
     require(msg.value >= ethAmount, "Insufficient ETH");
 
-    //refund if needed
+    // Refund the difference. Use .call instead of .transfer so smart-contract
+    // wallets (Safe, ERC-4337 accounts, multisig users) receiving the refund
+    // are not blocked by the 2300-gas stipend that .transfer imposes. The
+    // require() ensures the whole subscription reverts if the refund itself
+    // cannot land — leaving the caller's funds intact rather than locked in
+    // this contract.
     if (msg.value > ethAmount) {
-      payable(msg.sender).transfer(msg.value - ethAmount);
+      (bool refundOk, ) = payable(msg.sender).call{value: msg.value - ethAmount}("");
+      require(refundOk, "Refund failed");
     }
 
     //transfer to payment

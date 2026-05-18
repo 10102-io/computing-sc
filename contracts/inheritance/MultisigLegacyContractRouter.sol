@@ -64,6 +64,12 @@ contract MultisigLegacyRouter is LegacyRouter, LegacyFactory, ReentrancyGuardUpg
   event MultisigLegacyNameNoteUpdated(uint256 legacyId, string name, string note, uint256 timestamp);
   event MultisigLegacyActivated(uint256 legacyId, address[] newSigners, uint256 newThreshold, bool success, uint256 timestamp);
   event EmailActivatedNotCompleted(address legacyAddress);
+  /// @notice Emitted when post-create premium wiring (private code +
+  /// Chainlink Automation cronjob registration) failed for a legacy.
+  /// The legacy itself was created successfully — only the premium
+  /// reminder layer degraded. Off-chain ops can read this event to
+  /// surface degraded-mode legacies for follow-up.
+  event PrivateCodeSetupNotCompleted(address legacyAddress);
 
   /* Modifier */
   modifier onlySafeWallet(uint256 legacyId_) {
@@ -168,8 +174,16 @@ contract MultisigLegacyRouter is LegacyRouter, LegacyFactory, ReentrancyGuardUpg
 
     emit MultisigLegacyCreated(newLegacyId, legacyAddress, guardAddress, msg.sender, safeWallet, mainConfig_, extraConfig_, block.timestamp);
 
-      //set private code for legacy of premium user
-    IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender,legacyAddress);
+    // Set private code + register Chainlink Automation cronjob for premium
+    // users. Wrapped in try/catch so a transient downstream issue (LINK
+    // underfunded, registrar paused, Functions subscription exhausted)
+    // never blocks legacy creation — the legacy itself is fully functional
+    // without the premium reminder layer. Matches the activation-side
+    // pattern (triggerActivationMultisig).
+    try IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender, legacyAddress)
+    {} catch {
+      emit PrivateCodeSetupNotCompleted(legacyAddress);
+    }
 
     return (legacyAddress, guardAddress);
   }

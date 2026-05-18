@@ -5,6 +5,7 @@ import { expect } from "chai";
 import { deployProxy } from "./utils/proxy";
 import { currentTime } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
+import { wireRouters } from "./fixtures/wiring";
 
 describe("MultisigLegacyRouter activation trigger", function () {
   this.timeout(120000);
@@ -63,15 +64,6 @@ describe("MultisigLegacyRouter activation trigger", function () {
       weth,
     ]);
 
-    const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
-      legacyDeployer.address,
-      premiumSetting.address,
-      verifierTerm.address,
-      payment.address,
-      uniswapRouter,
-      weth,
-    ]);
-
     // Create the multisig router (this is what we are testing)
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [
       legacyDeployer.address,
@@ -79,12 +71,21 @@ describe("MultisigLegacyRouter activation trigger", function () {
       verifierTerm.address,
     ]);
 
-    // Wire addresses (PremiumSetting + Deployer + Verifier)
-    await premiumSetting
-      .connect(dev)
-      .setParams(premiumRegistry.address, transferEOALegacyRouter.address, transferLegacyRouter.address, multisigLegacyRouter.address);
-    await legacyDeployer.setParams(multisigLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
-    await verifierTerm.connect(dev).setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisigLegacyRouter.address);
+    // Wire all three setters in canonical order. Safe-source Transfer
+    // router was sunset in v2026.05.18 (sunsetTransferRouter defaults
+    // to AddressZero inside wireRouters). legacyDeployer was deployed
+    // without a signer override above, so its owner is `treasury` (the
+    // default signer), not `dev`.
+    await wireRouters({
+      admin: dev,
+      legacyDeployerAdmin: treasury,
+      premiumSetting,
+      premiumRegistry,
+      legacyDeployer,
+      verifierTerm,
+      transferEOALegacyRouter,
+      multisigLegacyRouter,
+    });
 
     // Create plan and subscribe the legacy owner so setPrivateCodeAndCronjob doesn't revert
     await premiumRegistry.connect(dev).createPlans([ethers.constants.MaxUint256], [1], [""], [""], [""]);

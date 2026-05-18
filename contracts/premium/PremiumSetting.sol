@@ -130,7 +130,9 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     address _multisigLegacyContractRouter
   ) external onlyOwner {
     if (_premiumRegistry == address(0)) revert InvalidParamAddress();
-    if(_transferLegacyContractRouter == address(0))  revert InvalidParamAddress();
+    // _transferLegacyContractRouter is allowed to be address(0) since the
+    // Safe-source Transfer flow was sunset (v2026.05.18). The storage slot
+    // is preserved for upgradeability — see comment in LegacyDeployer.sol.
     if(_transferLegacyEOAContractRouter == address(0)) revert InvalidParamAddress();
     if(_multisigLegacyContractRouter == address(0)) revert InvalidParamAddress();
 

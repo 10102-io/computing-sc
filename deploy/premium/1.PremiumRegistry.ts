@@ -36,16 +36,18 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
       proxyContract: "OptimizedTransparentProxy",
       owner: deployer,
       execute: {
-        methodName: "initialize",
-        args: [
-          usdt,
-          usdc,
-          usdtUsdPriceFeed,
-          usdcUsdPriceFeed,
-          ethUsdPriceFeed,
-          setting,
-          payment,
-        ],
+        init: {
+          methodName: "initialize",
+          args: [
+            usdt,
+            usdc,
+            usdtUsdPriceFeed,
+            usdcUsdPriceFeed,
+            ethUsdPriceFeed,
+            setting,
+            payment,
+          ],
+        },
       },
     },
   });

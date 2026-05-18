@@ -13,6 +13,7 @@ import type { Contract } from "ethers";
 
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
+import { wireRouters } from "./fixtures/wiring";
 
 const web3 = new Web3(process.env.RPC || "http://localhost:8545");
 const user_pk = process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -114,15 +115,6 @@ describe("Premium Automation ", async function () {
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
     await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
 
-    const transferLegacyRouter = await deployProxy("TransferLegacyRouter", [
-      legacyDeployer.address,
-      setting.address,
-      verifierTerm.address,
-      payment.address,
-      router,
-      weth,
-    ], "initialize", dev);
-
     const multisignLegacyRouter = await deployProxy(
       "MultisigLegacyRouter",
       [legacyDeployer.address, setting.address, verifierTerm.address],
@@ -130,11 +122,19 @@ describe("Premium Automation ", async function () {
       dev
     );
 
-    await legacyDeployer.setParams(multisignLegacyRouter.address, transferLegacyRouter.address, transferEOALegacyRouter.address);
-
-    await verifierTerm
-      .connect(dev)
-      .setRouterAddresses(transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+    // Wire all three setters in canonical order. Safe-source Transfer
+    // router was sunset in v2026.05.18 (sunsetTransferRouter defaults
+    // to AddressZero inside wireRouters). All three proxies are bound
+    // to `dev` via deployProxy(..., dev), so a single admin signer works.
+    await wireRouters({
+      admin: dev,
+      premiumSetting: setting,
+      premiumRegistry: registry,
+      legacyDeployer,
+      verifierTerm,
+      transferEOALegacyRouter,
+      multisigLegacyRouter: multisignLegacyRouter,
+    });
 
     // Deploy mock mail contracts (no-op implementations)
     const MockMail = await ethers.getContractFactory("MockPremiumSendMail");
@@ -159,10 +159,7 @@ describe("Premium Automation ", async function () {
       .connect(dev)
       .setParams(link.address, mockRegistrar.address, mockKeeper.address, setting.address, "500000", premiumMailRouter.address, 150);
 
-    //set up
-    await setting
-      .connect(dev)
-      .setParams(registry.address, transferEOALegacyRouter.address, transferLegacyRouter.address, multisignLegacyRouter.address);
+    //set up reminder (router wiring already done above by wireRouters)
     await setting.connect(dev).setUpReminder(premiumAutomationManager.address, premiumMailRouter.address);
 
     //mint token for users
@@ -201,7 +198,6 @@ describe("Premium Automation ", async function () {
       user2,
       user3,
       premiumMailRouter,
-      transferLegacyRouter,
       mockKeeper,
     };
   }
@@ -786,95 +782,8 @@ describe("Premium Automation ", async function () {
     console.log("MailID", await premiumMailRouter.mailId());
   });
 
-  it("should not notify if guard is not set", async function () {
-    const {
-      dev,
-      premiumAutomationManager,
-      transferEOALegacyRouter,
-      link,
-      setting,
-      registry,
-      usdc,
-      user1,
-      user2,
-      user3,
-      premiumMailRouter,
-      transferLegacyRouter,
-    } = await loadFixture(deployFixture);
-
-    const mainConfig = {
-      name: "abc",
-      note: "nothing",
-      nickNames: ["dadad"],
-      distributions: [
-        {
-          user: user2.address,
-          percent: 1000000,
-        },
-      ],
-    };
-
-    const extraConfig = {
-      lackOfOutgoingTxRange: 86400,
-      delayLayer2: 86400,
-      delayLayer3: 86400,
-    };
-
-    const layer2Distribution = {
-      user: user3.address,
-      percent: 100,
-    };
-
-    const layer3Distribution = {
-      user: "0xa0e95ACC5ec544f040b89261887C0BBa113981AD",
-      percent: 100,
-    };
-
-    const nickName2 = "daddd";
-    const nickName3 = "dat";
-
-    const MockSafeWallet = await ethers.getContractFactory("MockSafeWallet");
-    const mockSafeWallet = await MockSafeWallet.deploy([dev.address]);
-    const legacyAddress = await transferLegacyRouter.getNextLegacyAddress(dev.address);
-    const currentTimestamp = await currentTime();
-    const message = await genMessage(currentTimestamp);
-    const signature = await dev.signMessage(message);
-
-    await transferLegacyRouter
-      .connect(dev)
-      .createLegacy(mockSafeWallet.address, mainConfig, extraConfig, layer2Distribution, layer3Distribution, nickName2, nickName3, currentTimestamp, signature);
-
-    await mockSafeWallet.enableModule(legacyAddress);
-
-    console.log(legacyAddress);
-    const legacy = await ethers.getContractAt("TransferLegacy", legacyAddress);
-
-    const name = "Dat";
-    const ownerEmail = "user1@example.com";
-    const timePriorActivation = 60 * 60 * 5;
-    const legacyData = [
-      {
-        cosigners: [],
-        beneficiaries: [emailMapping(user2.address, "bene1@example.com", "dat")],
-        secondLine: emailMapping(user3.address, "second1@example.com", "dat"),
-        thirdLine: emailMapping("0xa0e95ACC5ec544f040b89261887C0BBa113981AD", "third1@example.com", "dat"),
-      },
-    ];
-
-    await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, [legacyAddress], legacyData);
-
-    let cronjobAddress = await premiumAutomationManager.cronjob(dev.address);
-    const cronjob = await ethers.getContractAt("PremiumAutomation", cronjobAddress);
-
-    await increase(3600 * 19);
-    // console.log(await currentTime());
-    // console.log(await legacy.getLayer());
-
-    //notify 1 - before layer 1 activation
-    const checkUpkeepData = await cronjob.checkUpkeep("0x");
-    console.log(checkUpkeepData);
-    if (checkUpkeepData[1] != "0x") console.log(await cronjob.decodePerformData(checkUpkeepData[1]));
-    console.log("Perform up keep");
-    console.log("MailID", await premiumMailRouter.mailId());
-  });
+  // The "should not notify if guard is not set" Safe-Transfer test
+  // case was removed in v2026.05.18 alongside the Safe-source Transfer
+  // sunset. The EOA + Multisig flows do not have the same guard-paired
+  // deployment pattern, so this specific assertion has no live analogue.
 });

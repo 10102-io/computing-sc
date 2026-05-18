@@ -13,11 +13,24 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  // TokenWhiteList is a plain (non-proxy) contract that carries state
+  // (the whitelisted tokens). Without skipIfAlreadyDeployed, a bytecode
+  // metadata drift (e.g. compiler version bump) silently triggers a
+  // fresh redeploy that has ZERO tokens whitelisted, then any wiring
+  // script that consumes deployments.get("TokenWhiteList") will rotate
+  // dependent routers onto the empty contract. This actually happened
+  // on mainnet during the 2026-05-18 Phase A rollout — see
+  // contract-addresses.json _deprecated.TokenWhiteList_pre_2026_05_18.
+  //
+  // To migrate intentionally in the future: bump the contract under a
+  // new deploy artifact name and explicitly carry tokens over via a
+  // migration script. Do NOT remove this guard.
   const deployOptions: Parameters<typeof deploy>[1] = {
     from: deployer,
     args: [deployer],
     log: true,
     deterministicDeployment: false,
+    skipIfAlreadyDeployed: true,
   };
   const data = await deploy("TokenWhiteList", deployOptions);
 
