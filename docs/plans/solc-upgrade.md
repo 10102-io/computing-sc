@@ -25,9 +25,11 @@ newer language features and gas optimizations.
 - Run full test suite — fix any new warnings or compilation errors
 - **Storage layout verification** for every upgradeable proxy contract:
   - MultisigLegacyRouter
-  - TransferLegacyContractRouter
-  - TimelockRouter
-  - Any other proxied contracts
+  - TransferEOALegacyRouter
+  - TimeLockRouter
+  - PremiumRegistry, PremiumSetting, PremiumMail* (proxied)
+  - LegacyDeployer, EIP712LegacyVerifier (proxied)
+  - Any other proxied contracts (cross-check against `contract-addresses.json`)
 - Use `hardhat-upgrades` storage layout checks or manual slot diffing
 - Deploy to Sepolia, verify all contracts, run integration tests
 - Deploy to mainnet

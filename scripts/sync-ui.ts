@@ -1,8 +1,24 @@
 /**
  * Sync UI: reads contract-addresses.json and deployments/<network>/, writes
  * contract-addresses.generated.ts, ABI files, and subgraph networks to output/sync-ui/.
- * User must manually copy the contents of output/sync-ui/ into the UI repo's src/
- * and merge subgraph-networks.json into the subgraph repo's networks.json.
+ *
+ * Modes (positional / flag args after `npm run sync-ui --`):
+ *   (default)  Generate output/sync-ui/ only. Print copy instructions.
+ *   --check    Generate, then diff against sibling repos. Exit 1 with a
+ *              human-readable drift report if anything is out of sync.
+ *              Use this in CI / pre-deploy gates.
+ *   --write    Generate, then copy / merge directly into sibling repos. The
+ *              expected layout is:
+ *                computing-sc/      (this repo)
+ *                computing/         (UI)
+ *                computing-admin/   (admin UI)
+ *                computing-subgraph/(subgraph)
+ *              Override sibling locations with environment variables:
+ *                UI_REPO_PATH, ADMIN_REPO_PATH, SUBGRAPH_REPO_PATH
+ *
+ * Drift is the #1 source of post-deploy regressions in this project — every
+ * release that mutates contract-addresses.json should run --write (or --check
+ * in CI) before merging. See deployments/CHANGELOG.md for past incidents.
  */
 
 import * as fs from 'fs';
@@ -13,6 +29,22 @@ const CONTRACTS_ROOT = path.join(__dirname, '..');
 const OUTPUT_ROOT = path.join(CONTRACTS_ROOT, 'output', 'sync-ui');
 const CONTRACT_ADDRESSES_PATH = path.join(CONTRACTS_ROOT, 'contract-addresses.json');
 const DEPLOYMENTS_DIR = path.join(CONTRACTS_ROOT, 'deployments');
+
+const ARGS = process.argv.slice(2);
+const MODE_CHECK = ARGS.includes('--check');
+const MODE_WRITE = ARGS.includes('--write');
+
+const SISTER_REPOS = {
+  ui: process.env.UI_REPO_PATH ?? path.join(CONTRACTS_ROOT, '..', 'computing'),
+  admin: process.env.ADMIN_REPO_PATH ?? path.join(CONTRACTS_ROOT, '..', 'computing-admin'),
+  subgraph: process.env.SUBGRAPH_REPO_PATH ?? path.join(CONTRACTS_ROOT, '..', 'computing-subgraph'),
+};
+
+const SISTER_TARGETS = {
+  ui: path.join(SISTER_REPOS.ui, 'src', 'configs', 'contract-addresses.generated.ts'),
+  admin: path.join(SISTER_REPOS.admin, 'src', 'configs', 'contract-addresses.generated.ts'),
+  subgraphNetworks: path.join(SISTER_REPOS.subgraph, 'networks.json'),
+};
 
 const NETWORK_CHAIN_IDS: Record<string, number> = {
   localhost: 31337,
@@ -355,7 +387,6 @@ function writeSubgraphNetworks(): void {
 }
 
 function printCopyInstructions(): void {
-  const subgraphPath = path.join(OUTPUT_ROOT, 'subgraph-networks.json');
   console.log('');
   console.log('--- Copy instructions ---');
   console.log('');
@@ -368,10 +399,195 @@ function printCopyInstructions(): void {
   console.log('');
   console.log('Subgraph: Merge addresses from output/sync-ui/subgraph-networks.json into the');
   console.log('     subgraph networks file. For each network (e.g. sepolia), replace or merge');
-  console.log('     that key in 10102-subgraph/networks.json with the corresponding object');
+  console.log('     that key in computing-subgraph/networks.json with the corresponding object');
   console.log('     from subgraph-networks.json. Then run "yarn build:sepolia" and');
   console.log('     "yarn deploy:sepolia" in the subgraph repo to redeploy the indexer.');
   console.log('');
+  console.log('Tip: rerun with "--check" to compare automatically, or "--write" to apply');
+  console.log('     all of the above directly to the sister repos (when they live next to');
+  console.log('     this repo on disk).');
+  console.log('');
+}
+
+/**
+ * Merge generated subgraph networks output into an existing networks.json
+ * shape, producing the canonical state with minimal reordering:
+ *   - Network ordering preserved from `existing` (new networks appended).
+ *   - Within each managed network, contract ordering preserved from `existing`
+ *     for surviving entries; new entries appended at the end.
+ *   - Each (network, contract) entry takes its address from `generated`.
+ *     For startBlock, prefer `generated.startBlock` (so block bumps from a
+ *     fresh deploy land), falling back to the existing startBlock when the
+ *     generated entry has none (deployment artifact lost the receipt).
+ *   - Entries no longer in `generated` are dropped (e.g. sunset routers).
+ *   - Networks only present in `existing` (e.g. legacy "ethereum" key with
+ *     the v1 InheritanceWillRouter) are passed through untouched.
+ */
+function buildMergedSubgraphNetworks(
+  generated: SubgraphNetworksOutput,
+  existing: SubgraphNetworksOutput
+): SubgraphNetworksOutput {
+  const merged: SubgraphNetworksOutput = {};
+  const seenNetworks = new Set<string>();
+  for (const [network, existingEntries] of Object.entries(existing)) {
+    seenNetworks.add(network);
+    const generatedEntries = generated[network];
+    if (!generatedEntries) {
+      merged[network] = existingEntries;
+      continue;
+    }
+    const out: Record<string, { address: string; startBlock?: number }> = {};
+    for (const [name, existingEntry] of Object.entries(existingEntries)) {
+      const generatedEntry = generatedEntries[name];
+      if (!generatedEntry) continue;
+      const startBlock =
+        generatedEntry.startBlock !== undefined ? generatedEntry.startBlock : existingEntry.startBlock;
+      out[name] = startBlock !== undefined ? { address: generatedEntry.address, startBlock } : { address: generatedEntry.address };
+    }
+    for (const [name, generatedEntry] of Object.entries(generatedEntries)) {
+      if (out[name]) continue;
+      out[name] = generatedEntry.startBlock !== undefined
+        ? { address: generatedEntry.address, startBlock: generatedEntry.startBlock }
+        : { address: generatedEntry.address };
+    }
+    merged[network] = out;
+  }
+  for (const [network, entries] of Object.entries(generated)) {
+    if (seenNetworks.has(network)) continue;
+    merged[network] = entries;
+  }
+  return merged;
+}
+
+interface DriftReport {
+  path: string;
+  kind: 'missing' | 'mismatch';
+  details?: string;
+}
+
+function diffStrings(label: string, expected: string, actual: string): string {
+  const expectedLines = expected.split('\n');
+  const actualLines = actual.split('\n');
+  const max = Math.max(expectedLines.length, actualLines.length);
+  const out: string[] = [`--- diff: ${label} ---`];
+  for (let i = 0; i < max; i++) {
+    if (expectedLines[i] !== actualLines[i]) {
+      if (actualLines[i] !== undefined) out.push(`  - ${i + 1}: ${actualLines[i]}`);
+      if (expectedLines[i] !== undefined) out.push(`  + ${i + 1}: ${expectedLines[i]}`);
+    }
+  }
+  return out.join('\n');
+}
+
+/** Per-(network, contract) semantic diff for subgraph networks.json. */
+function diffSubgraphNetworks(
+  expected: SubgraphNetworksOutput,
+  actual: SubgraphNetworksOutput
+): string[] {
+  const out: string[] = [];
+  const allNetworks = new Set<string>([...Object.keys(expected), ...Object.keys(actual)]);
+  for (const network of allNetworks) {
+    const exp = expected[network] ?? {};
+    const act = actual[network] ?? {};
+    const allContracts = new Set<string>([...Object.keys(exp), ...Object.keys(act)]);
+    for (const c of allContracts) {
+      const e = exp[c];
+      const a = act[c];
+      if (!e && a) {
+        out.push(`  ${network}.${c}: should be removed (still has address ${a.address})`);
+      } else if (e && !a) {
+        out.push(`  ${network}.${c}: missing (expected ${e.address}${e.startBlock !== undefined ? ` @ ${e.startBlock}` : ''})`);
+      } else if (e && a) {
+        if (e.address.toLowerCase() !== a.address.toLowerCase()) {
+          out.push(`  ${network}.${c}.address: ${a.address} → ${e.address}`);
+        }
+        if (e.startBlock !== undefined && a.startBlock !== e.startBlock) {
+          out.push(`  ${network}.${c}.startBlock: ${a.startBlock ?? '(none)'} → ${e.startBlock}`);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function checkOrWriteSisters(): void {
+  if (!MODE_CHECK && !MODE_WRITE) return;
+  const drifts: DriftReport[] = [];
+
+  const generatedUi = fs.readFileSync(path.join(OUTPUT_ROOT, 'configs', 'contract-addresses.generated.ts'), 'utf-8');
+  const generatedAdmin = fs.readFileSync(path.join(OUTPUT_ROOT, 'configs', 'admin-contract-addresses.generated.ts'), 'utf-8');
+  const generatedSubgraph = JSON.parse(
+    fs.readFileSync(path.join(OUTPUT_ROOT, 'subgraph-networks.json'), 'utf-8')
+  ) as SubgraphNetworksOutput;
+
+  // Compare line-ending agnostically: git's autocrlf can flip LF→CRLF on
+  // Windows checkouts, but the file content is semantically identical.
+  const norm = (s: string): string => s.replace(/\r\n/g, '\n');
+
+  const checkOrWriteFile = (label: string, target: string, expected: string): void => {
+    if (!fs.existsSync(target)) {
+      drifts.push({ path: target, kind: 'missing' });
+      if (MODE_WRITE) {
+        ensureDir(path.dirname(target));
+        fs.writeFileSync(target, expected, 'utf-8');
+        console.log(`Created ${label}: ${target}`);
+      }
+      return;
+    }
+    const actual = fs.readFileSync(target, 'utf-8');
+    if (norm(actual) === norm(expected)) return;
+    if (MODE_WRITE) {
+      fs.writeFileSync(target, expected, 'utf-8');
+      console.log(`Updated ${label}: ${target}`);
+    } else {
+      drifts.push({ path: target, kind: 'mismatch', details: diffStrings(label, expected, actual) });
+    }
+  };
+
+  // UI / Admin: full file comparison
+  checkOrWriteFile('UI contract-addresses.generated.ts', SISTER_TARGETS.ui, generatedUi);
+  checkOrWriteFile('Admin contract-addresses.generated.ts', SISTER_TARGETS.admin, generatedAdmin);
+
+  // Subgraph networks.json: merge + semantic compare per (network, contract)
+  if (!fs.existsSync(SISTER_TARGETS.subgraphNetworks)) {
+    drifts.push({ path: SISTER_TARGETS.subgraphNetworks, kind: 'missing' });
+  } else {
+    const existing = JSON.parse(
+      fs.readFileSync(SISTER_TARGETS.subgraphNetworks, 'utf-8')
+    ) as SubgraphNetworksOutput;
+    const merged = buildMergedSubgraphNetworks(generatedSubgraph, existing);
+    const semanticDiff = diffSubgraphNetworks(merged, existing);
+    if (semanticDiff.length > 0) {
+      if (MODE_WRITE) {
+        fs.writeFileSync(SISTER_TARGETS.subgraphNetworks, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
+        console.log(`Updated subgraph networks.json: ${SISTER_TARGETS.subgraphNetworks}`);
+        console.log('  Note: subgraph.yaml may also need data-source removals if a contract was sunset.');
+      } else {
+        drifts.push({
+          path: SISTER_TARGETS.subgraphNetworks,
+          kind: 'mismatch',
+          details: ['--- subgraph networks.json drift ---', ...semanticDiff].join('\n'),
+        });
+      }
+    }
+  }
+
+  if (MODE_CHECK && drifts.length > 0) {
+    console.error('');
+    console.error('=== DRIFT DETECTED ===');
+    for (const d of drifts) {
+      console.error('');
+      console.error(`[${d.kind}] ${d.path}`);
+      if (d.details) console.error(d.details);
+    }
+    console.error('');
+    console.error(`${drifts.length} sister-repo file(s) out of sync. Run with --write to apply.`);
+    process.exit(1);
+  }
+  if (MODE_CHECK) {
+    console.log('');
+    console.log('OK — all sister-repo files in sync with contract-addresses.json.');
+  }
 }
 
 function main(): void {
@@ -384,7 +600,10 @@ function main(): void {
   writeAdminAddresses();
   writeAbis();
   writeSubgraphNetworks();
-  printCopyInstructions();
+  if (!MODE_CHECK && !MODE_WRITE) {
+    printCopyInstructions();
+  }
+  checkOrWriteSisters();
 }
 
 main();

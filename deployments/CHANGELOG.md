@@ -17,6 +17,89 @@ compared to a missed regression.
 
 ---
 
+## 2026-05-19 — Sepolia premium-history cleanup (forced re-subscription)
+
+**Network:** Sepolia only
+**Linked incident:** the May 18 redeploy of `PremiumRegistry` as a fresh
+proxy at `0xE243…70Fb` left `PlanSubcribed` events from the previous
+`PremiumRegistry_v1` (`0x6495…794d`) and `PremiumRegistry_nonUpgradeable_v2`
+(`0xC3c5…0246`) deployments un-indexed by the new subgraph. The admin's
+billing list came up empty even though those users still carried a
+non-zero `PremiumSetting.premiumExpired` (which was NOT redeployed).
+
+### What changed
+- Called `PremiumSetting.resetPremium(user)` for the 7 historical
+  Sepolia subscribers (all currently-active, none expired). Their
+  `premiumExpired` is now `0` on-chain.
+- Each user must re-subscribe through the dApp; the new subscription
+  flows through the canonical `PremiumRegistry` (`0xE243…70Fb`) and the
+  new event will be indexed by the current subgraph immediately.
+
+### What didn't change
+- Mainnet — its `PremiumRegistry` (`0x44Ae93…BEA27`) has been the same
+  address throughout, so all production subscribers remain visible.
+- `PremiumSetting`, `UserConfig`, `LegacyConfig`, watcher state, and
+  every existing legacy contract were untouched. Only the
+  `premiumExpired[user]` mapping cell was zeroed.
+
+### Tooling
+- New `scripts/sepolia-reset-legacy-premium-users.ts` (dry-run by
+  default, `EXECUTE=1` to apply). Safe to re-run — `resetPremium`
+  reverts on already-zero entries, so the script naturally becomes a
+  no-op once the cleanup is complete.
+
+---
+
+## 2026-05-19 — Cross-repo address sync + subgraph cleanup
+
+**Networks:** Sepolia, mainnet (subgraph-only)
+**Linked incident:** `contract-addresses.json` (this repo) was the canonical
+source post-`v2026.05.18`, but the manual `npm run sync-ui` → "copy into
+sister repos" step was skipped during the Phase A rollout. Both
+`computing/src/configs/contract-addresses.generated.ts`,
+`computing-admin/src/configs/contract-addresses.generated.ts`, and
+`computing-subgraph/networks.json` were left pointing at deprecated /
+sunset addresses for up to a day before this catch-up.
+
+### What changed
+- **Frontend** (`computing`): mainnet `tokenWhitelist` now points at the
+  new whitelist `0x7812…4FE9`; mainnet + sepolia `forwarding` cleared
+  (Safe-Transfer was sunset in `v2026.05.18`).
+- **Admin UI** (`computing-admin`): same fixes for sepolia
+  `premiumRegistry` (the proxied redeploy `0xE243…70Fb` from
+  `v2026.05.18`) and mainnet `tokenWhiteList`.
+- **Subgraph** (`computing-subgraph`): mainnet `TokenWhiteList` rotated
+  to `0x7812…4FE9` (startBlock `25124350`); sepolia `PremiumRegistry`
+  rotated to `0xE243…70Fb` (startBlock `10875413`); `TransferLegacyRouter`
+  data source dropped on every network and the
+  `src/transfer-legacy-router.ts` handler + `abis/TransferLegacyRouter.json`
+  removed. Subgraph republished as a new version on both Studio slugs.
+
+### Hardening shipped in the same release
+- `scripts/sync-ui.ts` now supports `--check` (drift detector that exits
+  non-zero with a per-(network, contract) diff) and `--write` (copies /
+  merges directly into sister repos). Sister-repo locations resolve via
+  `UI_REPO_PATH`, `ADMIN_REPO_PATH`, `SUBGRAPH_REPO_PATH`, defaulting to
+  the assumed `../computing`, `../computing-admin`, `../computing-subgraph`
+  layout.
+- `npm run sync-ui:check` and `npm run sync-ui:write` package.json
+  shortcuts.
+- Subgraph networks.json merge logic preserves existing key order (so
+  diffs stay surgical) and falls back to existing `startBlock` values
+  when a deployment artifact is missing its receipt.
+
+### Operational rule (from now on)
+Every release that mutates `contract-addresses.json` must end with
+`npm run sync-ui:write` *before* it can be merged. CI / pre-merge gate
+runs `sync-ui:check` and refuses divergence.
+
+### Follow-ups
+- [ ] Wire `sync-ui:check` into CI in this repo.
+- [ ] Decide whether to also drop `local` / `localhost` from drift
+      detection scope (currently flagged when hardhat addresses cycle).
+
+---
+
 ## 2026-05-18 — Phase A security rollout (`v2026.05.18`)
 
 **Networks:** Sepolia, mainnet

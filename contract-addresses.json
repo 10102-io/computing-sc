@@ -106,12 +106,13 @@
       },
       "PremiumRegistry_v1": {
         "address": "0x6495014E1970C8F36Cd4739a6E0b6e836317794d",
-        "replacedBy": "PremiumRegistry"
+        "replacedBy": "PremiumRegistry",
+        "note": "Original Sepolia proxied PremiumRegistry. Emitted 1 PlanSubcribed event for an address that re-subscribed under v2 below. Reset on-chain on 2026-05-19 (see deployments/CHANGELOG.md)."
       },
       "PremiumRegistry_nonUpgradeable_v2": {
         "address": "0xC3c59ab1a146Da758fEf1f68Bd5F14189e5d0246",
         "replacedBy": "PremiumRegistry",
-        "note": "Deployed Apr 2026 as a non-proxied contract (manually-written deployment artifact, no _Proxy.json sibling, not managed by DefaultProxyAdmin). 7 premium users subscribed via this registry (their expiries persist in PremiumSetting and are preserved by the replacement). Plan 0 ('Dev Penny Plan', $0.01, 365d, isActive=true) is recreated identically on the new proxied PremiumRegistry. Redeployed v2026.05.18 to make Sepolia upgradeable again + carry the M-1 .call refund fix."
+        "note": "Deployed Apr 2026 as a non-proxied contract (manually-written deployment artifact, no _Proxy.json sibling, not managed by DefaultProxyAdmin). 7 premium users subscribed via this registry. Plan 0 ('Dev Penny Plan', $0.01, 365d, isActive=true) is recreated identically on the new proxied PremiumRegistry. Redeployed v2026.05.18 to make Sepolia upgradeable again + carry the M-1 .call refund fix. On 2026-05-19 the 7 historical subscribers' premiumExpired entries were zeroed in PremiumSetting via scripts/sepolia-reset-legacy-premium-users.ts so they re-subscribe through the canonical proxy and the new subgraph indexes them cleanly."
       },
       "TimeLockRouter_v1": {
         "address": "0x0328F36ef7E9fb4dd3DdE77fE7e5573230756223",
