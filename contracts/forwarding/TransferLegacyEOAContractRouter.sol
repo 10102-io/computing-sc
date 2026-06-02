@@ -89,6 +89,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   );
   event TransferEOALegacyLayer23Created(uint256 indexed legacyId, uint8 layer, TransferLegacyStruct.Distribution distribution, string nickName);
   event EmailOwnerResetNotCompleted(address legacyAddress);
+  /// @notice Emitted when the Phase B transfer-activation notify (PremiumSetting
+  /// .notifyActivatedTransfer) reverted. The claim itself succeeded — only the
+  /// off-chain reminder signal degraded.
+  event EmailActivatedNotCompleted(address legacyAddress);
   /// @notice Emitted when post-create premium wiring (private code +
   /// Chainlink Automation cronjob registration) failed for a legacy.
   /// The legacy itself was created successfully — only the premium
@@ -384,6 +388,14 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     if (beneLayer > currentLayer) revert CannotClaim();
     if (beneLayer == 0) revert OnlyBeneficaries();
 
+    // Phase B end-state: emit the PII-free transfer-activation notify via PremiumSetting
+    // (onlyRouter — non-spoofable, replaces the legacy's deleted onlyLegacy path). Best-effort
+    // so a premium-layer hiccup never blocks the claim.
+    try IPremiumSetting(premiumSetting).notifyActivatedTransfer(legacyAddress, msg.sender)
+    {} catch {
+      emit EmailActivatedNotCompleted(legacyAddress);
+    }
+
     // Activation is a one-way state change: the legacy's `_isActive` flips
     // to 2 inside the call above and the contract becomes a tombstone
     // (`deleteLegacy` is blocked from here on). Release the owner's
@@ -420,6 +432,12 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint8 currentLayer = ITransferEOALegacy(legacyAddress).getLayer();
     if (beneLayer > currentLayer) revert CannotClaim();
     if (beneLayer == 0) revert OnlyBeneficaries();
+
+    // Phase B end-state: PII-free transfer-activation notify (see activeLegacy).
+    try IPremiumSetting(premiumSetting).notifyActivatedTransfer(legacyAddress, msg.sender)
+    {} catch {
+      emit EmailActivatedNotCompleted(legacyAddress);
+    }
 
     // Same one-way-state-change reasoning as activeLegacy — release the
     // owner so they aren't permanently locked out of creating a fresh one.

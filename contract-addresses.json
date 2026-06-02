@@ -22,7 +22,7 @@
     },
     "PremiumSetting": {
       "address": "0xEA267a1F6D554dD416d26c60eFef9234ebfde95e",
-      "implementation": "0x7F99873a7Fdf442ef906F7cAFcd35B3e22588151"
+      "implementation": "0x90A3574a88FB5cbEb3E220a212d94Bf3D1abBA69"
     },
     "MultisigLegacyRouter": {
       "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
@@ -34,7 +34,7 @@
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
-      "implementation": "0x2f206a515F715efa84526738DD68341e849d181b"
+      "implementation": "0xDF08d4584aB77aDeD8db9B8082457E73fA2c9D32"
     },
     "PremiumAutomationManager": {
       "address": "0x5B2e634D1a22E74902408EA25D6E221B8A1DfcDE",
@@ -193,7 +193,10 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0xe47742C94DC1D8B1a420193C94E823E8161f051e"
+      "address": "0xbF10F978dE45e76338C1558cc26Ca9feAFF69922"
+    },
+    "PremiumReminderView": {
+      "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
     }
   },
   "localhost": {
@@ -303,7 +306,7 @@
     },
     "PremiumSetting": {
       "address": "0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f",
-      "implementation": "0xad8dB699556249a539c936467D6c95083A564Fb8"
+      "implementation": "0xc5b3AF7d60856151951247Ee6C609d5102C58310"
     },
     "MultisigLegacyRouter": {
       "address": "0x7c7bf503DF70eBE3520f65Cc0Ff1aF093Fa85038",
@@ -315,7 +318,8 @@
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
-      "implementation": "0x90A3574a88FB5cbEb3E220a212d94Bf3D1abBA69"
+      "implementation": "0x90A3574a88FB5cbEb3E220a212d94Bf3D1abBA69",
+      "_note": "RETIRED 2026-06-02 (Phase B): Chainlink Automation/Functions scheduling moved off-chain to the reminder-worker. Contract remains on-chain but is no longer driven by any Chainlink upkeep — PremiumSetting now emits triggers consumed off-chain and timing is read from PremiumReminderView. Pending: cancel the mainnet Automation upkeep + Functions subscription and withdraw LINK."
     },
     "PremiumMailRouter": {
       "address": "0x78D8eF582A0F1d1d817Cf25E03E4cAA3EB420F32",
@@ -342,7 +346,7 @@
     },
     "PremiumRegistry": {
       "address": "0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27",
-      "implementation": "0x0EaA09277B628b7bBC65763f79E99469989A4cB8"
+      "implementation": "0xF4718bD87c91c05eEb38C550Bb40b47A4141FB66"
     },
     "TimeLockRouter": {
       "address": "0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42",
@@ -361,8 +365,7 @@
       "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4"
     },
     "TransferEOALegacyImpl": {
-      "address": "0xC8ab95d850Fb7fAf5192B4e01D46008E053952d3",
-      "_note": "C-1 (MAX_TRANSFER 10→100) + M-4 (processedAmount tracks delivered) clone target. Wired into TransferEOALegacyRouter.legacyImplementation via setLegacyImplementation tx 0x56f7142f7a49c53d199c73704d6de346f152fa0a98465120001173b86ba0514e."
+      "address": "0x19E46CF959aa3B19A85fBd9352b2eB0cCB21a323"
     },
     "_deprecated": {
       "_note": "Replaced or superseded contracts kept for historical reference.",
@@ -375,6 +378,14 @@
         "address": "0xD5bA2799fc2e5bc250a50251896A6d7E1c792200",
         "replacedBy": "TransferEOALegacyImpl",
         "note": "Pre-Phase-A EOA legacy clone implementation. MAX_TRANSFER was 10 and processedAmount tracked scheduled (not delivered) amounts. Existing clones already deployed against this impl are unaffected (impl is baked into clone bytecode); only new createLegacy calls switch to the new impl."
+      }
+    },
+    "PremiumReminderView": {
+      "address": "0x8A5aF2c367B7420300547b03Be5f4c720C027a4d",
+      "_note": "Phase B off-chain reminder due-window view (defaultNotifyAhead=604800s/7d fallback for creators who haven't set their own window). Polled by the reminder-worker. Standalone, no proxy.",
+      "_deprecated_v1": {
+        "address": "0xEA190eE175e180c375fd9796AA11fdaA26f71A40",
+        "note": "First mainnet view deploy on 2026-06-02; defaultNotifyAhead was 150s (stale value read from PremiumAutomationManager). Replaced minutes later by the 7d-default view above. Unused."
       }
     }
   }

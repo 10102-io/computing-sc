@@ -441,14 +441,14 @@ describe("Premium Setting", async function () {
       const legacyData = [
         {
           cosigners: [],
-          beneficiaries: [emailMapping(user1.address, "bene1@example.com", "dat")],
-          secondLine: emailMapping(user2.address, "second1@example.com", "dat"),
-          thirdLine: emailMapping(user3.address, "third1@example.com", "dat"),
+          beneficiaries: [user1.address],
+          secondLine: user2.address,
+          thirdLine: user3.address,
         },
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(dev).setReminderConfigs(timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -469,17 +469,15 @@ describe("Premium Setting", async function () {
 
       const legacyData = [
         {
-          cosigners: [
-            emailMapping(dev.address, "dat.tran2@sotatek.com", "dat"),
-          ],
+          cosigners: [dev.address],
           beneficiaries: [],
-          secondLine: emailMapping(ethers.constants.AddressZero, "", ""),
-          thirdLine: emailMapping(ethers.constants.AddressZero, "", ""),
+          secondLine: ethers.constants.AddressZero,
+          thirdLine: ethers.constants.AddressZero,
         },
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(dev).setReminderConfigs(timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -501,14 +499,14 @@ describe("Premium Setting", async function () {
       const legacyData = [
         {
           cosigners: [],
-          beneficiaries: [emailMapping(user1.address, "bene1@example.com", "dat")],
-          secondLine: emailMapping(user2.address, "second1@example.com", "dat"),
-          thirdLine: emailMapping(user3.address, "third1@example.com", "dat"),
+          beneficiaries: [user1.address],
+          secondLine: user2.address,
+          thirdLine: user3.address,
         },
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(dev).setReminderConfigs(timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(user1.address));
 
@@ -537,14 +535,14 @@ describe("Premium Setting", async function () {
       const legacyData = [
         {
           cosigners: [],
-          beneficiaries: [emailMapping(user1.address, "bene1@example.com", "dat")],
-          secondLine: emailMapping(user2.address, "second1@example.com", "dat"),
-          thirdLine: emailMapping(user3.address, "third1@example.com", "dat"),
+          beneficiaries: [user1.address],
+          secondLine: user2.address,
+          thirdLine: user3.address,
         },
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(dev).setReminderConfigs(timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -566,14 +564,14 @@ describe("Premium Setting", async function () {
       const legacyData = [
         {
           cosigners: [],
-          beneficiaries: [emailMapping(user1.address, "bene1@example.com", "dat")],
-          secondLine: emailMapping("0x0000000000000000000000000000000000000000", "", ""),
-          thirdLine: emailMapping("0x0000000000000000000000000000000000000000", "", "dat"),
+          beneficiaries: [user1.address],
+          secondLine: "0x0000000000000000000000000000000000000000",
+          thirdLine: "0x0000000000000000000000000000000000000000",
         },
       ];
 
       // dev is already premium from fixture — set config
-      await setting.connect(dev).setReminderConfigs(name, ownerEmail, timePriorActivation, legacyAddresses, legacyData);
+      await setting.connect(dev).setReminderConfigs(timePriorActivation, legacyAddresses, legacyData);
 
       console.log(await setting.userConfigs(dev.address));
 
@@ -781,6 +779,92 @@ describe("Premium Setting", async function () {
       //    the wallet's ending balance equals the refunded overpay.
       const walletBal = await ethers.provider.getBalance(wallet.address);
       assert(walletBal.eq(overpay), `wallet ending balance ${walletBal} should equal refunded overpay ${overpay}`);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Security-fix coverage (2nd-round audit follow-up, B-1):
+  //   subcribeWithUSDT/USDC now use SafeERC20.safeTransferFrom so tokens
+  //   that don't return a bool (mainnet Tether) no longer revert the
+  //   subscription at the ABI-decode step. Confirmed on-chain that
+  //   PremiumRegistry.usdt() is classic Tether and 0 USDT subs ever
+  //   succeeded — this is the path that was 100% broken.
+  // ──────────────────────────────────────────────────────────────────────
+  describe("[Audit follow-up] SafeERC20 tolerates no-bool-return tokens", function () {
+    async function deployRegistryWithToken(usdtFactoryName: string) {
+      const [treasury, dev, user1] = await ethers.getSigners();
+
+      const NoReturn = await ethers.getContractFactory(usdtFactoryName);
+      const usdtLike = await NoReturn.deploy("USDT", "USDT", 6);
+      const ERC20 = await ethers.getContractFactory("ERC20Token");
+      const usdcLike = await ERC20.deploy("USDC", "USDC", 6);
+
+      const setting = await deployProxy("PremiumSetting", [], "initialize", dev);
+      const Payment = await ethers.getContractFactory("Payment");
+      const payment = await Payment.deploy();
+
+      const MockAggregator = await ethers.getContractFactory("MockV3Aggregator");
+      const usdtUsdFeed = await MockAggregator.deploy(8, 100000000); // $1.00
+      const usdcUsdFeed = await MockAggregator.deploy(8, 100000000); // $1.00
+      const ethUsdFeed = await MockAggregator.deploy(8, 200000000000); // $2000
+
+      const registry = await deployProxy("PremiumRegistry", [
+        usdtLike.address,
+        usdcLike.address,
+        usdtUsdFeed.address,
+        usdcUsdFeed.address,
+        ethUsdFeed.address,
+        setting.address,
+        payment.address,
+      ]);
+
+      // Point PremiumSetting at this registry so updatePremiumTime passes its
+      // `msg.sender == premiumRegistry` guard. Router slots are irrelevant to
+      // this test; the two that must be non-zero get a placeholder address.
+      await setting.connect(dev).setParams(
+        registry.address,
+        ethers.constants.AddressZero, // sunset transfer router
+        treasury.address,             // eoa router placeholder (must be non-zero)
+        treasury.address              // multisig router placeholder (must be non-zero)
+      );
+
+      await registry.connect(treasury).createPlans(
+        [ONE_YEAR], [ONE_YEAR_PRICE], ["ONE YEAR"], [""], [""]
+      );
+
+      return { treasury, dev, user1, usdtLike, registry, setting, payment };
+    }
+
+    it("subscribes via USDT when the token's transferFrom returns no bool (Tether-style)", async function () {
+      const { user1, usdtLike, registry, setting, payment } = await deployRegistryWithToken("MockNoReturnERC20");
+
+      await usdtLike.mint(user1.address, 100000n * 10n ** 6n);
+      await usdtLike.connect(user1).approve(registry.address, ethers.constants.MaxUint256);
+
+      const price = await registry.getPlanPriceUSDT(0);
+      // Pre-fix: this reverts at the bool-decode of transferFrom.
+      // Post-fix (SafeERC20): it lands cleanly.
+      await registry.connect(user1).subcribeWithUSDT(0);
+
+      expect(await usdtLike.balanceOf(payment.address)).to.be.eq(price);
+      expect(await setting.premiumExpired(user1.address)).to.be.gt(0n);
+    });
+
+    it("still rejects USDT subscription when allowance is insufficient", async function () {
+      const { user1, usdtLike, registry } = await deployRegistryWithToken("MockNoReturnERC20");
+
+      await usdtLike.mint(user1.address, 100000n * 10n ** 6n);
+      // No approve → transferFrom should revert (SafeERC20 surfaces the failure,
+      // it doesn't swallow it). try/catch matches the house style here because
+      // this repo's hardhat-chai-matchers version chokes on `.to.be.reverted`.
+      let reverted = false;
+      try {
+        await registry.connect(user1).subcribeWithUSDT(0);
+      } catch (e) {
+        reverted = true;
+        expect(e?.toString()).to.contains("allowance");
+      }
+      assert(reverted, "subscription should revert when allowance is insufficient");
     });
   });
 });

@@ -17,8 +17,7 @@ interface IPremiumSetting {
   //reminder
   function triggerActivationMultisig(address legacyAddress) external;
   function triggerOwnerResetReminder(address legacyAddress) external;
-  function triggerActivationTransferLegacy(
-    NotifyLib.ListAsset[] memory listAsset, 
-    NotifyLib.BeneReceived[] memory _listBeneReceived,
-    bool remaining) external;
+  // Phase B end-state: the EOA router calls this (onlyRouter) on activation instead of the
+  // legacy clone calling the deleted, spoofable `triggerActivationTransferLegacy` (M-2′ fix).
+  function notifyActivatedTransfer(address legacyAddress, address activatingBene) external;
 }

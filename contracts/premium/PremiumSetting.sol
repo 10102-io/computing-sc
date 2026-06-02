@@ -4,10 +4,7 @@ pragma solidity 0.8.20;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../interfaces/ISafeWallet.sol";
 import "../interfaces/IPremiumLegacy.sol";
-import "../interfaces/IPremiumAutomationManager.sol";
-import "../interfaces/IPremiumSendMail.sol";
 import "../interfaces/IPremiumSetting.sol";
-import "../libraries/ArrayUtils.sol";
 
 import {TransferLegacyStruct} from "../libraries/TransferLegacyStruct.sol";
 
@@ -29,6 +26,17 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     EmailMapping thirdLine;
   }
 
+  /// @dev Phase B PII-free input: the reminder recipient *set* is addresses only.
+  /// Emails/names live off-chain in the reminder-worker (posted via its EIP-712 /ingest).
+  /// The legacy `EmailMapping`-based storage above is kept for upgrade-storage-layout
+  /// stability and is written with empty email/name strings from this input.
+  struct LegacyRecipients {
+    address[] cosigners;
+    address[] beneficiaries;
+    address secondLine; // address(0) = unset
+    address thirdLine; // address(0) = unset
+  }
+
   mapping(address => uint) public premiumExpired; // timestamp that premium package ends
   mapping(address => UserConfig) public userConfigs;
   mapping(address => LegacyConfig) public legacyCfgs;
@@ -40,27 +48,35 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   address public transferLegacyEOAContractRouter;
   address public multisigLegacyContractRouter;
 
-  IPremiumAutomationManager public premiumAutomationManager;
-  IPremiumSendMail public premiumSendMail;
+  // Chainlink-era automation/mail wiring — RETIRED (Phase B). Kept as deprecated
+  // storage placeholders to preserve the upgradeable proxy layout; never read/written.
+  address private __deprecatedPremiumAutomationManager;
+  address private __deprecatedPremiumSendMail;
 
-  mapping(address => address[]) private legacyQueuedToAddCronjob; // legacy that user created when not subcribe premium
+  mapping(address => address[]) private __deprecatedLegacyQueuedToAddCronjob;
 
   /* Event */
   event PremiumTimeUpdated(address indexed user, uint256 newExpiredTime);
   event PremiumReset(address indexed user);
-  event UserConfigUpdated(address indexed user, string name, string email, uint256 timePriorActivation);
+  /// @dev Phase B: PII-free. Email/name are no longer stored on-chain; `timePriorActivation`
+  /// is the only configurable field. The reminder-worker holds emails off-chain.
+  event UserConfigUpdated(address indexed user, uint256 timePriorActivation);
+  /// @dev Phase B: PII-free recipient set (addresses only). The subgraph indexes these to
+  /// know *who* is configured; the worker joins them to its off-chain encrypted emails.
   event LegacyReminderUpdated(
     address indexed user,
     uint256 legacyId,
     address legacyAddress,
     uint128 legacyType,
-    EmailMapping[] cosigners,
-    EmailMapping[] beneficiaries,
-    EmailMapping secondLine,
-    EmailMapping thirdLine
+    address[] cosigners,
+    address[] beneficiaries,
+    address secondLine,
+    address thirdLine
   );
 
-  event BeneficiariesEmailSync(address indexed user, uint256 legacyId, address legacyAddress, uint128 legacyType, EmailMapping[] beneficiaries);
+  event BeneficiariesEmailSync(address indexed user, uint256 legacyId, address legacyAddress, uint128 legacyType, address[] beneficiaries);
+  /// @dev Emitted when a user/creator wipes any pre-Phase-B name/email strings from storage.
+  event PIICleared(address indexed user, address legacyAddress);
   event SecondLineEmailReset(address indexed user, uint256 legacyId, address legacyAddress, uint128 legacyType);
   event ThirdLineEmailReset(address indexed user, uint256 legacyId, address legacyAddress, uint128 legacyType);
   event LegacyConfigReset(address indexed user, uint256 legacyId, address legacyAddress, uint128 legacyType);
@@ -76,42 +92,69 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   event WatcherReset(address indexed user, uint256 legacyId, address legacyAddress, uint legacyType);
   event LegacyPrivateCodeSet(uint256 legacyId, address legacyAddress, uint128 legacyType, uint256 code);
 
+  /// @dev Phase B / Option B: PII-free notify signal for the off-chain reminder-worker.
+  /// Carries addresses + enums ONLY — never names/emails. Recipient *addresses* are NOT
+  /// carried here: they are already indexed from the config events (LegacyReminderUpdated /
+  /// BeneficiariesEmailSync), so the worker joins this trigger signal to the recipient set
+  /// it already holds and resolves emails from its off-chain encrypted store keyed by
+  /// (chainId, legacy, recipient). Omitting recipients[] also keeps the implementation under
+  /// the 24576-byte mainnet limit during the emit-alongside window (no on-chain array build).
+  /// `layer` is the activated layer (ActivatedTransfer) or the legacy's layer otherwise; the
+  /// worker uses it to pick which configured recipients to notify. chainId is intentionally
+  /// NOT carried: the subgraph + worker are per-network, so the chain is implicit (and
+  /// omitting it keeps the impl under the 24576-byte mainnet limit in the emit-alongside window).
+  /// Emitted ALONGSIDE the legacy `premiumSendMail` path (Deploy 1, non-breaking) and BEFORE
+  /// the `premiumSendMail` wiring is consulted, so the new path is independent of the
+  /// Chainlink-era mail contracts (which go inert at cutover, Deploy 2).
+  enum NotifyType {
+    OwnerReset,
+    ActivatedMultisig,
+    ActivatedTransfer
+  }
+  event LegacyEmailNotifyRequested(
+    address indexed legacy,
+    address indexed creator,
+    uint8 layer,
+    uint8 notifyType
+  );
+
   error LengthMismatch();
   error UserConfigNotSet();
   error InvalidParamAddress();
+  error PremiumOnly();
+  error RouterOnly();
+  error TimePriorZero();
+  error OnlyLegacyCreator();
+  error NotPremiumUser();
+  error RegistryOnly();
+  error AlreadyPremium();
+  error InvalidLayer();
+  error CannotSetEmpty();
+  error OnlySafeCosigners();
+  error InvalidCosigner();
+  error BeneficiaryMismatch();
+  error InvalidBeneficiary();
+  error InvalidLineAddress();
+  error TooManyAttempts();
 
   /* Modifier */
   modifier onlyPremium(address user) {
-    require(isPremium(user), "Premium only");
+    if (!isPremium(user)) revert PremiumOnly();
     _;
   }
 
   modifier onlyRouter() {
-    require(
-      msg.sender == transferLegacyContractRouter ||
-        msg.sender == transferLegacyEOAContractRouter ||
-        msg.sender == multisigLegacyContractRouter ||
-        msg.sender == owner(),
-      "Router only"
-    );
-    _;
-  }
-
-  modifier onlyLegacy() {
-    address router = IPremiumLegacy(msg.sender).router();
-    if (msg.sender != owner()) {
-      require(
-        router == transferLegacyContractRouter || router == transferLegacyEOAContractRouter || router == multisigLegacyContractRouter,
-        "Only Legacy"
-      );
-    }
+    if (
+      msg.sender != transferLegacyContractRouter &&
+      msg.sender != transferLegacyEOAContractRouter &&
+      msg.sender != multisigLegacyContractRouter &&
+      msg.sender != owner()
+    ) revert RouterOnly();
     _;
   }
 
   modifier requireUserConfig(address user) {
-    if(bytes(userConfigs[user].ownerName).length == 0) revert UserConfigNotSet();
-    if(userConfigs[user].timePriorActivation== 0) revert UserConfigNotSet();
-    if(bytes(userConfigs[user].ownerEmail).length == 0) revert UserConfigNotSet();
+    if(userConfigs[user].timePriorActivation == 0) revert UserConfigNotSet();
     _;
   }
 
@@ -142,43 +185,35 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     multisigLegacyContractRouter = _multisigLegacyContractRouter;
   }
 
-  function setUpReminder(address _premiumAutomationManager, address _premiumSendMail) external onlyOwner {
-    if(_premiumAutomationManager == address(0)) revert InvalidParamAddress();
-    if(_premiumSendMail == address(0)) revert InvalidParamAddress();
-    premiumAutomationManager = IPremiumAutomationManager(_premiumAutomationManager);
-    premiumSendMail = IPremiumSendMail(_premiumSendMail);
-  }
-
   /* USER FUNCTIONS */
-  ///@notice user set up emails reminder / edit configs
+  ///@notice user sets up reminder timing + recipient *addresses*. Emails/names are PII and
+  /// are no longer stored on-chain — the frontend posts them to the reminder-worker /ingest.
   ///@param timePriorActivation The time (in seconds) before the scheduled activation when email reminders should be sent.
   function setReminderConfigs(
-    string calldata name,
-    string calldata ownerEmail,
     uint256 timePriorActivation,
     address[] calldata legacyAddresses,
-    LegacyConfig[] calldata legacyData
+    LegacyRecipients[] calldata legacyData
   ) external onlyPremium(msg.sender) {
-    require(legacyAddresses.length == legacyData.length, "Length mismatch");
-    require(timePriorActivation > 0, "timePriorActivation > 0");
+    if (legacyAddresses.length != legacyData.length) revert LengthMismatch();
+    if (timePriorActivation == 0) revert TimePriorZero();
 
-    //update user configs
-    _updateUserConfig(msg.sender, name, ownerEmail, timePriorActivation);
+    //update user config (timing only)
+    _updateUserConfig(msg.sender, timePriorActivation);
 
-    //update legacy configs
+    //update legacy recipient sets
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
       _updateLegacyConfig(legacyAddresses[i], legacyData[i]);
     }
   }
 
-  ///@notice update email and timePriorActivation
+  ///@notice update reminder timing only.
   ///@param timePriorActivation The time (in seconds) before the scheduled activation when email reminders should be sent.
-  function updateUserConfig(string calldata name, string calldata ownerEmail, uint256 timePriorActivation) external onlyPremium(msg.sender) {
-    _updateUserConfig(msg.sender, name, ownerEmail, timePriorActivation);
+  function updateUserConfig(uint256 timePriorActivation) external onlyPremium(msg.sender) {
+    _updateUserConfig(msg.sender, timePriorActivation);
   }
 
-  function updateLegacyConfig(address[] calldata legacyAddresses, LegacyConfig[] calldata legacyData) external onlyPremium(msg.sender) {
-    require(legacyAddresses.length == legacyData.length, "Length mismatch");
+  function updateLegacyConfig(address[] calldata legacyAddresses, LegacyRecipients[] calldata legacyData) external onlyPremium(msg.sender) {
+    if (legacyAddresses.length != legacyData.length) revert LengthMismatch();
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
       _updateLegacyConfig(legacyAddresses[i], legacyData[i]);
     }
@@ -187,15 +222,47 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   function clearLegacyConfig(address[] calldata legacyAddresses) external onlyPremium(msg.sender) {
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
       IPremiumLegacy transferLegacy = IPremiumLegacy(legacyAddresses[i]);
-      require(msg.sender == transferLegacy.creator(), "only legacy creator");
+      if (msg.sender != transferLegacy.creator()) revert OnlyLegacyCreator();
       _clearLegacyConfig(legacyAddresses[i]);
       emit LegacyConfigReset(msg.sender, transferLegacy.getLegacyId(), legacyAddresses[i], transferLegacy.LEGACY_TYPE());
     }
   }
 
+  /// @notice Phase B hygiene: wipe any name/email strings stored under the caller's user
+  /// config in the pre-Phase-B era. `timePriorActivation` is preserved. Not premium-gated so
+  /// a lapsed user can still erase their own residual PII.
+  function clearUserPII() external {
+    UserConfig storage uc = userConfigs[msg.sender];
+    uc.ownerName = "";
+    uc.ownerEmail = "";
+    emit PIICleared(msg.sender, address(0));
+  }
+
+  /// @notice Phase B hygiene: wipe name/email strings from a legacy's stored recipient set
+  /// while keeping the (non-PII) addresses. Callable by the legacy creator.
+  function clearLegacyPII(address[] calldata legacyAddresses) external {
+    for (uint256 i = 0; i < legacyAddresses.length; i++) {
+      if (msg.sender != IPremiumLegacy(legacyAddresses[i]).creator()) revert OnlyLegacyCreator();
+      LegacyConfig storage cfg = legacyCfgs[legacyAddresses[i]];
+      for (uint256 j = 0; j < cfg.cosigners.length; j++) {
+        cfg.cosigners[j].email = "";
+        cfg.cosigners[j].name = "";
+      }
+      for (uint256 j = 0; j < cfg.beneficiaries.length; j++) {
+        cfg.beneficiaries[j].email = "";
+        cfg.beneficiaries[j].name = "";
+      }
+      cfg.secondLine.email = "";
+      cfg.secondLine.name = "";
+      cfg.thirdLine.email = "";
+      cfg.thirdLine.name = "";
+      emit PIICleared(msg.sender, legacyAddresses[i]);
+    }
+  }
+
   /// @dev set premiumExpired of an adress to 0
   function resetPremium(address user) external onlyOwner {
-    require(premiumExpired[user] != 0, "Not an premium user");
+    if (premiumExpired[user] == 0) revert NotPremiumUser();
     premiumExpired[user] = 0;
     emit PremiumReset(user);
   }
@@ -203,8 +270,8 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   /// @dev called by the PremiumRegistry contract to update a user's premium expiration time.
   /// @param duration amount of time (in seconds) of the premium package plan
   function updatePremiumTime(address user, uint256 duration) external {
-    require(msg.sender == premiumRegistry, "_premiumRegistry only");
-    require(premiumExpired[user] <= block.timestamp, "Already premium");
+    if (msg.sender != premiumRegistry) revert RegistryOnly();
+    if (premiumExpired[user] > block.timestamp) revert AlreadyPremium();
     if (duration >= type(uint256).max - block.timestamp) {
       premiumExpired[user] = type(uint256).max;
     } else {
@@ -212,14 +279,6 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     }
 
     emit PremiumTimeUpdated(user, premiumExpired[user]);
-
-    //add queued legacy to cronjob
-    if (address(premiumAutomationManager) != address(0)) {
-      if (legacyQueuedToAddCronjob[user].length > 0) {
-        premiumAutomationManager.addLegacyCronjob(user, legacyQueuedToAddCronjob[user]);
-        delete legacyQueuedToAddCronjob[user];
-      } 
-    }
   }
 
   /* LEGACY ROUTER FUNCTIONS*/
@@ -241,13 +300,18 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
       }
     }
 
+    address[] memory beneAddrs = new address[](beneficiaries.length);
+    for (uint256 i = 0; i < beneficiaries.length; i++) {
+      beneAddrs[i] = beneficiaries[i].addr;
+    }
+
     IPremiumLegacy transferLegacy = IPremiumLegacy(legacyAddress);
-    emit BeneficiariesEmailSync(user, transferLegacy.getLegacyId(), legacyAddress, transferLegacy.LEGACY_TYPE(), beneficiaries);
+    emit BeneficiariesEmailSync(user, transferLegacy.getLegacyId(), legacyAddress, transferLegacy.LEGACY_TYPE(), beneAddrs);
   }
 
   function resetLayerEmail(address user, address legacyAddress, uint8 layer) external onlyRouter {
     IPremiumLegacy transferLegacy = IPremiumLegacy(legacyAddress);
-    require(layer == 2 || layer == 3, "invalid layer");
+    if (layer != 2 && layer != 3) revert InvalidLayer();
     if (layer == 2) {
       delete legacyCfgs[legacyAddress].secondLine;
       emit SecondLineEmailReset(user, transferLegacy.getLegacyId(), legacyAddress, transferLegacy.LEGACY_TYPE());
@@ -257,155 +321,43 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     }
   }
 
-  function setPrivateCodeAndCronjob(address user, address legacyAddress) external onlyRouter {
+  /// @dev Phase B end-state: the cronjob queue is retired (Chainlink Automation gone).
+  /// Kept name + signature so the legacy routers' ABI is unchanged; now only assigns the
+  /// legacy's private code. `user` is unused (retained for the router-facing signature).
+  function setPrivateCodeAndCronjob(address, address legacyAddress) external onlyRouter {
     _setPrivateCodeIfNeeded(legacyAddress);
-    address[] memory legacyAddresses = new address[](1);
-    legacyAddresses[0] = legacyAddress;
-    if (isPremium(user) && address(premiumAutomationManager) != address(0)) {
-      premiumAutomationManager.addLegacyCronjob(user, legacyAddresses);
-    } else {
-      legacyQueuedToAddCronjob[user].push(legacyAddress);
-    }
   }
 
+  /// @dev Phase B end-state: emit-only. The off-chain worker drives the actual email from
+  /// LegacyEmailNotifyRequested (PII looked up in its own encrypted store). The legacy-router
+  /// owner-reset flow (avtiveAlive) calls this via onlyRouter.
   function triggerOwnerResetReminder(address legacyAddress) external onlyRouter {
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
     address creator = legacy.creator();
     if (!isPremium(creator)) return;
-    if (address(premiumSendMail) == address(0)) return;
-
-    //specify which layer need to send mail
-    uint8 layer = IPremiumLegacy(legacy).getLayer();
-    string memory contractName = legacy.getLegacyName();
-
-    (, string[] memory beneEmails, string[] memory beneNames) = getBeneficiaryData(legacyAddress);
-    premiumSendMail.sendMailOwnerResetToBene(beneNames, beneEmails, contractName);
-
-    if (layer >= 2) {
-      (, string memory layer2Email, string memory layer2Name) = getSecondLineData(legacyAddress);
-      if (bytes(layer2Email).length > 0) {
-        premiumSendMail.sendMailOwnerResetToBene(ArrayUtils.makeStringArray(layer2Name), ArrayUtils.makeStringArray(layer2Email), contractName);
-      }
-    }
-
-    if (layer == 3) {
-      (, string memory layer3Email, string memory layer3Name) = getThirdLineData(legacyAddress);
-      if (bytes(layer3Email).length > 0) {
-        premiumSendMail.sendMailOwnerResetToBene(ArrayUtils.makeStringArray(layer3Name), ArrayUtils.makeStringArray(layer3Email), contractName);
-      }
-    }
+    emit LegacyEmailNotifyRequested(legacyAddress, creator, legacy.getLayer(), uint8(NotifyType.OwnerReset));
   }
 
+  /// @dev Phase B end-state: emit-only (see triggerOwnerResetReminder). Multisig router calls
+  /// this on activation; the worker sends owner + beneficiary emails off-chain.
   function triggerActivationMultisig(address legacyAddress) external onlyRouter {
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
-
     address creator = legacy.creator();
-    (, string memory ownerEmail, ) = getUserData(creator);
-    address safeWallet = legacy.getLegacyOwner();
-    string memory contractName = legacy.getLegacyName();
-
     if (!isPremium(creator)) return;
-    (, string[] memory beneEmails, string[] memory beneNames) = getBeneficiaryData(legacyAddress);
-    if (address(premiumSendMail) == address(0)) return;
-    premiumSendMail.sendMailActivatedMultisig(beneNames, beneEmails, contractName, safeWallet);
-
-    (address []  memory  beneficiares ,,) = IPremiumLegacy(legacy).getLegacyBeneficiaries();
-    string [] memory names = new string[](beneficiares.length);
-     for (uint256 i = 0; i < beneficiares.length; i++) {
-        names[i] = IPremiumLegacy(legacy).getBeneNickname(beneficiares[i]);
-    }
-    premiumSendMail.sendActivatedMutisigToOwner(ownerEmail, contractName, legacyAddress, tx.origin, safeWallet, names, beneficiares);
+    emit LegacyEmailNotifyRequested(legacyAddress, creator, legacy.getLayer(), uint8(NotifyType.ActivatedMultisig));
   }
 
-  function triggerActivationTransferLegacy(
-    NotifyLib.ListAsset[] memory listAsset,
-    NotifyLib.BeneReceived[] memory _listBeneReceived,
-    bool remaining
-  ) external onlyLegacy{
-    IPremiumLegacy legacy = IPremiumLegacy(msg.sender);
+  /// @dev Phase B end-state: replaces the deleted `triggerActivationTransferLegacy`
+  /// (+ its spoofable `onlyLegacy` modifier — M-2′). Called by the EOA router during
+  /// activation (`onlyRouter`, non-spoofable) to emit the PII-free transfer-activation
+  /// notify. Per-beneficiary asset amounts are no longer passed inline — the off-chain
+  /// worker reconstructs them from the activation tx's ERC-20/ETH Transfer events.
+  function notifyActivatedTransfer(address legacyAddress, address activatingBene) external onlyRouter {
+    IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
     address creator = legacy.creator();
-    address safeWallet = legacy.getLegacyOwner();
-    string memory contractName = legacy.getLegacyName();
-
     if (!isPremium(creator)) return;
-
-    uint8 layerActivated = legacy.getBeneficiaryLayer(tx.origin);
-
-    if (address(premiumSendMail) == address(0)) return;
-    (, string memory ownerEmail, ) = getUserData(creator);
-
-    //send email to owner
-    if (bytes(ownerEmail).length > 0) {
-      premiumSendMail.sendEmailContractActivatedToOwner(
-        ownerEmail,
-        contractName,
-        tx.origin, // the beneficiary that activates legacy
-        block.timestamp,
-        safeWallet,
-        listAsset,
-        _listBeneReceived,
-        msg.sender, // legacy contract address
-        remaining
-      );
-    }
-
-    //send email to bene
-    (address [] memory beneficiaries, address layer2, address layer3) = IPremiumLegacy(msg.sender).getLegacyBeneficiaries();
-
-    address [] memory listToken = new address [](listAsset.length);
-    for(uint256 i = 0; i < listAsset.length; i++) {
-      listToken[i] = listAsset[i].listToken;
-    }
-    if( layerActivated ==1) {
-      (address [] memory cfgBeneficiaries, string [] memory cfgBeneEmails, string [] memory cfgBeneNames) = getBeneficiaryData(msg.sender);
-      for(uint256 i = 0 ; i < cfgBeneficiaries.length ; i++){
-        if (cfgBeneficiaries[i] == beneficiaries[i] && bytes(cfgBeneEmails[i]).length >0){
-          premiumSendMail.sendEmailActivatedToBene(
-            cfgBeneNames[i],
-            cfgBeneEmails[i],
-            contractName,
-            listToken,
-            _listBeneReceived[i].listAmount,
-            _listBeneReceived[i].listAssetName, 
-            msg.sender, //contract address
-            remaining
-          );
-        }
-      }
-      return;
-    }
-
-    if (layerActivated == 2){
-      (address cfgLayer2Addr, string memory cfgLayer2Email, string memory cfgLayer2Name) = getSecondLineData(msg.sender);
-      if(cfgLayer2Addr == layer2 && bytes(cfgLayer2Email).length >0){
-            premiumSendMail.sendEmailActivatedToBene(
-            cfgLayer2Name,
-            cfgLayer2Email,
-            contractName,
-            listToken,
-            _listBeneReceived[0].listAmount,
-            _listBeneReceived[0].listAssetName, 
-            msg.sender, //contract address
-            remaining
-          );
-      }
-      return;
-    }
-
-    //layer 3
-    (address cfgLayer3Addr, string memory cfgLayer3Email, string memory cfgLayer3Name) = getThirdLineData(msg.sender);
-    if(cfgLayer3Addr == layer3 && bytes(cfgLayer3Email).length > 0) {
-        premiumSendMail.sendEmailActivatedToBene(
-            cfgLayer3Name,
-            cfgLayer3Email,
-            contractName,
-            listToken,
-            _listBeneReceived[0].listAmount,
-            _listBeneReceived[0].listAssetName, 
-            msg.sender, //contract address
-            remaining
-          );
-    }
+    uint8 layerActivated = legacy.getBeneficiaryLayer(activatingBene);
+    emit LegacyEmailNotifyRequested(legacyAddress, creator, layerActivated, uint8(NotifyType.ActivatedTransfer));
   }
 
   function setWatchers(
@@ -417,9 +369,9 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
     (uint256 legacyId, , ) = legacy.getLegacyInfo();
     uint128 legacyType = legacy.LEGACY_TYPE();
-    require(msg.sender == legacy.creator(), "only legacy creator");
-    require(names.length == watchers.length && watchers.length == isFullVisibility.length, "length mismatch");
-    require(names.length > 0, "can not set empty");
+    if (msg.sender != legacy.creator()) revert OnlyLegacyCreator();
+    if (names.length != watchers.length || watchers.length != isFullVisibility.length) revert LengthMismatch();
+    if (names.length == 0) revert CannotSetEmpty();
     emit WatcherUpdated(msg.sender, legacyId, legacyAddress, legacyType, names, watchers, isFullVisibility);
   }
 
@@ -428,37 +380,41 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
       IPremiumLegacy legacy = IPremiumLegacy(legacyAddresses[i]);
       (uint256 legacyId, , ) = legacy.getLegacyInfo();
       uint128 legacyType = legacy.LEGACY_TYPE();
-      require(msg.sender == legacy.creator(), "only legacy creator");
+      if (msg.sender != legacy.creator()) revert OnlyLegacyCreator();
       emit WatcherReset(msg.sender, legacyId, legacyAddresses[i], legacyType);
     }
   }
 
   /* INTERNAL FUNCTIONS */
-  function _updateUserConfig(address user, string calldata name, string calldata ownerEmail, uint256 timePriorActivation) internal {
-    require(timePriorActivation > 0, "timePriorActivation > 0");
-    userConfigs[user] = UserConfig({ownerName: name, ownerEmail: ownerEmail, timePriorActivation: timePriorActivation});
-    emit UserConfigUpdated(user, name, ownerEmail, timePriorActivation);
+  function _updateUserConfig(address user, uint256 timePriorActivation) internal {
+    if (timePriorActivation == 0) revert TimePriorZero();
+    UserConfig storage uc = userConfigs[user];
+    // Wipe any pre-Phase-B PII left in storage and keep timing only.
+    uc.ownerName = "";
+    uc.ownerEmail = "";
+    uc.timePriorActivation = timePriorActivation;
+    emit UserConfigUpdated(user, timePriorActivation);
   }
 
-  function _updateLegacyConfig(address legacyAddr, LegacyConfig calldata newCfg) internal requireUserConfig(msg.sender) {
+  function _updateLegacyConfig(address legacyAddr, LegacyRecipients calldata newCfg) internal requireUserConfig(msg.sender) {
     //prepare data
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddr);
     (uint256 legacyId, address owner, ) = legacy.getLegacyInfo();
     uint128 legacyType = legacy.LEGACY_TYPE();
 
-    require(msg.sender == legacy.creator(), "only legacy creator");
+    if (msg.sender != legacy.creator()) revert OnlyLegacyCreator();
     _clearLegacyConfig(legacyAddr);
 
-    // Set cosigners (safe legacy) -> check cosigner valid
+    // Set cosigners (safe legacy) -> check cosigner valid. Stored PII-free (addr only).
     LegacyConfig storage cfg = legacyCfgs[legacyAddr];
     if (newCfg.cosigners.length > 0) {
-      require(legacyType != 3, "Only Safe legacy allowed to config cosigners");
+      if (legacyType == 3) revert OnlySafeCosigners();
       ISafeWallet safe = ISafeWallet(owner);
-      require(newCfg.cosigners.length == safe.getOwners().length, "Cosginer length mismatch");
+      if (newCfg.cosigners.length != safe.getOwners().length) revert LengthMismatch();
       for (uint256 j = 0; j < newCfg.cosigners.length; j++) {
-        address cosigner = newCfg.cosigners[j].addr;
-        require(safe.isOwner(cosigner), "invalid cosigner address");
-        cfg.cosigners.push(newCfg.cosigners[j]);
+        address cosigner = newCfg.cosigners[j];
+        if (!safe.isOwner(cosigner)) revert InvalidCosigner();
+        cfg.cosigners.push(EmailMapping({addr: cosigner, email: "", name: ""}));
       }
     }
 
@@ -466,30 +422,25 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     if (legacyType == 1) {
       address[] memory beneficiaries = legacy.getBeneficiaries();
       for (uint256 j = 0; j < newCfg.beneficiaries.length; j++) {
-        address cfgBeneficiary = newCfg.beneficiaries[j].addr;
-        require(cfgBeneficiary == beneficiaries[j], "beneficiary not match in legacy");
-        cfg.beneficiaries.push(newCfg.beneficiaries[j]);
+        if (newCfg.beneficiaries[j] != beneficiaries[j]) revert BeneficiaryMismatch();
+        cfg.beneficiaries.push(EmailMapping({addr: newCfg.beneficiaries[j], email: "", name: ""}));
       }
     } else {
       for (uint256 j = 0; j < newCfg.beneficiaries.length; j++) {
-        address beneficiary = newCfg.beneficiaries[j].addr;
-        require(legacy.getDistribution(1, beneficiary) != 0, "invalid beneficiary address");
-        cfg.beneficiaries.push(newCfg.beneficiaries[j]);
+        address beneficiary = newCfg.beneficiaries[j];
+        if (legacy.getDistribution(1, beneficiary) == 0) revert InvalidBeneficiary();
+        cfg.beneficiaries.push(EmailMapping({addr: beneficiary, email: "", name: ""}));
       }
     }
 
     // Set second and third line - validate address in legacy by checking distribution
-    if (newCfg.secondLine.addr == address(0)) {
-      require(bytes(newCfg.secondLine.email).length == 0, "secondline invalid pair of address and email");
-    } else {
-      require(legacy.getDistribution(2, newCfg.secondLine.addr) != 0, "invalid secondline address");
-      cfg.secondLine = newCfg.secondLine;
+    if (newCfg.secondLine != address(0)) {
+      if (legacy.getDistribution(2, newCfg.secondLine) == 0) revert InvalidLineAddress();
+      cfg.secondLine = EmailMapping({addr: newCfg.secondLine, email: "", name: ""});
     }
-    if (newCfg.thirdLine.addr == address(0)) {
-      require(bytes(newCfg.thirdLine.email).length == 0, "thirdline invalid pair of address and email");
-    } else {
-      require(legacy.getDistribution(3, newCfg.thirdLine.addr) != 0, "invalid thirdline address");
-      cfg.thirdLine = newCfg.thirdLine;
+    if (newCfg.thirdLine != address(0)) {
+      if (legacy.getDistribution(3, newCfg.thirdLine) == 0) revert InvalidLineAddress();
+      cfg.thirdLine = EmailMapping({addr: newCfg.thirdLine, email: "", name: ""});
     }
 
     emit LegacyReminderUpdated(
@@ -518,7 +469,7 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     do {
       code = (uint256(keccak256(abi.encodePacked(legacyAddress, block.timestamp, attempt))) % 9_000_000) + 1_000_000;
       attempt++;
-      require(attempt < 20, "Too many attempts to generate unique code");
+      if (attempt >= 20) revert TooManyAttempts();
     } while (legacyCodeToAddress[code] != address(0)); //avoid duplicate
 
     legacyAddressToCode[legacyAddress] = code;

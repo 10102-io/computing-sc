@@ -145,7 +145,9 @@ export async function verifyProxyOnEtherscan(
     contractaddress: proxyAddress,
     expectedimplementation: expectedImplementation,
   });
-  const res = await fetch(ETHERSCAN_V2_API, {
+  // Etherscan v2 requires chainid as a query-string param (a body-only chainid is
+  // rejected with "Missing or unsupported chainid parameter"). Send it in both.
+  const res = await fetch(`${ETHERSCAN_V2_API}?chainid=${chainId}`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),

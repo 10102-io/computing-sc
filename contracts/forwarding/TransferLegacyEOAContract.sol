@@ -6,14 +6,12 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {GenericLegacy} from "../common/GenericLegacy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {TransferLegacyStruct} from "../libraries/TransferLegacyStruct.sol";
 import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
 import {ITransferEOALegacy} from "../interfaces/ITransferLegacyEOAContract.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Factory} from "../interfaces/IUniswapV2Factory.sol";
-import {NotifyLib} from "../libraries/NotifyLib.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
 
 contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
@@ -701,20 +699,13 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       isRemaining = true;
     }
 
-    //prepare data to send mail
-    NotifyLib.BeneReceived[] memory receipt = new NotifyLib.BeneReceived[](beneficiaries.length);
-    NotifyLib.ListAsset[] memory summary = new NotifyLib.ListAsset[](n + 1);
-    for (uint256 i = 0; i < beneficiaries.length; i++) {
-      receipt[i].beneAddress = beneficiaries[i];
-      receipt[i].name = getBeneNickname(beneficiaries[i]);
-      string[] memory listAssetName = new string[](n + 1); // +1 for ETH
-      uint256[] memory listAmount = new uint256[](n + 1);
-      receipt[i].listAssetName = listAssetName;
-      receipt[i].listAmount = listAmount;
-    }
+    // Phase B end-state: the legacy no longer builds on-chain email summary/receipt data
+    // (the spoofable onlyLegacy mail path was removed — M-2′). The EOA router emits the
+    // PII-free notify via PremiumSetting.notifyActivatedTransfer (onlyRouter) after this
+    // returns; the off-chain worker reconstructs per-beneficiary amounts from this tx's
+    // ERC-20/ETH Transfer events. Distribution logic below is unchanged.
     if (isETH_) {
       uint256 totalAmountEth = address(this).balance;
-      summary[n] = NotifyLib.ListAsset({listToken: address(0), listAmount: totalAmountEth, listAssetName: "ETH"});
       if (totalAmountEth > 0) {
         uint256 fee = (totalAmountEth * adminFeePercent) / 10000;
         uint256 distributableEth = totalAmountEth - fee;
@@ -735,8 +726,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           // understated and the failed share would be stranded in this
           // contract. Mirrors the ERC-20 path below.
           processedAmountETH += sentAmount;
-          receipt[i].listAssetName[n] = "ETH";
-          receipt[i].listAmount[n] = sentAmount;
           unchecked {
             i++;
           }
@@ -754,9 +743,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
       uint256 totalAmount = balanceAmountErc20 > allowanceAmountErc20 ? allowanceAmountErc20 : balanceAmountErc20;
       if (totalAmount > 0) {
-        string memory symbol = IERC20Metadata(token).symbol();
-        summary[i] = NotifyLib.ListAsset({listToken: token, listAmount: totalAmount, listAssetName: symbol});
-
         uint256 fee = (totalAmount * adminFeePercent) / 10000;
         uint256 distributable = totalAmount - fee;
       
@@ -773,8 +759,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
             ? (distributable * getDistribution(beneLayer, beneficiaries[j])) / MAX_PERCENT
             : distributable - processedAmountERC20;
           uint256 amountSent = _transferErc20ToBeneficiary(token, ownerAddress, beneficiaries[j], amount);
-          receipt[j].listAssetName[i] = symbol;
-          receipt[j].listAmount[i] = amountSent;
           // Track *delivered*, not *scheduled* — see ETH branch above.
           // `_transferErc20ToBeneficiary` returns `amount_` on success and
           // `0` on a caught revert (e.g. blacklisted recipient on USDC).
@@ -788,16 +772,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       unchecked {
         i++;
       }
-    }
-    // send email
-    try 
-    IPremiumSetting(premiumSetting).triggerActivationTransferLegacy(
-      summary,
-      receipt,
-      isRemaining
-    )
-    {} catch {
-      emit EmailActivatedNotCompleted(address(this));
     }
   }
 

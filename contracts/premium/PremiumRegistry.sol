@@ -5,9 +5,13 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../interfaces/IPremiumSetting.sol";
 
 contract PremiumRegistry is OwnableUpgradeable, AccessControlUpgradeable {
+  using SafeERC20 for IERC20;
+
   struct PremiumPlan {
     uint256 usdPrice; //x100 (two digits after the decimal point)
     uint256 duration;
@@ -165,8 +169,9 @@ contract PremiumRegistry is OwnableUpgradeable, AccessControlUpgradeable {
     //calculate price in usdt
     uint256 usdtAmount = getPlanPriceUSDT(plan);
 
-    //trasfer token
-    usdt.transferFrom(msg.sender, payment, usdtAmount);
+    //trasfer token — SafeERC20 so non-standard ERC-20s that don't return a
+    //bool (mainnet Tether) don't revert the subscription at the decode step.
+    IERC20(address(usdt)).safeTransferFrom(msg.sender, payment, usdtAmount);
 
     //update plan
     premiumSetting.updatePremiumTime(msg.sender, getPlanDuration(plan));
@@ -178,8 +183,9 @@ contract PremiumRegistry is OwnableUpgradeable, AccessControlUpgradeable {
     //calculate price in usdt
     uint256 usdcAmount = getPlanPriceUSDC(plan);
 
-    //trasfer token
-    usdc.transferFrom(msg.sender, payment, usdcAmount);
+    //trasfer token — SafeERC20 for parity with the USDT path (defensive even
+    //though canonical USDC returns a bool).
+    IERC20(address(usdc)).safeTransferFrom(msg.sender, payment, usdcAmount);
 
     //update plan
     premiumSetting.updatePremiumTime(msg.sender, getPlanDuration(plan));
