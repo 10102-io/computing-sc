@@ -15,20 +15,18 @@ hardhat-deploy runs scripts in dependency order: a script runs only after all of
 | PremiumSetting              | —                                                                                                                                   |
 | PremiumRegistry             | PremiumSetting, Payment                                                                                                             |
 | MultisigLegacyRouter        | PremiumSetting, LegacyDeployer, EIP712LegacyVerifier                                                                                |
-| TransferLegacyRouter        | LegacyDeployer, PremiumSetting, EIP712LegacyVerifier                                                                                |
 | TransferEOALegacyRouter     | LegacyDeployer, PremiumSetting, EIP712LegacyVerifier, Payment                                                                       |
-| PremiumMailRouter           | —                                                                                                                                   |
-| PremiumMailBeforeActivation | —                                                                                                                                   |
-| PremiumMailReadyToActivate  | —                                                                                                                                   |
-| PremiumMailActivated        | —                                                                                                                                   |
-| PremiumAutomationManager    | —                                                                                                                                   |
-| PremiumSendMail             | —                                                                                                                                   |
 | TimeLockRouter              | —                                                                                                                                   |
 | TimelockERC20               | TimeLockRouter                                                                                                                      |
 | TimelockERC721              | TimeLockRouter                                                                                                                      |
 | TimelockERC1155             | TimeLockRouter                                                                                                                      |
 | SetMockSwapRouter           | TimeLockRouter, TestERC20 (localhost/hardhat only)                                                                                  |
 | SetTimelockSwapRouter       | TimeLockRouter, TimelockERC20, TimelockERC721, TimelockERC1155, TokenWhiteList (sepolia and mainnet when uniswap router configured) |
+| set_up_legacy (init)        | EIP712LegacyVerifier, LegacyDeployer, MultisigLegacyRouter, TransferEOALegacyRouter, PremiumRegistry, PremiumSetting               |
+
+> **Removed in Phase B (2026-06-02):** the `PremiumMailRouter`, `PremiumMailBeforeActivation`, `PremiumMailReadyToActivate`, `PremiumMailActivated`, `PremiumAutomationManager`, and `PremiumSendMail` deploy scripts were deleted when the email path moved off-chain (Chainlink Automation + Functions retired). The Safe-source `TransferLegacyRouter` deploy script was also removed (product line sunset v2026.05.18).
+>
+> **`PremiumReminderView`** (the off-chain reminder timing anchor) is **not** a tagged `hardhat-deploy` script — it is deployed standalone (no proxy) via `scripts/deploy-premium-endstate.ts`, so it does not appear in this dependency graph.
 
 ## Effect on resume
 

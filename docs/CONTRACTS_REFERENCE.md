@@ -38,7 +38,7 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 
 | Contract | Purpose |
 |----------|---------|
-| **TransferLegacyRouter** | Router for transfer legacies (Safe-based). Creates legacies with defined distributions (who gets what); uses LegacyDeployer + SafeGuard. Ties in verifier, Payment, Uniswap (e.g. swap), WETH; emits creation/config/distribution/trigger updates. |
+| **TransferLegacyRouter** _(sunset)_ | Safe-based transfer-legacy router. **Hard-sunset v2026.05.18** — frontend-hidden, source removed, no deploy script; bytecode remains on-chain but is unreachable through the app. Wiring slots downstream pass `address(0)`. Kept here for historical context only. |
 | **TransferLegacyContract** | Per-user transfer legacy (created via router). Holds distribution rules and executes transfers on activation. |
 | **TransferEOALegacyRouter** | Router for EOA-only transfer legacies (no Safe/Guard). Same distribution model as TransferLegacyRouter but creates plain contracts via EOALegacyFactory. Uses verifier, Payment, Uniswap, WETH. |
 | **TransferLegacyEOAContract** | Per-user EOA transfer legacy (created via TransferEOALegacyRouter). |
@@ -65,20 +65,21 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 
 | Contract | Purpose |
 |----------|---------|
-| **PremiumRegistry** | Premium plans and payment. Holds USDT/USDC and Chainlink price feeds (USD, ETH); defines plans (USD price, duration, active). DEPOSITOR/OPERATOR roles; users subscribe to plans; receives payments and can deposit to Payment contract. |
-| **PremiumSetting** | Central premium and notification config. Stores per-user: premium expiry, name/email, “time prior to activation”; per-legacy: cosigners, beneficiaries, second/third line contacts, watchers, private codes. Links to PremiumRegistry, the three legacy routers, and PremiumAutomationManager. |
+| **PremiumRegistry** | Premium plans and payment. Holds USDT/USDC and **active Chainlink price feeds** (USDT/USD, USDC/USD, ETH/USD via `AggregatorV3Interface.latestRoundData`); defines plans (USD price, duration, active). DEPOSITOR/OPERATOR roles; users subscribe to plans; receives payments and can deposit to Payment contract. **Chainlink price feeds remain in active use here** — only Automation/Functions were retired (see Premium – Notifications below). |
+| **PremiumSetting** | Central premium and notification config. Stores per-user: premium expiry, “time prior to activation”; per-legacy: cosigners, beneficiaries, second/third line contacts, watchers, private codes. Links to PremiumRegistry and the legacy routers. **Email notifications now emit-only:** the activation/reminder triggers emit `LegacyEmailNotifyRequested(legacy, creator, layer, notifyType)`, consumed off-chain by the reminder-worker (no on-chain Chainlink mail call). Deprecated Chainlink-era storage slots (e.g. the mail/automation manager wiring) are retained for proxy storage-layout safety but no longer drive any on-chain path. |
 
 ---
 
-## Premium – Automation & Mail
+## Premium – Notifications (off-chain since Phase B, 2026-06-02)
+
+Email scheduling and delivery were moved **off-chain** to a reminder-worker (Mailjet, routed through the existing `email-proxy`). On-chain contracts now only **emit** a notify signal; an off-chain worker resolves recipients (from its own encrypted store) and sends. This retired Chainlink **Automation** (upkeep scheduling) and Chainlink **Functions** (email delivery) from the email path. **Chainlink price feeds are unaffected and remain active in `PremiumRegistry`.**
 
 | Contract | Purpose |
 |----------|---------|
-| **PremiumAutomationManager** | Chainlink Automation (upkeeps) for premium users. Creates per-user “cronjob” contracts; registers upkeeps with a registrar; adds legacies to upkeeps for reminder/activation checks. Tracks nonces and notifies via PremiumMailRouter. |
-| **PremiumMailRouter** | Dispatches which mail contract to use. Called by PremiumSetting and PremiumAutomationManager; forwards to MailBeforeActivation, MailReadyToActivate, or MailActivated depending on context. |
-| **PremiumMailBeforeActivation** | Sends “before activation” emails via Chainlink Functions + Mailjet API. |
-| **PremiumMailReadyToActivate** | Sends “ready to activate” emails via Chainlink Functions + Mailjet API. |
-| **PremiumMailActivated** | Sends “activated” emails via Chainlink Functions + Mailjet API. |
+| **PremiumReminderView** | Standalone, stateless, read-only contract that re-expresses the old `PremiumAutomation.checkUpkeep` *timing* as `dueReminders(legacy)` / `dueRemindersBatch(legacy[])`. The reminder-worker polls it to decide which notify windows are open (the chain still gates "is a reminder due?"). Constructor takes `(setting, defaultNotifyAhead)`; deployed standalone, no proxy. |
+| `PremiumSetting` emit | `LegacyEmailNotifyRequested(legacy, creator, layer, notifyType)` — emitted by the reset/activation triggers; indexed by `computing-subgraph` and consumed by the reminder-worker. Replaces the on-chain Chainlink Functions mail dispatch. |
+
+> **Retired (source deleted from repo; proxies remain on-chain but inert):** `PremiumAutomationManager` + per-user `PremiumAutomation` cronjobs (Chainlink Automation) and `PremiumMailRouter` / `PremiumMailBeforeActivation` / `PremiumMailReadyToActivate` / `PremiumMailActivated` (Chainlink Functions). Their mainnet proxy addresses are kept in `contract-addresses.json` for the record (e.g. `PremiumAutomationManager` `0x03db2dcED84AEcb21F9e399f4dC7B71302537265`). Pending operational teardown: cancel the Automation upkeep + Functions subscription and withdraw remaining LINK (see CHANGELOG).
 
 ---
 
@@ -98,7 +99,7 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 
 | Name | Purpose |
 |------|---------|
-| **DefaultProxyAdmin** | OpenZeppelin proxy admin used by upgradeable contracts (EIP712LegacyVerifier, LegacyDeployer, MultisigLegacyRouter, TransferLegacyRouter, TransferEOALegacyRouter, Banner, PremiumRegistry, PremiumSetting, PremiumAutomationManager, PremiumMail*, TimelockERC20/721/1155, TimeLockRouter). Each proxy deployment may create or reuse one admin. |
+| **DefaultProxyAdmin** | OpenZeppelin proxy admin used by upgradeable contracts (EIP712LegacyVerifier, LegacyDeployer, MultisigLegacyRouter, TransferEOALegacyRouter, Banner, PremiumRegistry, PremiumSetting, TimelockERC20/721/1155, TimeLockRouter). Each proxy deployment may create or reuse one admin. It also still administers the now-inert retired proxies (PremiumAutomationManager, PremiumMail*) and the sunset TransferLegacyRouter, which remain on-chain. `PremiumReminderView` is non-proxied. |
 
 ---
 
@@ -113,6 +114,6 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 ## Dependency Overview
 
 - **Legacy flows:** LegacyDeployer ← MultisigLegacyRouter, TransferLegacyRouter, TransferEOALegacyRouter. All three routers use EIP712LegacyVerifier and (for premium) PremiumSetting.
-- **Premium:** PremiumRegistry (plans, payment) ↔ PremiumSetting (user/legacy config) ↔ PremiumAutomationManager (upkeeps) ↔ PremiumMailRouter → Mail* contracts.
+- **Premium:** PremiumRegistry (plans, payment, **active Chainlink price feeds**) ↔ PremiumSetting (user/legacy config; emits `LegacyEmailNotifyRequested`). Email scheduling/delivery is **off-chain** (reminder-worker → email-proxy → Mailjet); PremiumReminderView is the on-chain "is a reminder due?" timing anchor the worker polls. The former Chainlink Automation/Mail consumers are retired.
 - **Timelock:** TimeLockRouter → TimelockERC20/721/1155; TimeLockRouter uses TokenWhiteList and Uniswap router.
 - **Payment:** Receives fees from legacy/timelock flows; PremiumRegistry can deposit there; WITHDRAWER withdraws ERC20/ETH.

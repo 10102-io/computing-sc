@@ -1,5 +1,20 @@
 # Deployment Procedure
 
+> **⚠️ Partially superseded (2026-06-02 — Chainlink email path retired).**
+> The Chainlink **Automation** (`PremiumAutomationManager`) and **Functions**
+> mail contracts (`PremiumMailRouter`, `PremiumMail*`) and the
+> `set_up_reminder` / `set-up-premium` step described below were **removed**
+> when the email-reminder path moved off-chain to a reminder-worker. Ignore
+> the `PremiumAutomationManager` / `PremiumMail*` / `set_up_reminder` boxes in
+> the Phase 1/2 diagrams and the LINK-funding / Functions-subscription steps in
+> Phase 3 — those no longer apply. Premium wiring is now folded into
+> `set_up_legacy` (`PremiumSetting.setParams`), and `PremiumReminderView` is
+> deployed standalone via `scripts/deploy-premium-endstate.ts`.
+> **Chainlink price feeds (ETH/USD, USDT/USD, USDC/USD) are still live** in
+> `PremiumRegistry`. See `CHANGELOG.md` and
+> `docs/plans/chainlink-email-retirement.md`. The diagrams below are retained
+> as a historical record of the Chainlink-era topology.
+
 ## Prerequisites
 
 Before deploying to any live network:
@@ -191,5 +206,8 @@ Manual re-run scripts (only needed if re-wiring after config change):
 
 | Command | Purpose |
 |---|---|
-| `yarn set-up-legacy --network <net>` | Re-wire legacy routers ↔ verifier ↔ deployer |
-| `yarn set-up-premium --network <net>` | Re-wire premium mail router with mail contracts |
+| `yarn set-up-legacy --network <net>` | Re-wire legacy routers ↔ verifier ↔ deployer ↔ premium |
+
+> `set-up-premium` was removed (2026-06-02): premium wiring is now part of
+> `set-up-legacy`, and the Chainlink mail/automation wiring it used to do no
+> longer exists.

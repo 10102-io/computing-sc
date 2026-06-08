@@ -10,6 +10,12 @@ npx hardhat compile
 npx hardhat test
 ```
 
+## Branches & releases
+
+`dev` is the working branch. `main` is kept **identical to `dev`** — releases are cut by fast-forwarding `dev` onto `main` (no squash, no separate `release(...)` commit). A release is marked solely by an annotated [CalVer](https://calver.org/) tag (`vYYYY.MM.DD`, with `.1`, `.2`, … for additional same-day releases) on the release commit, plus a dated entry in [CHANGELOG.md](CHANGELOG.md); push the tag and cut a GitHub Release from it.
+
+This replaces the older squash-merge-with-`release(...)`-commit flow — `main` now matches `dev` 1:1, for simpler branch maintenance.
+
 ## Technical Architecture
 
 The Computing ecosystem is a modular suite of smart contracts organised around digital-asset legacy management. Users create "legacy" contracts that govern how their assets are distributed under configurable conditions (multisig, direct transfer, or timelock).
@@ -22,7 +28,7 @@ The Computing ecosystem is a modular suite of smart contracts organised around d
 | Forwarding | Direct transfer legacies | TransferLegacyContractRouter, TransferLegacyEOAContractRouter |
 | Inheritance | Multisig (Safe-based) legacies | MultisigLegacyContractRouter |
 | Timelock | Delayed release of ERC-20/721/1155 assets | TimeLockRouter, TimeLockERC20, TimeLockERC721, TimeLockERC1155 |
-| Premium | Subscription features and notifications | PremiumRegistry, PremiumSetting, PremiumAutomationManager |
+| Premium | Subscription features and notifications | PremiumRegistry, PremiumSetting, PremiumReminderView |
 | Term | EIP-712 Terms-of-Service verification | EIP712LegacyVerifier (VerifierTerm) |
 | Whitelist | Token allowlisting for timelock swaps | TokenWhiteList |
 
@@ -36,7 +42,7 @@ The Computing ecosystem is a modular suite of smart contracts organised around d
 ### External Integrations
 
 - **Uniswap V2** — Token swaps within transfer legacy and timelock flows (router address per network in `config/external-addresses.ts`).
-- **Chainlink** — Automation (keeper registry), Functions, and price feeds (ETH/USD, USDT/USD, USDC/USD).
+- **Chainlink** — **Price feeds only** (ETH/USD, USDT/USD, USDC/USD), consumed by `PremiumRegistry` to price premium subscriptions. Chainlink **Automation** (keeper registry) and **Functions** were **retired from the email-reminder path on 2026-06-02** (Phase B): email scheduling/delivery moved off-chain to a reminder-worker (Mailjet), driven by `PremiumSetting` emitting `LegacyEmailNotifyRequested` with timing read from `PremiumReminderView`. The Automation/Mail proxies remain on mainnet but are inert. See [CHANGELOG.md](CHANGELOG.md) and `docs/plans/chainlink-email-retirement.md`.
 - **OpenZeppelin** — Upgradeable contracts (UUPS proxies), access control, and standard token interfaces.
 - **Safe (Gnosis)** — Smart-account wallets for multisig and transfer legacies.
 
@@ -91,9 +97,12 @@ npx hardhat test
 
 Active test files:
 
-- `Legacy.spec.ts` — Legacy creation and distribution flows
-- `PremiumAutomation.spec.ts` — Premium automation manager
-- `PremiumRegistry.spec.ts` — Premium registry
+- `EOALegacyClone.spec.ts` — EIP-1167 EOA legacy clone flows
+- `TransferEOARouterInitializers.spec.ts` — EOA router initialization
+- `MultisigActivationTrigger.spec.ts` — Multisig activation-trigger (`uint128`) path
+- `PremiumRegistry.spec.ts` — Premium registry (incl. SafeERC20 subscriptions)
+- `PremiumSettingNotify.spec.ts` — `LegacyEmailNotifyRequested` emit path
+- `PremiumReminderView.spec.ts` — Off-chain reminder due-window view
 - `TimeLockRouter.test.ts` — Timelock router
 - `TimelockERC20.test.ts` — Timelock ERC-20
 - `TokenWhiteList.test.ts` — Token whitelist
@@ -128,17 +137,18 @@ npx hardhat deploy --network sepolia --tags Payment
 - `LegacyDeployer` — Create2 legacy factory
 - `Banner` — UI banner
 - `PremiumSetting` — Premium configuration
-- `PremiumMailRouter`, `PremiumMailBeforeActivation`, `PremiumMailReadyToActivate`, `PremiumMailActivated` — Mail notification contracts
-- `PremiumAutomationManager` — Chainlink automation
 - `TimeLockRouter` — Timelock routing
+
+> **Note:** The `PremiumMail*` and `PremiumAutomationManager` deploy scripts (Chainlink Functions/Automation) were removed when the email path moved off-chain (Phase B, 2026-06-02). `PremiumReminderView` is deployed standalone (no proxy) via `scripts/deploy-premium-endstate.ts`, not by a tagged `hardhat-deploy` script.
 
 **Dependent**
 
 - `TokenWhiteList` — Depends on TestERC20
 - `PremiumRegistry` — Depends on PremiumSetting, Payment
 - `MultisigLegacyRouter` — Depends on PremiumSetting, LegacyDeployer, EIP712LegacyVerifier
-- `TransferLegacyRouter` — Depends on LegacyDeployer, PremiumSetting, EIP712LegacyVerifier
 - `TransferEOALegacyRouter` — Depends on LegacyDeployer, PremiumSetting, EIP712LegacyVerifier, Payment
+
+> **Note:** The Safe-source `TransferLegacyRouter` was hard-sunset (v2026.05.18); its deploy script was removed. EOA and Multisig are the only live legacy creation paths. Wiring slots still pass `address(0)` for the sunset router (see `deploy/init/0.set_up_legacy.ts`).
 - `TimelockERC20`, `TimelockERC721`, `TimelockERC1155` — Depend on TimeLockRouter
 - `SetTimelockSwapRouter` — Runs on any network with a Uniswap router configured (sepolia, mainnet); wires timelock contracts (`setTimelock`), sets token whitelist, configures Uniswap router, and adds USDC/USDT to the whitelist
 
@@ -171,16 +181,11 @@ npx hardhat run deploy/init/0.set_up_legacy.ts --network <network-name>
 # Or: npm run set-up-legacy -- --network <network-name>
 ```
 
-Configures: EIP712LegacyVerifier, LegacyDeployer, MultisigLegacyRouter, TransferLegacyRouter, TransferEOALegacyRouter.
+Configures: EIP712LegacyVerifier, LegacyDeployer, MultisigLegacyRouter, TransferEOALegacyRouter, PremiumRegistry, and PremiumSetting (the sunset `TransferLegacyRouter` slot is wired to `address(0)`).
 
 #### Setup Premium Contracts
 
-```bash
-npx hardhat run deploy/init/2.set_up_reminder.ts --network <network-name>
-# Or: npm run set-up-premium -- --network <network-name>
-```
-
-Configures: PremiumSetting, PremiumRegistry, PremiumAutomationManager, PremiumMailRouter, PremiumMailBeforeActivation, PremiumMailActivated, and integration with legacy routers.
+Premium wiring (PremiumSetting ↔ PremiumRegistry ↔ legacy routers) is handled by `deploy/init/0.set_up_legacy.ts` (`PremiumSetting.setParams`). The Chainlink-era `deploy/init/2.set_up_reminder.ts` reminder/automation/mail wiring script was **removed when the email path moved off-chain (2026-06-02)** — there is no longer a separate premium-reminder setup step on-chain, and the corresponding `set-up-premium` npm script has been removed. `PremiumReminderView` is deployed standalone via `scripts/deploy-premium-endstate.ts`.
 
 > **Note:** On sepolia and mainnet, timelock wiring (setTimelock, setTokenWhitelist, setUniswapRouter, and adding USDC/USDT to the whitelist) is handled automatically by the `SetTimelockSwapRouter` deploy script. It runs on any network with a Uniswap router configured in `config/external-addresses.ts`.
 
@@ -195,8 +200,7 @@ Configures: PremiumSetting, PremiumRegistry, PremiumAutomationManager, PremiumMa
 | `npm run deploy:local` | Deploy to localhost |
 | `npm run deploy:sepolia` | Deploy to Sepolia |
 | `npm run deploy:sepolia:fresh` | Deploy to Sepolia (reset all) |
-| `npm run set-up-legacy` | Post-deploy legacy wiring |
-| `npm run set-up-premium` | Post-deploy premium wiring |
+| `npm run set-up-legacy` | Post-deploy legacy + premium wiring |
 | `npm run sync-ui` | Generate UI config from deployments |
 
 ## Project Structure
@@ -213,7 +217,7 @@ Configures: PremiumSetting, PremiumRegistry, PremiumAutomationManager, PremiumMa
 │   ├── interfaces/              # All contract interfaces
 │   ├── libraries/               # ArrayUtils, FormatUnits, NotifyLib, structs
 │   ├── mock/                    # Test mocks (ERC-20/721/1155, Uniswap, Chainlink)
-│   ├── premium/                 # Premium features, automation, mail notifications
+│   ├── premium/                 # Premium registry, settings, and reminder-due view
 │   ├── term/                    # EIP-712 ToS verifier
 │   ├── timelock/                # Timelock router and token-type handlers
 │   └── whitelist/               # Token whitelist for timelock swaps

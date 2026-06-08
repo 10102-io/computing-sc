@@ -1,6 +1,6 @@
 # Phase B — Chainlink retirement + off-chain email worker
 
-**Status**: In progress — single lean end-state upgrade (see §10). B-1 + notify event coded/tested; end-state contract surgery underway.
+**Status**: ✅ Shipped — landed on mainnet + Sepolia and released to `main` on 2026-06-08 (single lean end-state upgrade; see §10). Remaining: one-time operational teardown (cancel Automation upkeep, close Functions subscription, withdraw LINK).
 **Priority**: Next `computing-sc` milestone (carries three 2nd-round audit follow-ups)
 **Created**: 2026-05-29
 **Target networks**: mainnet + Sepolia

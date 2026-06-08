@@ -1,5 +1,18 @@
 # LINK Funding Runbook — PremiumAutomationManager
 
+> **⚠️ SUPERSEDED (2026-06-02 — Chainlink email path retired).**
+> The "Long-term mitigations → Retire the LINK dependency entirely" item below
+> has now **shipped**: Chainlink Automation + Functions were removed from the
+> email-reminder path, which moved off-chain to a reminder-worker.
+> `PremiumAutomationManager` is **inert** — no new cronjobs are created, so the
+> "keep ≥2 LINK" invariant and the top-up procedures here **no longer apply**.
+> The only remaining LINK action is the **one-time teardown**: cancel the
+> mainnet Automation upkeep, close the Functions subscription, and **withdraw
+> the remaining LINK** (`PremiumAutomationManager.withdrawLINK` + Chainlink UI).
+> This document is kept as the historical operational record and as the
+> reference for that withdrawal. See `CHANGELOG.md` and
+> `docs/plans/chainlink-email-retirement.md`.
+
 **Owner:** whoever is on-call for the `computing-sc` premium flow.
 **Applies to:** Ethereum mainnet and Sepolia (any network where
 `PremiumSetting.premiumAutomationManager()` is non-zero).

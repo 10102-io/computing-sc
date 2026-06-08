@@ -21,7 +21,71 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
-## [Unreleased on `main` — already live on mainnet]
+## v2026.06.08 — Email reminders moved off-chain: Chainlink Automation + Functions retired (USD price feeds retained)
+
+_Released to `main` 2026-06-08 (CalVer `v2026.06.08`). The on-chain changes
+below shipped to mainnet + Sepolia on **2026-06-02** ahead of this main-branch
+release; this entry folds that deploy event into the release record._
+
+Email reminders no longer ride on Chainlink. The time-based **scheduling**
+(Chainlink Automation upkeeps) and the email **delivery** (Chainlink
+Functions consumers) were both removed from the premium notification path
+and replaced by an off-chain **reminder-worker** (Mailjet, routed through
+the existing `email-proxy`). This drops the LINK dependency for reminders,
+eliminates the documented duplicate-email trade-off (one idempotent
+sender), and removes PII-shaped calldata/string fan-out that existed only
+to feed Chainlink. Authoritative narrative + rationale:
+`docs/plans/chainlink-email-retirement.md`.
+
+**Chainlink price feeds are NOT affected.** `PremiumRegistry` still imports
+`AggregatorV3Interface` and calls `latestRoundData()` for USDT/USD,
+USDC/USD, and ETH/USD to price premium subscriptions (mainnet registry
+`0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27`). Only Automation + Functions
+were retired.
+
+**What changed on-chain**
+- `PremiumSetting` is now **emit-only** for notifications: the
+  reset/activation triggers emit
+  `LegacyEmailNotifyRequested(address indexed legacy, address indexed creator, uint8 layer, uint8 notifyType)`
+  (`NotifyType { OwnerReset, ActivatedMultisig, ActivatedTransfer }`),
+  consumed off-chain. The inline Chainlink mail dispatch is gone. The
+  spoofable `onlyLegacy` modifier + `triggerActivationTransferLegacy` were
+  deleted (closes audit M-2′ structurally); EOA activation now routes
+  through a non-spoofable `onlyRouter` notify. Deprecated mail/automation
+  storage slots are **retained** for proxy storage-layout safety but drive
+  nothing.
+- `PremiumReminderView` (new, standalone, non-proxied) re-expresses the old
+  `PremiumAutomation.checkUpkeep` *timing* as `dueReminders(legacy)` /
+  `dueRemindersBatch(legacy[])`. The worker polls it so the chain still
+  gates "is a reminder due?"; only the cron trigger + delivery moved
+  off-chain. Mainnet view `0x8A5aF2c367B7420300547b03Be5f4c720C027a4d`
+  (`defaultNotifyAhead` = 7d).
+- `PremiumRegistry` upgrade carried the B-1 `SafeERC20.safeTransferFrom`
+  fix for USDT/USDC subscriptions (classic Tether returns no bool) — a
+  silent correctness fix (0 USDT/USDC subs historically).
+- **Source deleted from the repo, proxies remain on mainnet but INERT:**
+  `PremiumAutomationManager`
+  (`0x03db2dcED84AEcb21F9e399f4dC7B71302537265`) + per-user
+  `PremiumAutomation` cronjobs, and
+  `PremiumMailRouter`/`PremiumMailBeforeActivation`/`PremiumMailReadyToActivate`/`PremiumMailActivated`.
+  Their addresses are kept in `contract-addresses.json` for the record;
+  `PremiumSetting` keeps deprecated storage placeholders for layout.
+
+**Off-chain / cross-repo (context)**
+- `computing/services/reminder-worker` (new): subgraph `NotifyRequested`
+  event consumer + `PremiumReminderView` due-poller, encrypted recipient
+  store (AES-256-GCM, crypto-shred erasure), idempotent sent-ledger, posts
+  to `email-proxy`.
+- `computing-subgraph`: indexes `LegacyEmailNotifyRequested` →
+  `NotifyRequested` entity.
+- `computing/services/email-proxy`: generic `variables` passthrough +
+  worker shared-secret rate-limit bypass.
+
+**Pending operational teardown (on-chain, USER action — not done here)**
+- Cancel the **mainnet Chainlink Automation upkeep**, close the
+  **Chainlink Functions subscription**, and **withdraw remaining LINK**
+  (via `PremiumAutomationManager.withdrawLINK` and the Chainlink UI). The
+  contracts are inert, but the LINK is still parked until this is done.
 
 ## 2026-05-04 — EOA receive() 2300-gas fix + create-flag self-service + EIP-1167 cutover
 
