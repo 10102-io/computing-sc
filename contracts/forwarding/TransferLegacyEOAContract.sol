@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts v5.x
 pragma solidity 0.8.20;
 
