@@ -3,9 +3,12 @@
 **Status**: Planned (not started)
 **Priority**: Next `computing-sc` milestone after EIP-1167
 **Created**: 2026-04-22
-**Bundle**: Permit2 + off-chain beneficiary metadata (bundled because both require a
+**Bundle**: Permit2 + off-chain beneficiary metadata + **sponsored claims /
+sponsored owner check-in** (all three bundled because each requires a
 `TransferEOALegacyRouter` redeploy + re-verify + artifact reconcile cycle —
-splitting them would double the contract-ops overhead for no benefit)
+splitting them would multiply the contract-ops overhead for no benefit). The
+sponsorship track is specced in §5.6 and was added 2026-06-15 (decision:
+bundle rather than ship as a standalone train).
 **Target networks**: mainnet + Sepolia
 **Touch radius**: `computing-sc` (new router impl + clone impl + storage-layout
 bump), `computing-admin` (new metadata endpoints), `computing` (new create flow +
@@ -843,6 +846,110 @@ with names):
 Can ship with or behind legacies. If we ship together, the release message
 becomes "Create-flow v2 for legacies + timelocks".
 
+## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of) — §5.6
+
+**Added 2026-06-15.** Two of the founder's top product asks reduce to the
+*same* missing contract primitive, so they're tracked here as one sub-track
+bundled into the v2 router redeploy:
+
+1. **Beneficiaries can claim without holding ETH** ("sponsored claim").
+2. **10102 can reset an EOA owner's inactivity countdown when it detects the
+   owner is still active**, instead of relying on the owner manually paying
+   gas to check in ("sponsored check-in").
+
+### Why they're the same primitive
+
+Every EOA entrypoint today binds identity to `msg.sender` and forwards it to
+the clone, which enforces it:
+
+- `TransferLegacyEOAContractRouter.activeLegacy(legacyId, assets, isETH)` uses
+  `msg.sender` **as the beneficiary** (the recovered claimant must be a
+  registered beneficiary — see `getBeneficiaryLayer(msg.sender)` checks).
+- `TransferLegacyEOAContractRouter.avtiveAlive(legacyId)` (note the existing
+  typo) calls `activeAlive(msg.sender)`, which is `onlyOwner(sender_)` on the
+  clone — **only the owner can reset their own timer.**
+
+There is no path for a third party to act for the owner/beneficiary while
+paying the gas. Both asks need the same thing: **a signature-authorized
+`…For` entrypoint where identity comes from a recovered EIP-712 signer, not
+the sender, and the submitter (relayer) pays gas.**
+
+### Approach decision (2026-06-15)
+
+| Approach | Verdict |
+|---|---|
+| **A. Signed-intent relayer + `…For` router entrypoints** | **Chosen for v2.** Smallest contract delta, works with today's EOAs/wallets, no user migration, reuses the existing `services/reminder-worker` infra (already holds an RPC provider + watches owner nonces). |
+| **B. ERC-4337 paymaster** | Rejected for v2 — sponsors *smart-account* UserOps; our owners/beneficiaries are plain EOAs and would each need a smart account first. Poor fit, big lift. |
+| **C. EIP-7702** (Pectra, live 2025) | The long-term answer (same EOA address gets sponsored gas + batching). Wallet support still maturing; building core flows on it now is an adoption bet. **A does not lock us out of C** — the `…For` methods remain a useful relayer target under 7702. |
+
+### Contract changes (additive — claim semantics in §4.1 stay intact)
+
+New external functions on `TransferEOALegacyRouter` (the existing
+`activeLegacy` / `activeLegacyAndUnswap` / `avtiveAlive` stay
+**byte-identical** — these are *new* functions, consistent with the §4.1
+non-goal):
+
+```solidity
+// Sponsored beneficiary claim. `beneficiary` is the recovered EIP-712 signer;
+// the relayer (msg.sender) pays gas. Funds still go only to the beneficiary's
+// own allocation — the signer authorizes the claim, the sender just relays it.
+function activeLegacyFor(
+  uint256 legacyId_,
+  address[] calldata assets_,
+  bool isETH_,
+  ClaimAuth calldata auth_   // { beneficiary, legacyId, nonce, deadline, signature }
+) external;
+
+// Sponsored owner check-in. `owner` is the recovered signer; relayer pays gas.
+function activeAliveFor(
+  uint256 legacyId_,
+  CheckInAuth calldata auth_  // { owner, legacyId, nonce, deadline, signature }
+) external;
+```
+
+- Identity in the clone calls switches from `msg.sender` to the **recovered
+  signer** (`auth_.beneficiary` / `auth_.owner`), gated by an `ecrecover` +
+  per-(signer, legacy) nonce + deadline. The clone's `onlyOwner(sender_)` /
+  beneficiary-layer checks are unchanged — we just feed them the recovered
+  address.
+- EIP-712 domain binds `chainId + verifyingContract(router)` so intents can't
+  be replayed cross-chain or cross-legacy.
+- This is a router-impl change only; **no clone-storage layout change** (same
+  property as the Permit2 track in §14.3).
+
+### Off-chain relayer (extend `services/reminder-worker`)
+
+- A funded hot wallet submits `activeLegacyFor` / `activeAliveFor` and eats
+  the gas. Gas is funded by the premium tier (this is a "Protect my ETH"
+  premium unlock, Block B) — same opex shape as the Chainlink LINK spend
+  flagged in `DEFERRED.md` "Retire Chainlink Functions / Automation".
+- For sponsored check-in, the worker already computes the owner-activity
+  nonce delta (`owner-activity.ts`); when it detects outgoing activity it can
+  submit a pre-authorized `activeAliveFor` rather than only adjusting email
+  copy (`WALLET_ACTIVE_NOTE`).
+
+### Honest limits (so we don't over-promise)
+
+- **Not free, not magic.** Something must detect activity and submit a
+  gas-costing tx each time, and the owner must have pre-authorized it. So #2
+  is "10102-sponsored check-in with the owner's authorization", not a
+  trustless passive reset. Fully passive/decentralized is the SCW/7702
+  future — consistent with the earlier decision to bet on AA over a bespoke
+  Tier-3 oracle.
+- **Authorization model is the real design fork** (see open question 8): a
+  single signed check-in resets once. Passive recurring reset needs either
+  periodic re-signing or a broader time-bounded "keeper authorization"
+  (`authorizeCheckIns(owner, until)`), which adds contract surface. Pick
+  during v2 detailed design.
+
+### Trust model (open question 8)
+
+Permissionless relay (anyone can submit a valid signed intent —
+censorship-resistant, best) vs a 10102-only keeper (simpler, but a liveness
+single-point-of-failure). Lean permissionless for `activeLegacyFor` (a
+beneficiary's signed claim should be relayable by anyone), 10102-keeper
+acceptable for the premium `activeAliveFor` sponsorship.
+
 ## 13. Audit + test strategy
 
 ### 13.1 Unit + integration tests
@@ -1093,6 +1200,13 @@ Total: ~2 months from greenlight to mainnet. Plan accordingly.
    sequential prompts and plan to enable the grouped path later.
 7. **Bundle with Timelock's Permit2 integration (§12) or ship separately?**
    Lean: bundle. One audit + deploy cycle for both.
+8. **Sponsorship authorization + trust model (§12a).** (a) Single signed
+   check-in (resets once) vs a time-bounded keeper authorization
+   (`authorizeCheckIns(owner, until)`) for passive recurring reset — the
+   latter adds contract surface but is what makes "10102 resets on activity"
+   actually passive. (b) Permissionless relay vs 10102-only keeper per
+   entrypoint. Lean: permissionless `activeLegacyFor`, keeper-funded
+   `activeAliveFor`; decide the authorization granularity at detailed design.
 
 ## 18. References
 
