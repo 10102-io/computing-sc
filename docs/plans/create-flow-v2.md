@@ -1,6 +1,8 @@
 # Create-flow v2 — Permit2 + off-chain beneficiary metadata
 
-**Status**: Planned (not started)
+**Status**: In progress — sponsored sub-track (§12a) is the first vertical
+slice; design decisions locked 2026-06-18 (see §12a "Decisions locked"). Permit2
++ off-chain PII tracks still planned.
 **Priority**: Next `computing-sc` milestone after EIP-1167
 **Created**: 2026-04-22
 **Bundle**: Permit2 + off-chain beneficiary metadata + **sponsored claims /
@@ -950,6 +952,30 @@ single-point-of-failure). Lean permissionless for `activeLegacyFor` (a
 beneficiary's signed claim should be relayable by anyone), 10102-keeper
 acceptable for the premium `activeAliveFor` sponsorship.
 
+### Decisions locked (2026-06-18)
+
+Resolved with the founder so implementation of the sponsored sub-track can
+start as the first vertical slice of v2:
+
+- **Relay openness:** **permissionless** for both `activeLegacyFor` and
+  `activeAliveFor`. Anyone can submit a validly-signed intent and pay the gas;
+  funds/effects only ever accrue to the recovered signer (beneficiary's own
+  allocation / owner's own timer), so there's no abuse vector in letting any
+  relayer carry the transaction. 10102's funded relayer is then just "one
+  permitted relayer among many," not a gatekeeper — no liveness SPOF.
+- **Authorization granularity:** **single-shot** to start. Each signed intent
+  carries a per-signer sequential `nonce` + a `deadline` and is consumed once.
+  The time-bounded "keeper authorization" (`authorizeCheckIns(owner, until)`)
+  for passive *recurring* resets is deferred — it's an additive function we can
+  layer on later without reworking the single-shot path.
+- **Implementation shape:** **router-impl change only**, additive. The existing
+  `activeLegacy` / `activeLegacyAndUnswap` / `avtiveAlive` stay byte-identical;
+  the new `…For` entrypoints recover an EIP-712 signer and feed it where
+  `msg.sender` is used today (the clone already takes the actor as an explicit
+  `bene_` / `sender_` arg). EIP-712 domain is computed on the fly
+  (`chainId + verifyingContract = router`) — **no new reinitializer**; the only
+  new storage is an appended `sponsorNonce` mapping (auto-zero, layout-safe).
+
 ## 13. Audit + test strategy
 
 ### 13.1 Unit + integration tests
@@ -1200,13 +1226,11 @@ Total: ~2 months from greenlight to mainnet. Plan accordingly.
    sequential prompts and plan to enable the grouped path later.
 7. **Bundle with Timelock's Permit2 integration (§12) or ship separately?**
    Lean: bundle. One audit + deploy cycle for both.
-8. **Sponsorship authorization + trust model (§12a).** (a) Single signed
-   check-in (resets once) vs a time-bounded keeper authorization
-   (`authorizeCheckIns(owner, until)`) for passive recurring reset — the
-   latter adds contract surface but is what makes "10102 resets on activity"
-   actually passive. (b) Permissionless relay vs 10102-only keeper per
-   entrypoint. Lean: permissionless `activeLegacyFor`, keeper-funded
-   `activeAliveFor`; decide the authorization granularity at detailed design.
+8. **Sponsorship authorization + trust model (§12a).** ✅ **RESOLVED
+   (2026-06-18)** — permissionless relay for *both* `…For` entrypoints;
+   single-shot (per-signer sequential nonce + deadline) to start, with the
+   time-bounded `authorizeCheckIns` deferred as an additive follow-up. See the
+   "Decisions locked" block under §12a.
 
 ## 18. References
 
