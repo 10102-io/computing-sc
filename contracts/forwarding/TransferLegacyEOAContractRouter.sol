@@ -2,6 +2,7 @@
 pragma solidity 0.8.20;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
 import {ITransferEOALegacy} from "../interfaces/ITransferLegacyEOAContract.sol";
@@ -27,6 +28,59 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // full, independent contracts.
   address public legacyImplementation;
 
+  // ─── Create-flow v2: sponsored ("…For") entrypoints ──────────────────────
+  // Per-signer sequential nonce for the gas-sponsored `activeLegacyFor` /
+  // `activeAliveFor` entrypoints. APPENDED at the end of router storage — this
+  // is the only new state added by the sponsored sub-track, so the layout stays
+  // append-only and needs no reinitializer (the mapping is auto-zero). See
+  // docs/plans/create-flow-v2.md §12a "Decisions locked".
+  mapping(address => uint256) public sponsorNonce;
+
+  // Per-legacy owner opt-out for gas-sponsored claims. APPENDED after
+  // `sponsorNonce` (layout-safe, auto-zero). Default `false` = sponsored claims
+  // ENABLED, because gasless claim is the highest-impact UX win and the
+  // beneficiary always authorizes their own claim. An owner who wants to forbid
+  // third-party relaying (e.g. a B2B/legal setup) flips this true via
+  // `setSponsoredClaimsEnabled`; beneficiaries then simply fall back to the
+  // always-available direct `activeLegacy`. The check-in path (`activeAliveFor`)
+  // is intentionally NOT gated here — it already requires the owner's own fresh
+  // signature per call, so it is inherently opt-in. See create-flow-v2.md §12a
+  // "Founder review (2026-06-19)".
+  mapping(uint256 => bool) public sponsoredClaimsDisabled;
+
+  // EIP-712 typed-data constants (compile-time — occupy no storage slots).
+  // The domain is recomputed per call from `block.chainid + address(this)` so
+  // a signed intent can never be replayed cross-chain or against a different
+  // router. `verifyingContract` is this router.
+  bytes32 private constant _EIP712_DOMAIN_TYPEHASH =
+    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+  bytes32 private constant _EIP712_NAME_HASH = keccak256(bytes("10102 Legacy Sponsored"));
+  bytes32 private constant _EIP712_VERSION_HASH = keccak256(bytes("1"));
+  bytes32 private constant CLAIM_AUTH_TYPEHASH =
+    keccak256("ClaimAuth(address beneficiary,uint256 legacyId,bytes32 assetsHash,bool isETH,uint256 nonce,uint256 deadline)");
+  bytes32 private constant CHECKIN_AUTH_TYPEHASH =
+    keccak256("CheckInAuth(address owner,uint256 legacyId,uint256 nonce,uint256 deadline)");
+
+  /// @notice Beneficiary's signed authorization for a gas-sponsored claim.
+  /// `beneficiary` is the recovered EIP-712 signer; funds only ever go to that
+  /// beneficiary's own allocation, so any relayer may submit it (permissionless).
+  struct ClaimAuth {
+    address beneficiary;
+    uint256 nonce;
+    uint256 deadline;
+    bytes signature;
+  }
+
+  /// @notice Owner's signed authorization for a gas-sponsored inactivity-timer
+  /// reset. `owner` is the recovered signer; only their own legacy's timer is
+  /// touched. Single-shot (consumed once via the sequential nonce).
+  struct CheckInAuth {
+    address owner;
+    uint256 nonce;
+    uint256 deadline;
+    bytes signature;
+  }
+
   /* Error */
   error NumBeneficiariesInvalid();
   error NumAssetsInvalid();
@@ -40,6 +94,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error EmptyCode();
   error OnlyOwner();
   error LegacyStillActive();
+  error SponsorshipExpired();
+  error InvalidSponsorNonce();
+  error InvalidSponsorSignature();
+  error SponsoredClaimsDisabled();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -103,6 +161,16 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   event TransferEOALegacyUnswapped(uint256 indexed legacyId, address storageToken, uint256 tokenAmount, uint256 timestamp);
   event TransferEOALegacyActivatedWithUnswap(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
   event TransferEOALegacyCreateFlagReleased(uint256 indexed legacyId, address indexed owner, uint256 timestamp);
+  /// @notice A beneficiary's claim was relayed on their behalf (gas-sponsored).
+  /// The standard `TransferEOALegacyActivated` is also emitted for this legacy.
+  event TransferEOALegacyClaimedFor(uint256 indexed legacyId, address indexed beneficiary, address indexed relayer, uint256 timestamp);
+  /// @notice An owner's inactivity-timer reset was relayed on their behalf.
+  /// The standard `TransferEOALegacyActivedAlive` is also emitted for this legacy.
+  event TransferEOALegacyCheckedInFor(uint256 indexed legacyId, address indexed owner, address indexed relayer, uint256 timestamp);
+  /// @notice The legacy owner toggled whether gas-sponsored claims are allowed
+  /// for this legacy. `enabled == false` forces beneficiaries onto the direct
+  /// `activeLegacy` path. Direct claims are unaffected either way.
+  event SponsoredClaimsConfigured(uint256 indexed legacyId, address indexed owner, bool enabled);
 
     constructor () {
     _disableInitializers();
@@ -261,6 +329,26 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   }
 
   function avtiveAlive(uint256 legacyId_) external {
+    _runActiveAlive(legacyId_, msg.sender);
+  }
+
+  /**
+   * @dev Gas-sponsored owner check-in. The owner signs an EIP-712 `CheckInAuth`
+   * off-chain; any relayer (`msg.sender`) submits it and pays the gas. Identity
+   * is the recovered signer, not the sender — the clone's `onlyOwner` check is
+   * fed the recovered owner, so only the owner's own timer is reset. Single-shot
+   * (sequential per-signer nonce + deadline). See create-flow-v2.md §12a.
+   */
+  function activeAliveFor(uint256 legacyId_, CheckInAuth calldata auth_) external {
+    bytes32 structHash = keccak256(
+      abi.encode(CHECKIN_AUTH_TYPEHASH, auth_.owner, legacyId_, auth_.nonce, auth_.deadline)
+    );
+    _consumeSponsorAuth(auth_.owner, auth_.nonce, auth_.deadline, structHash, auth_.signature);
+    _runActiveAlive(legacyId_, auth_.owner);
+    emit TransferEOALegacyCheckedInFor(legacyId_, auth_.owner, msg.sender, block.timestamp);
+  }
+
+  function _runActiveAlive(uint256 legacyId_, address actor_) internal {
     address legacyAddress = _checkLegacyExisted(legacyId_);
 
     try 
@@ -268,7 +356,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     {} catch {
       emit EmailOwnerResetNotCompleted(legacyAddress);
     }
-    ITransferEOALegacy(legacyAddress).activeAlive(msg.sender);
+    ITransferEOALegacy(legacyAddress).activeAlive(actor_);
     emit TransferEOALegacyActivedAlive(legacyId_, block.timestamp);
   }
 
@@ -378,12 +466,62 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   }
 
   function activeLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_) external {
+    _runActiveLegacy(legacyId_, assets_, isETH_, msg.sender);
+  }
+
+  /**
+   * @dev Gas-sponsored beneficiary claim. The beneficiary signs an EIP-712
+   * `ClaimAuth` off-chain (binding legacyId + the asset list + isETH + nonce +
+   * deadline); any relayer (`msg.sender`) submits it and pays the gas. The
+   * recovered signer is used as the claiming beneficiary, so funds are
+   * distributed to that beneficiary's own allocation exactly as in the direct
+   * `activeLegacy` path — the relayer never receives anything. Permissionless +
+   * single-shot. See create-flow-v2.md §12a.
+   */
+  function activeLegacyFor(
+    uint256 legacyId_,
+    address[] calldata assets_,
+    bool isETH_,
+    ClaimAuth calldata auth_
+  ) external {
+    if (sponsoredClaimsDisabled[legacyId_]) revert SponsoredClaimsDisabled();
+    bytes32 structHash = keccak256(
+      abi.encode(
+        CLAIM_AUTH_TYPEHASH,
+        auth_.beneficiary,
+        legacyId_,
+        keccak256(abi.encodePacked(assets_)),
+        isETH_,
+        auth_.nonce,
+        auth_.deadline
+      )
+    );
+    _consumeSponsorAuth(auth_.beneficiary, auth_.nonce, auth_.deadline, structHash, auth_.signature);
+    _runActiveLegacy(legacyId_, assets_, isETH_, auth_.beneficiary);
+    emit TransferEOALegacyClaimedFor(legacyId_, auth_.beneficiary, msg.sender, block.timestamp);
+  }
+
+  /**
+   * @dev Owner opt-out for gas-sponsored claims on their legacy. Sponsored
+   * claims are ON by default; an owner who wants to forbid third-party relaying
+   * sets `enabled_ == false`, after which `activeLegacyFor` reverts and
+   * beneficiaries use the always-available direct `activeLegacy`. Owner-only;
+   * does not touch the clone. The choice is fully reversible.
+   */
+  function setSponsoredClaimsEnabled(uint256 legacyId_, bool enabled_) external {
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+    if (IPremiumLegacy(legacyAddress).getLegacyOwner() != msg.sender) revert OnlyOwner();
+    sponsoredClaimsDisabled[legacyId_] = !enabled_;
+    emit SponsoredClaimsConfigured(legacyId_, msg.sender, enabled_);
+  }
+
+  function _runActiveLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_, address actor_) internal {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     if (isETH_ == false && assets_.length == 0) revert NumAssetsInvalid();
 
     //Active legacy
-    ITransferEOALegacy(legacyAddress).activeLegacy(assets_, isETH_, msg.sender);
-    uint8 beneLayer = ITransferEOALegacy(legacyAddress).getBeneficiaryLayer(msg.sender);
+    ITransferEOALegacy(legacyAddress).activeLegacy(assets_, isETH_, actor_);
+    uint8 beneLayer = ITransferEOALegacy(legacyAddress).getBeneficiaryLayer(actor_);
     uint8 currentLayer = ITransferEOALegacy(legacyAddress).getLayer();
     if (beneLayer > currentLayer) revert CannotClaim();
     if (beneLayer == 0) revert OnlyBeneficaries();
@@ -391,7 +529,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     // Phase B end-state: emit the PII-free transfer-activation notify via PremiumSetting
     // (onlyRouter — non-spoofable, replaces the legacy's deleted onlyLegacy path). Best-effort
     // so a premium-layer hiccup never blocks the claim.
-    try IPremiumSetting(premiumSetting).notifyActivatedTransfer(legacyAddress, msg.sender)
+    try IPremiumSetting(premiumSetting).notifyActivatedTransfer(legacyAddress, actor_)
     {} catch {
       emit EmailActivatedNotCompleted(legacyAddress);
     }
@@ -555,5 +693,46 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     address legacyAddress = _checkLegacyExisted(legacyId_);
     ITransferEOALegacy(legacyAddress).setLayer23Distributions(msg.sender, layer_, nickname_, distribution_);
     emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, layer_, nickname_, distribution_, block.timestamp);
+  }
+
+  // ─── Sponsored ("…For") EIP-712 plumbing ─────────────────────────────────
+
+  /// @notice EIP-712 domain separator for sponsored intents, scoped to this
+  /// router on the current chain. Exposed so clients can build/verify digests.
+  function sponsoredDomainSeparator() external view returns (bytes32) {
+    return _domainSeparator();
+  }
+
+  function _domainSeparator() internal view returns (bytes32) {
+    return keccak256(
+      abi.encode(_EIP712_DOMAIN_TYPEHASH, _EIP712_NAME_HASH, _EIP712_VERSION_HASH, block.chainid, address(this))
+    );
+  }
+
+  function _hashTypedData(bytes32 structHash_) internal view returns (bytes32) {
+    return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash_));
+  }
+
+  /**
+   * @dev Validate + consume a single-shot sponsored authorization: deadline not
+   * passed, nonce equals the signer's current sequential nonce, and the EIP-712
+   * signature recovers to the asserted signer. Advances the nonce on success so
+   * the intent cannot be replayed. `ECDSA.recover` reverts on a malformed or
+   * malleable signature, so a zero-address recovery can't slip through.
+   */
+  function _consumeSponsorAuth(
+    address signer_,
+    uint256 nonce_,
+    uint256 deadline_,
+    bytes32 structHash_,
+    bytes calldata signature_
+  ) internal {
+    if (block.timestamp > deadline_) revert SponsorshipExpired();
+    if (nonce_ != sponsorNonce[signer_]) revert InvalidSponsorNonce();
+    address recovered = ECDSA.recover(_hashTypedData(structHash_), signature_);
+    if (recovered != signer_) revert InvalidSponsorSignature();
+    unchecked {
+      sponsorNonce[signer_] = nonce_ + 1;
+    }
   }
 }

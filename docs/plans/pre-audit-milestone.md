@@ -178,3 +178,80 @@ separate asks. The UX it delivers:
    off-chain metadata) → mainnet + one-shot ETL + subgraph cut.
 5. (Future) external security review + multisig admin, when we decide to harden
    the trust model for a public audit.
+
+---
+
+## 8. Product-direction inputs (2026-06-19) — to slot into v2 scoping
+
+Founder feedback to weigh while v2 is still in the design phase. Captured here so
+it isn't lost; each item tagged with where it lives and a recommendation.
+
+### 8.1 Rename contracts — drop "will" / "inheritance"? — **recommend: yes, scoped**
+
+v2 already redeploys the EOA router + clone, so it is the natural (and cheapest)
+moment to rename. On-chain bytecode does not care about names; the cost is
+cascade: Solidity contract/file names → artifacts/ABIs → frontend
+`src/configs/abis/*.ts` + `contract-addresses.json` sync → subgraph
+`dataSource`/handler names. Recommendation:
+- Rename the **redeployed** v2 contracts only (EOA router + clone, and any timelock
+  contracts touched by Permit2). Leave already-deployed, untouched contracts on
+  their current names to avoid churn for zero on-chain benefit.
+- Prefer neutral domain language: "Legacy"/"Beneficiary"/"Transfer" stay;
+  excise "Will"/"Inheritance" from new names + new ABIs + new events.
+- This is a naming-only refactor on the v2 branch; fold into the same redeploy,
+  do NOT do it as a standalone churn PR across live contracts.
+
+### 8.2 Advanced legal / B2B features — mixed on-chain + off-chain
+
+Map each ask to the cheapest correct layer:
+- **Trustee notion (better):** model a distinct `trustee` role separate from
+  beneficiary (can administer/trigger but not necessarily inherit). On-chain role
+  bit on the clone OR off-chain metadata + a router authorization, depending on
+  whether the trustee needs on-chain powers. Decide during v2 data-model design.
+- **Secondary / tertiary lines *per beneficiary*:** today layers 2/3 are *global*
+  fallback beneficiaries, not per-beneficiary. True per-beneficiary fallback lines
+  are a **storage-layout-touching data-model change** — exactly the kind of thing
+  to settle now, inside the v2 redeploy, so we never re-open the clone again.
+- **One private ID aggregating multiple legacy contracts:** an *off-chain*
+  account/identity construct (computing-admin metadata API), not a contract
+  change. A user-scoped ID that the API maps to N on-chain legacies. Pairs with
+  the off-chain-PII track already in v2.
+- **Legal-document templates referenced in notes / "perfect legal setup"
+  templates:** off-chain content (notes already off-chain in v2). Ship as a
+  template library surfaced in the create flow + Guardian; no contract impact.
+
+Action: per-beneficiary lines + trustee role are the only items that can force
+clone storage; resolve them in v2 data-model design so the redeploy is final. The
+rest are off-chain and can land incrementally without touching contracts.
+
+### 8.3 `beyond-sc` + membership-across-the-board — **already wired on-chain**
+
+Read `10102-labs/beyond-sc` on 2026-06-19. It is a self-contained Hardhat repo
+(`SubnameRegistrar.sol`) selling ENS wrapped subnames (`name.miami.eth`, later
+`qubic.eth`, …) as emancipated "forever" names. The key finding:
+
+> **It already gates on Computing Legacy membership.** `SubnameRegistrar.register`
+> grants a per-parent **free quota** when `premiumSetting.isPremium(buyer) == true`
+> — reading the *same* `PremiumSetting` the app uses (mainnet
+> `0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f`). No new token, no oracle, no
+> billing.
+
+So the founder's "extend membership across the board" is **already true at the
+contract layer**, and via the right lever: it's the **premium membership**
+(`isPremium`), *not* the Agents & Builders tier (founder confirmed 2026-06-19).
+`PremiumSetting` is the single cross-product source of truth — every new product
+(`miami-eth` subnames, future `cyborg.eth`, …) just reads `isPremium`.
+
+This validates the direction and means the only remaining work is **display**, not
+plumbing:
+- Treat membership as a cross-product entitlement. The membership/pricing page
+  should surface a "what your premium membership unlocks" matrix spanning
+  products (Legacy features + a free subname quota + future products), and the
+  header "10102 Membership" item should point there.
+- Each product surfaces its own member perk locally (beyond-sc already exposes
+  `memberFreeQuota` per parent + `memberMintsUsed`), so the app can show
+  "X free subnames remaining" by reading the registrar.
+- No contract change needed for the entitlement itself. (Frontend/admin only.)
+
+Deployed (from beyond-sc README): SubnameRegistrar Sepolia
+`0xB0C77D01CbFa411C1d33F99B4afAD908Ae55c2C6`; mainnet not yet listed.

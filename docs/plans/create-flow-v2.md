@@ -976,6 +976,85 @@ start as the first vertical slice of v2:
   (`chainId + verifyingContract = router`) — **no new reinitializer**; the only
   new storage is an appended `sponsorNonce` mapping (auto-zero, layout-safe).
 
+### Founder review (2026-06-19) — relayer-compromise concern + owner choice
+
+Founder raised: "if 10102 (or another) relayer is attacked/compromised, can the
+legacy funds get stuck?" and "these sponsored options should be optional at the
+owner's choice." Holistic answer, which sharpens — not reverses — the locked
+decisions:
+
+1. **Sponsorship can never strand funds — it is purely additive.** The direct
+   `activeLegacy` / `avtiveAlive` paths stay byte-identical and always available.
+   A beneficiary who holds gas can always self-claim with zero dependence on any
+   relayer. The `…For` entrypoints are a *convenience layer on top*, never the
+   only door. So "funds can never be transferred" is not reachable via relayer
+   failure.
+
+2. **Permissionless is the *cure* for the compromise worry, not the cause.**
+   Because anyone can carry a validly-signed intent, a down/compromised 10102
+   relayer is routed around by literally any other party (including the
+   beneficiary themselves). A keeper-*only* model is what would create the single
+   point of failure the founder is worried about. A compromised relayer also
+   cannot steal or forge: the EIP-712 signature pins the fund recipient to the
+   beneficiary's own allocation and the check-in to the owner's own timer; a
+   relayer only pays gas and broadcasts. Worst case a malicious relayer *withholds*
+   a tx — harmless, since anyone else can submit the same signed intent.
+
+3. **Where owner choice genuinely matters — and the added knob.** Give the owner
+   an explicit, additive, router-level opt-out so the product honors "their
+   choice" without weakening the safe default:
+   - **`sponsoredClaimsEnabled` per legacy (default ON).** Settable by the legacy
+     owner via a new router setter, stored in an appended
+     `mapping(uint256 => bool)` (clone stays byte-identical, layout-safe like
+     `sponsorNonce`). `activeLegacyFor` checks it; if an owner disables it,
+     beneficiaries simply fall back to the always-available direct `activeLegacy`.
+     Default ON because gasless claim is the highest-impact UX win and the signer
+     authorizes their own claim — but B2B/legal setups that want to forbid
+     third-party relaying can turn it off.
+   - **Check-in sponsorship stays owner-signed (inherently opt-in).** Single-shot
+     `activeAliveFor` already requires the owner's fresh signature per reset, so
+     no third party can reset the timer without explicit owner consent each time.
+     The deferred *passive recurring* `authorizeCheckIns(owner, until)` is the
+     truly "set and forget" path and MUST be explicit owner opt-in with a bounded
+     expiry — keep it deferred and gated behind an owner action.
+
+   Net: keep permissionless + additive (best liveness/safety), add a single
+   owner opt-out flag for claims, and keep passive keeper auth deferred + opt-in.
+
+   **✅ Implemented (2026-06-19, `feat/create-flow-v2`).** Added an appended
+   `mapping(uint256 => bool) public sponsoredClaimsDisabled` (default false =
+   enabled), an owner-only `setSponsoredClaimsEnabled(legacyId, enabled)` setter,
+   a `SponsoredClaimsDisabled()` guard in `activeLegacyFor`, and a
+   `SponsoredClaimsConfigured` event. Clone untouched, layout append-only. 3 new
+   tests (disable→relay reverts but direct claim still works, re-enable restores
+   relay, only-owner toggle) — full suite 97 passing.
+
+### Smart-contract-wallet signers + the Zodiac ERC-1271 lesson (2026-06-19)
+
+Founder flagged the Gnosis Zodiac post-mortem
+(engineering.gnosisguild.org/posts/zodiac-post-mortem, 19 Jun 2026): an
+authentication bypass where the modules' ERC-1271 contract-signature check
+accepted the magic value `0x1626ba7e` **without requiring the `staticcall` to
+have succeeded** — a reverted check whose revert data began with the magic value
+was treated as valid. Lesson for us:
+
+- **Today we are safe by construction.** The sponsored `…For` path uses
+  `ECDSA.recover` (EOA signatures only) and asserts `recovered == signer`. There
+  is no ERC-1271 path, so the exact Zodiac bug is not reachable. EOA legacies'
+  owners are EOAs by definition; an EOA beneficiary signs with their key.
+- **The gap to mind:** a beneficiary (or future owner) that is a *smart-contract
+  wallet* (Safe) cannot use the sponsored path at all today — `ECDSA.recover`
+  won't match a contract address. They fall back to the direct `activeLegacy`
+  (the Safe executes it), so nothing is stuck — just no gasless relay for them.
+- **If/when we add ERC-1271 support** (to give Safe beneficiaries gasless
+  claims), do NOT hand-roll the magic-value check. Use OpenZeppelin
+  `SignatureChecker.isValidSignatureNow`, which requires `staticcall` success
+  **and** an exact magic-value match (and falls back to ECDSA for EOAs). Add
+  negative-path tests as first-class: failed call, revert data beginning with the
+  magic value, short/empty return data, code-less address, malformed signature,
+  and an adversarial fallback handler. Treat fallback-handler behavior as
+  adversarial unless explicitly trusted. (Zodiac "Lessons learned" §11.1–11.2.)
+
 ## 13. Audit + test strategy
 
 ### 13.1 Unit + integration tests
