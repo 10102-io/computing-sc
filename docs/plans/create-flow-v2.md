@@ -2,19 +2,24 @@
 
 **Status**: In progress — sponsored sub-track (§12a) is the first vertical
 slice; design decisions locked 2026-06-18 (see §12a "Decisions locked"). Permit2
-+ off-chain PII tracks still planned.
++ off-chain PII tracks still planned. Naming cleanup (§5.7) and advanced
+legal / B2B features (§12b) folded in 2026-06-23.
 **Priority**: Next `computing-sc` milestone after EIP-1167
 **Created**: 2026-04-22
 **Bundle**: Permit2 + off-chain beneficiary metadata + **sponsored claims /
-sponsored owner check-in** (all three bundled because each requires a
+sponsored owner check-in** + **v2 naming cleanup** + **advanced legal / B2B
+metadata** (all bundled because the on-chain pieces each require a
 `TransferEOALegacyRouter` redeploy + re-verify + artifact reconcile cycle —
 splitting them would multiply the contract-ops overhead for no benefit). The
-sponsorship track is specced in §5.6 and was added 2026-06-15 (decision:
-bundle rather than ship as a standalone train).
+sponsorship track is specced in §12a (added 2026-06-15); naming in §5.7 and the
+legal/B2B feature set in §12b (added 2026-06-23). The decision throughout is to
+keep the on-chain delta minimal and additive and push everything that can be
+metadata off-chain (gas + GDPR + reversibility).
 **Target networks**: mainnet + Sepolia
 **Touch radius**: `computing-sc` (new router impl + clone impl + storage-layout
-bump), `computing-admin` (new metadata endpoints), `computing` (new create flow +
-API client), `computing-subgraph` (drop PII fields), one-time ETL job
+bump), `computing-admin` (new metadata endpoints + legal/B2B schema), `computing`
+(new create flow + API client + trustee/contingent/aggregation UI),
+`computing-subgraph` (drop PII fields), one-time ETL job
 
 ---
 
@@ -329,6 +334,74 @@ token. Permit2 applies here the same way:
     worth it for a string that's rarely read after create. Option: leave the
     field in the struct but stop writing it (empty string). This costs one
     zero-slot write instead of a full SSTORE — ~5k gas instead of ~22k.
+
+### 5.7 Naming cleanup — drop "will" / "inheritance" / "inherits" (v2-redeployed surface only)
+
+**Added 2026-06-23.** Founder ask: use the v2 redeploy as the opportunity to
+clean product vocabulary so nothing user- or integrator-facing reads as "will",
+"inheritance", or "inherits". Decision (2026-06-19): rename **only what we are
+already redeploying in v2 — not the rest** — and **never use the word
+"inherits"** in any new copy, identifier, NatSpec, or event.
+
+**5.7.1 What's already clean (no work).** A full audit of
+`computing-sc/contracts` (2026-06-23) found the contract layer is *already*
+"Legacy"-named end to end. The only matches for `inherit`/`inheritance` are:
+
+- The folder `contracts/inheritance/` holding the **Multisig** contracts
+  (`MultisigLegacyContract.sol`, `MultisigLegacyContractRouter.sol`) and its
+  one import in `LegacyDeployer.sol`.
+- Solidity's own `is` inheritance keyword and incidental prose comments
+  (e.g. "the token will be removed"). These are language/English usage, **not**
+  product vocabulary — leave them. The constraint is about the *product* word
+  "inherits/inheritance", not the Solidity inheritance relationship.
+
+The v2-redeployed contracts themselves — `TransferLegacyEOAContract.sol`
+(`TransferEOALegacy`), `TransferLegacyEOAContractRouter.sol`
+(`TransferEOALegacyRouter`), `GenericLegacy.sol`, `TransferLegacyStruct.sol`,
+`EOALegacyFactory.sol` — contain **zero** "will"/"inheritance"/"inherits"
+identifiers. So there is nothing to rename in the contracts we redeploy.
+
+**5.7.2 Where the rename effort actually lands.**
+
+1. **New v2 surface must be born clean.** Every identifier, struct, event, and
+   NatSpec line introduced by this milestone (`createLegacyV2`,
+   `LegacyMainConfigV2`, `LegacyCreateWitness`, the `…For` sponsored
+   entrypoints, the metadata-API schema, the legal/B2B fields in §12b) uses
+   "Legacy" and never "will"/"inheritance"/"inherits". This is a review-time
+   gate, not a refactor. ("Legacy" is the kept canonical product term.)
+2. **The `inheritance/` folder is OUT of v2 scope.** It holds the Multisig
+   contracts, which §4.1 explicitly does **not** redeploy. Renaming the folder
+   (`inheritance/` → e.g. `multisig/`) is a non-redeployed change, so per the
+   "only what we redeploy" rule it does not ride v2. If a future release
+   redeploys the Multisig router, fold the folder rename in then.
+3. **Frontend "Will" vocabulary stays deferred.** The large internal
+   `Will → Legacy` rename (`WillList`, `useWillData`, `will-service.ts`,
+   `WILL_STATUS`, `wil-tabs/`, …) is tracked in `computing/docs/DEFERRED.md`
+   ("Internal `Will` → `Legacy` rename (frontend-wide)") as an isolated
+   mechanical PR. v2 does **not** absorb it — bundling a repo-wide rename into a
+   feature+contract milestone would bury the real change in review noise. v2
+   only guarantees its own *new* frontend surface (the v2 create flow,
+   trustee/contingent/aggregation UI) is clean.
+
+**5.7.3 Load-bearing identifiers that must NOT change.** Renaming must never
+touch identifiers that are part of a deployed wire contract, or we silently
+break live integrations:
+
+- **On-chain ABI already deployed**: `createLegacy`, `LegacyType`,
+  `RequiredLegacyRecord`, `LegacyExtraConfig`, the `…LegacyRouter` names — keep.
+  v2 *adds* `…V2` siblings; it does not rename the v1 surface (which stays for
+  back-compat per §5.2).
+- **URL params**: `multisig` / `eoa` / `transfer` (`LegacyTypeParam`) — keep.
+  These are public deep-link contract any agent/MCP link depends on.
+- **Persisted keys**: redux-persist / `localStorage` keys, signature-storage
+  keys — keep (renaming silently wipes users' cached state).
+- **Subgraph entity/field names** that external integrators query — keep, or
+  version the subgraph (already planned in §9/§11.5) so the rename rides a
+  schema version, never an in-place break.
+
+Net: the v2 naming "work" is almost entirely a *review discipline* on new
+surface plus one deferred-folder note — not a refactor. Captured here so it
+isn't re-litigated as "we still see Will/Inheritance somewhere."
 
 ## 6. Permit2 integration — deep dive
 
@@ -848,7 +921,7 @@ with names):
 Can ship with or behind legacies. If we ship together, the release message
 becomes "Create-flow v2 for legacies + timelocks".
 
-## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of) — §5.6
+## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of)
 
 **Added 2026-06-15.** Two of the founder's top product asks reduce to the
 *same* missing contract primitive, so they're tracked here as one sub-track
@@ -1054,6 +1127,195 @@ was treated as valid. Lesson for us:
   magic value, short/empty return data, code-less address, malformed signature,
   and an adversarial fallback handler. Treat fallback-handler behavior as
   adversarial unless explicitly trusted. (Zodiac "Lessons learned" §11.1–11.2.)
+
+## 12b. Advanced legal / B2B features (trustee, contingent lines, aggregation, legal templates)
+
+**Added 2026-06-23.** Founder ask: use v2 to make 10102 a credible substrate for
+people who want their on-chain legacy to align with a real legal trust. Four
+features:
+
+1. **Trustee** — first-class notion of a trustee, distinct from owner and
+   beneficiary.
+2. **Secondary / tertiary lines per beneficiary** — contingent recipients per
+   *individual* beneficiary (if Alice can't take her share, Alice's backup does),
+   distinct from the existing global layer-2/layer-3 fallback tiers.
+3. **One private ID to aggregate multiple legacy contracts** — group a person's
+   or org's many legacies under a single private identifier, without leaking that
+   linkage on-chain.
+4. **Legal-document note templates** — pre-built note language referencing a
+   trust/will document, up to a curated "perfect legal setup" template bundle.
+
+### 12b.0 Guiding principle — metadata-first, claim-path untouched
+
+The whole v2 thesis (§4) is "on-chain only what claims need; everything else
+off-chain for gas + GDPR + reversibility." These four features fit that
+principle almost perfectly: trustee identity, contingent designations,
+aggregation grouping, and legal note text are **legal/relationship metadata**,
+not claim mechanics. So the strong default is to deliver all four through the
+off-chain metadata API (§7) + frontend templates, with **zero claim-path
+change** (honoring the §4.1 non-goal). The one feature with a genuine on-chain
+question — *enforced* per-beneficiary contingency — is scoped as an additive,
+deferred follow-up so it never touches the byte-identical claim path. Avoid
+"will"/"inheritance"/"inherits" in all of it (§5.7).
+
+### 12b.1 Trustee
+
+A trustee administers the estate on the beneficiaries' behalf per a legal trust.
+Mapping to 10102 without new contract powers:
+
+- **Relay authority is already covered.** The permissionless sponsored relay
+  (§12a) means a designated trustee can already submit a beneficiary's
+  signed `activeLegacyFor` claim or the owner's signed `activeAliveFor`
+  check-in and pay the gas — no special on-chain role needed. A trustee is
+  just one more permitted relayer.
+- **Metadata co-authority (the real addition).** Extend the metadata-API auth
+  (§7.3) so a write is accepted from the on-chain `legacy.creator()` **or** a
+  creator-designated `trustee` address. The trustee designation itself is a
+  metadata field (`trustee: { address, name? }`), creator-signed like any other
+  field; the server verifies the designating signature chains back to
+  `creator()`. This lets a trustee maintain beneficiary nicknames, emails, and
+  legal notes if the owner is incapacitated — without any contract role or key
+  that can move funds.
+- **No fund authority, by design.** A trustee must never gain a contract path to
+  move or redirect assets — that would reintroduce custody and a coercion
+  target. Funds always follow the on-chain distributions to the recovered
+  signer. Trustee = administration + legal identity, not custody.
+
+Verdict: **off-chain only for v2.** Trustee is a metadata role + an auth
+extension on the metadata API. No `computing-sc` change.
+
+### 12b.2 Secondary / tertiary lines per beneficiary (contingent recipients)
+
+This is the one feature people will conflate with the existing layer model, so
+be precise:
+
+- **Existing global layers (`layer2Distribution` / `layer3Distribution`,
+  `delayLayer2/3`)**: a coarse, estate-wide fallback. If *no* layer-1
+  beneficiary claims within the delay, the layer-2 distribution becomes
+  eligible, then layer-3. One backup set for the whole legacy.
+- **Requested per-beneficiary lines**: granular. Each *individual* beneficiary
+  (Alice 50%, Bob 50%) has her *own* ordered backups (Alice → [A2, A3]). If
+  Alice's share goes unclaimed, *Alice's* A2 takes *Alice's* 50%; Bob's share
+  is unaffected.
+
+Two delivery levels:
+
+- **(a) Legal designation — metadata only (recommended for v2).** Record each
+  beneficiary's ordered contingent recipients as metadata
+  (`beneficiaries[i].contingents: { address, order, name? }[]`). This is the
+  legally-meaningful artifact (it's what the trust document and the beneficiary
+  cards reflect) and it's free, reversible, and GDPR-deletable. On-chain
+  failover for the unclaimed case is still served by the existing global
+  layer-2/3 tiers where a coarse tier suffices. **No claim-path change.**
+- **(b) Enforced on-chain per-beneficiary failover — deferred, additive.** If
+  B2B demand needs a backup to be able to claim a *specific* beneficiary's
+  allocation trustlessly (without the primary's cooperation and without falling
+  back to the whole-estate layer tier), that is a real claim-path change and
+  therefore collides with the §4.1 non-goal ("claim path stays byte-identical").
+  Do **not** modify `activeLegacy`. Instead, design it later as a **new additive
+  entrypoint** — mirroring the §12a `…For` pattern — e.g.
+  `activeLegacyContingentFor(legacyId, beneficiary, assets, auth)` that (i)
+  checks the primary's per-beneficiary delay has elapsed since eligibility, (ii)
+  recovers the contingent signer, (iii) pays out only the primary's allocation
+  to the recovered contingent. Storage for per-beneficiary contingents would be
+  an appended mapping on the clone — which **does** change clone layout, so it
+  must wait for a clone-impl rev and full layout validation (§14.3). Defer until
+  a real B2B contract requires enforced (not just designated) per-beneficiary
+  failover; the metadata designation in (a) covers the legal-alignment need
+  now.
+
+Verdict: **metadata designation in v2 (a); enforced on-chain failover deferred
+behind an additive entrypoint (b).** Keeps v2's claim path frozen and
+auditable.
+
+### 12b.3 Private aggregation ID (group many legacies under one identity)
+
+A person or org with multiple legacy contracts wants a single private handle
+that ties them together for their own portfolio view and for the trust
+paperwork — **without** publishing that linkage on-chain.
+
+- **Off-chain by necessity.** Putting an aggregation key on-chain would
+  publicly correlate multiple wallets/legacies of substantial value to one
+  identity — precisely the targeted-attack surface §7 / the off-chain-metadata
+  rationale exists to avoid. So the aggregation ID lives only in the metadata
+  store.
+- **Shape.** Add an optional `aggregationId: string` to `LegacyMetadata` (§7.2)
+  — an opaque, client-generated value (random UUID, or a creator-signed salted
+  hash so the same human can deterministically re-derive it across devices
+  without us learning the seed). The API's existing `by-creator` index already
+  groups a single creator's legacies; `aggregationId` additionally groups
+  legacies created from **different** creator wallets (the org-with-many-wallets
+  case). Indexed for `GET /v1/legacies/by-aggregation/:id`, auth-gated so only a
+  signer who can prove control of at least one member legacy's `creator()` can
+  enumerate the group.
+- **Privacy posture.** The ID is a bearer-ish secret: anyone who knows it can
+  ask "what's in this group" only after proving membership control. Never logged
+  in analytics; soft-deletable with the row.
+
+Verdict: **off-chain metadata field + one indexed read endpoint.** No
+`computing-sc` change.
+
+### 12b.4 Legal-document note templates ("perfect legal setup")
+
+- **Note text is already off-chain in v2** (§2.1, §7.2 `legacyNote`). The
+  feature is a **frontend template library** + the metadata field to store the
+  filled-in result. Ship a set of reviewed note templates (e.g. "This digital
+  legacy is administered under the [Trust Name] dated [date], governed by the
+  laws of [jurisdiction]; the trustee of record is [trustee].") with
+  placeholders the UI fills from the trustee/beneficiary/aggregation data above.
+- **"Perfect legal setup" = a curated bundle**, not a contract feature: a guided
+  template that pre-populates trustee + per-beneficiary contingents + note
+  language + (optionally) email reminders, producing a configuration a user can
+  take to their attorney. Pure UX over the metadata model.
+- **Disclaimer guardrail.** Templates are starting points, **not legal advice**
+  — surface the same "consult a qualified professional" line Guardian already
+  uses (`GUARDIAN_SYSTEM_PROMPT`). Legal review of the template text itself
+  before shipping.
+
+Verdict: **frontend + metadata only.** No `computing-sc` change.
+
+### 12b.5 Net contract impact + interaction with sponsorship
+
+- **v2 on-chain delta from §12b: none.** All four features land as
+  metadata-API schema (§7) + auth extension (trustee) + frontend templates. This
+  is deliberate — it keeps the audited contract surface for v2 confined to
+  Permit2 (§6) + sponsored `…For` (§12a) + the owner opt-out flag already
+  implemented, and avoids a clone-layout change.
+- **Enforced per-beneficiary contingency (12b.2b)** is the only piece that would
+  touch contracts, and it's deferred behind a new additive entrypoint + clone
+  layout rev — explicitly *not* in v2.
+- **Sponsorship interplay.** A trustee acting as relayer + permissionless relay
+  + the per-legacy `sponsoredClaimsDisabled` opt-out (already implemented, §12a)
+  compose cleanly: a B2B owner who wants strict control can disable sponsored
+  claims and require direct self-claims, while still naming a trustee for
+  metadata administration. The owner opt-out is the single knob that reconciles
+  "gasless by default" with "B2B/legal setups that forbid third-party relaying."
+
+### 12b.6 Schema additions (metadata API, §7.2 extension)
+
+```typescript
+type Contingent = { address: `0x${string}`; order: 1 | 2; name?: string };
+
+type Beneficiary = {
+  address: `0x${string}`;
+  layer: 1 | 2 | 3;
+  name?: string;
+  email?: string;
+  contingents?: Contingent[];   // 12b.2(a) legal designation, off-chain
+};
+
+type LegacyMetadata = {
+  // …existing fields (§7.2)…
+  trustee?: { address: `0x${string}`; name?: string };   // 12b.1
+  aggregationId?: string;                                 // 12b.3 (opaque, never on-chain)
+  legalTemplateId?: string;                               // 12b.4 (which template produced legacyNote)
+};
+```
+
+Auth (§7.3) extends to accept writes from `creator()` **or** the designated
+`trustee.address` (the trustee designation must itself have been written by
+`creator()` first). All new fields are PII-adjacent → covered by the same
+soft-delete / audit-log GDPR path (§7.4).
 
 ## 13. Audit + test strategy
 
@@ -1310,6 +1572,22 @@ Total: ~2 months from greenlight to mainnet. Plan accordingly.
    single-shot (per-signer sequential nonce + deadline) to start, with the
    time-bounded `authorizeCheckIns` deferred as an additive follow-up. See the
    "Decisions locked" block under §12a.
+9. **Enforced per-beneficiary contingency (§12b.2).** Do we ship only the
+   off-chain legal *designation* in v2 (recommended — no claim-path change), or
+   does a confirmed B2B contract need *enforced* on-chain failover now? Lean:
+   designation-only for v2; build the additive `activeLegacyContingentFor`
+   entrypoint + clone-layout rev later, when a real B2B requirement forces it.
+   Resolve before committing the metadata schema so the `contingents` field is
+   shaped to upgrade cleanly into the on-chain version.
+10. **Trustee metadata co-authority (§12b.1).** Confirm the auth model: writes
+    from `creator()` OR a `creator()`-designated trustee. Open sub-question:
+    should a trustee be able to *revoke* their own designation, or only the
+    creator? Lean: only the creator designates/revokes; the trustee can write
+    content but not re-scope authority.
+11. **Aggregation-ID derivation (§12b.3).** Client-random UUID vs
+    creator-signed salted hash for cross-device re-derivation. Lean: offer the
+    signed-hash option for power/B2B users, default to random UUID for
+    simplicity. Either way it never goes on-chain.
 
 ## 18. References
 
