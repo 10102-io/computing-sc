@@ -51,7 +51,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // EIP-712 typed-data constants (compile-time — occupy no storage slots).
   // The domain is recomputed per call from `block.chainid + address(this)` so
   // a signed intent can never be replayed cross-chain or against a different
-  // router. `verifyingContract` is this router.
+  // router. `verifyingContract` is this router. NOTE: the name/version string
+  // literals returned by `eip712Domain()` (ERC-5267) must stay in sync with
+  // the hashes below.
   bytes32 private constant _EIP712_DOMAIN_TYPEHASH =
     keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
   bytes32 private constant _EIP712_NAME_HASH = keccak256(bytes("10102 Legacy Sponsored"));
@@ -171,6 +173,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// for this legacy. `enabled == false` forces beneficiaries onto the direct
   /// `activeLegacy` path. Direct claims are unaffected either way.
   event SponsoredClaimsConfigured(uint256 indexed legacyId, address indexed owner, bool enabled);
+  /// @notice `signer` voluntarily invalidated their current sponsor nonce
+  /// (`invalidated`), cancelling any outstanding signed-but-unrelayed
+  /// sponsored authorization carrying that nonce.
+  event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
 
     constructor () {
     _disableInitializers();
@@ -701,6 +707,45 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// router on the current chain. Exposed so clients can build/verify digests.
   function sponsoredDomainSeparator() external view returns (bytes32) {
     return _domainSeparator();
+  }
+
+  /**
+   * @notice ERC-5267 domain discovery for the sponsored-intent EIP-712 domain.
+   * Lets wallets and signing tooling resolve the domain generically instead of
+   * hard-coding it. `fields = 0x0f` advertises name, version, chainId and
+   * verifyingContract (no salt, no extensions).
+   */
+  function eip712Domain()
+    external
+    view
+    returns (
+      bytes1 fields,
+      string memory name,
+      string memory version,
+      uint256 chainId,
+      address verifyingContract,
+      bytes32 salt,
+      uint256[] memory extensions
+    )
+  {
+    return ("\x0f", "10102 Legacy Sponsored", "1", block.chainid, address(this), bytes32(0), new uint256[](0));
+  }
+
+  /**
+   * @notice Cancel any not-yet-relayed sponsored authorization by advancing the
+   * caller's sequential nonce. A signed `ClaimAuth` / `CheckInAuth` that is
+   * still outstanding (deadline not passed, nonce not consumed) becomes
+   * permanently unusable, since `_consumeSponsorAuth` requires an exact nonce
+   * match. Standard escape hatch for "I signed with a long deadline and changed
+   * my mind" — without it a signer could only kill an outstanding intent by
+   * racing it with another sponsored action.
+   */
+  function invalidateSponsorNonce() external {
+    uint256 invalidated;
+    unchecked {
+      invalidated = sponsorNonce[msg.sender]++;
+    }
+    emit SponsorNonceInvalidated(msg.sender, invalidated);
   }
 
   function _domainSeparator() internal view returns (bytes32) {

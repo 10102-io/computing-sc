@@ -257,6 +257,98 @@ describe("TransferEOALegacyRouter — sponsored (…For) entrypoints", function 
     assert.equal(onchain.toLowerCase(), expected.toLowerCase());
   });
 
+  it("ERC-5267 eip712Domain() is consistent with the domain separator", async function () {
+    const { transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const [fields, name, version, chainId, verifyingContract, salt, extensions] =
+      await transferEOALegacyRouter.eip712Domain();
+
+    assert.equal(fields, "0x0f", "fields should advertise name+version+chainId+verifyingContract");
+    assert.equal(salt, ethers.constants.HashZero);
+    assert.equal(extensions.length, 0);
+
+    // Rebuilding the domain purely from the ERC-5267 answer must reproduce
+    // the on-chain separator — this is exactly what generic tooling will do.
+    const rebuilt = ethers.utils._TypedDataEncoder.hashDomain({
+      name,
+      version,
+      chainId,
+      verifyingContract,
+    });
+    const onchain: string = await transferEOALegacyRouter.sponsoredDomainSeparator();
+    assert.equal(rebuilt.toLowerCase(), onchain.toLowerCase());
+  });
+
+  it("rejects a relayer that tampers with the signed asset list", async function () {
+    const { owner, bene, relayer, transferEOALegacyRouter, domain } = await loadFixture(deployFixture);
+    const { legacyId, predicted } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, bene);
+
+    await owner.sendTransaction({ to: predicted, value: ethers.utils.parseEther("1") });
+    await increase(86400 + 1);
+
+    // Beneficiary signs an ETH-only claim (empty asset list) ...
+    const signedAssets: string[] = [];
+    const assetsHash = ethers.utils.solidityKeccak256(["address[]"], [signedAssets]);
+    const deadline = (await currentTime()) + 3600;
+    const value = { beneficiary: bene.address, legacyId, assetsHash, isETH: true, nonce: 0, deadline };
+    const signature = await bene._signTypedData(domain, CLAIM_TYPES, value);
+    const auth = { beneficiary: bene.address, nonce: 0, deadline, signature };
+
+    // ... but the relayer submits a different asset list. The struct hash is
+    // recomputed on-chain from the calldata assets, so the signature no longer
+    // recovers to the beneficiary.
+    const tampered = ["0x000000000000000000000000000000000000dEaD"];
+    let caught: any;
+    try {
+      await transferEOALegacyRouter.connect(relayer).activeLegacyFor(legacyId, tampered, true, auth);
+    } catch (e) {
+      caught = e;
+    }
+    assert(caught, "expected tampered asset list to be rejected");
+    assert(revertedWith(caught, "InvalidSponsorSignature()"), `got: ${caught?.message}`);
+  });
+
+  // ─── Nonce invalidation (cancel an outstanding signed intent) ─────────────
+
+  it("invalidateSponsorNonce cancels an outstanding authorization; a fresh nonce works", async function () {
+    const { owner, bene, relayer, transferEOALegacyRouter, domain } = await loadFixture(deployFixture);
+    const { legacy, legacyId } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, bene);
+
+    // Owner signs a check-in with a long deadline, then changes their mind.
+    const deadline = (await currentTime()) + 30 * 86400;
+    const value = { owner: owner.address, legacyId, nonce: 0, deadline };
+    const signature = await owner._signTypedData(domain, CHECKIN_TYPES, value);
+    const auth = { owner: owner.address, nonce: 0, deadline, signature };
+
+    const tx = await transferEOALegacyRouter.connect(owner).invalidateSponsorNonce();
+    const receipt = await tx.wait();
+    const evt = receipt.events?.find((e: any) => e.event === "SponsorNonceInvalidated");
+    assert(evt, "expected SponsorNonceInvalidated event");
+    assert.equal(evt.args.signer, owner.address);
+    assert.equal(evt.args.invalidated.toString(), "0");
+    assert.equal((await transferEOALegacyRouter.sponsorNonce(owner.address)).toString(), "1");
+
+    // The cancelled intent is now permanently unusable.
+    let caught: any;
+    try {
+      await transferEOALegacyRouter.connect(relayer).activeAliveFor(legacyId, auth);
+    } catch (e) {
+      caught = e;
+    }
+    assert(caught, "expected cancelled intent to be rejected");
+    assert(revertedWith(caught, "InvalidSponsorNonce()"), `got: ${caught?.message}`);
+
+    // A re-signed intent at the advanced nonce goes through.
+    const before = await legacy.getLastTimestamp();
+    await increase(500);
+    const deadline2 = (await currentTime()) + 3600;
+    const value2 = { owner: owner.address, legacyId, nonce: 1, deadline: deadline2 };
+    const signature2 = await owner._signTypedData(domain, CHECKIN_TYPES, value2);
+    await transferEOALegacyRouter
+      .connect(relayer)
+      .activeAliveFor(legacyId, { owner: owner.address, nonce: 1, deadline: deadline2, signature: signature2 });
+    assert((await legacy.getLastTimestamp()).gt(before), "re-signed check-in should land");
+  });
+
   // ─── Owner opt-out for sponsored claims (§12a "Founder review") ───────────
 
   // Build a valid layer-1 ETH claim authorization for `bene` on `legacyId`.

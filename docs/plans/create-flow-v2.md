@@ -1102,6 +1102,30 @@ decisions:
    tests (disable→relay reverts but direct claim still works, re-enable restores
    relay, only-owner toggle) — full suite 97 passing.
 
+### Hardening pass (2026-07-03) — cancellation + ERC-5267 discovery
+
+Review of the sponsored sub-track before continuing v2 surfaced two gaps every
+auditor would flag, both closed with additive, storage-free changes (no new
+state, no reinitializer):
+
+- **`invalidateSponsorNonce()`** — a signer who signed a `ClaimAuth` /
+  `CheckInAuth` with a long deadline previously had no way to cancel it short of
+  racing it with another sponsored action. The new function advances the
+  caller's sequential nonce (emitting `SponsorNonceInvalidated`), permanently
+  killing any outstanding signed-but-unrelayed intent. Mirrors Permit2's
+  `invalidateNonces` escape hatch.
+- **ERC-5267 `eip712Domain()`** — the custom `sponsoredDomainSeparator()` getter
+  stays, but wallets/signing tooling discover EIP-712 domains generically via
+  ERC-5267. Returns `fields = 0x0f` (name, version, chainId, verifyingContract;
+  no salt/extensions); a test rebuilds the separator purely from the ERC-5267
+  answer and asserts it matches on-chain.
+- **New negative-path test: asset-list tampering.** Proves a relayer submitting
+  a different `assets_` array under a valid signature reverts with
+  `InvalidSponsorSignature()` — the property `assetsHash` exists to enforce.
+
+Full suite 100 passing. Router deployed size after the pass: 16.02 KiB
+(comfortably under the 24 KiB limit).
+
 ### Smart-contract-wallet signers + the Zodiac ERC-1271 lesson (2026-06-19)
 
 Founder flagged the Gnosis Zodiac post-mortem
