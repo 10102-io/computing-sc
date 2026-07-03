@@ -12,6 +12,7 @@ import {IEIP712LegacyVerifier} from "../interfaces/IEIP712LegacyVerifier.sol";
 import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
+import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
 
 contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable {
   address public premiumSetting;
@@ -83,6 +84,25 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     bytes signature;
   }
 
+  // ─── Create-flow v2: Permit2 single-confirm create ───────────────────────
+  // Canonical Permit2 (same address on every EVM chain, CREATE2-deployed).
+  // Hardcoded per create-flow-v2.md §6.2 — no legitimate reason to point at a
+  // non-canonical deployment, and a configurable slot would be an apocalyptic
+  // misconfiguration risk. Compile-time constant: no storage, no reinitializer.
+  IAllowanceTransfer internal constant PERMIT2 =
+    IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+
+  /// @notice The creator's signed Permit2 AllowanceTransfer batch — one
+  /// off-chain signature that replaces the N per-token `approve` transactions
+  /// of the v1 create flow. `permitBatch.spender` MUST be the new legacy's
+  /// address (CREATE2-predictable via `getNextLegacyAddress` before the tx).
+  /// Pass `details.length == 0` to opt out (old-school direct approvals keep
+  /// working — the claim path accepts both). See create-flow-v2.md §6.8.
+  struct Permit2CreateBundle {
+    IAllowanceTransfer.PermitBatch permitBatch;
+    bytes signature;
+  }
+
   /* Error */
   error NumBeneficiariesInvalid();
   error NumAssetsInvalid();
@@ -100,6 +120,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error InvalidSponsorNonce();
   error InvalidSponsorSignature();
   error SponsoredClaimsDisabled();
+  error Permit2SpenderMismatch();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -177,6 +198,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// (`invalidated`), cancelling any outstanding signed-but-unrelayed
   /// sponsored authorization carrying that nonce.
   event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
+  /// @notice PII-free v2 create event: no name, no note, no nicknames — those
+  /// live in the off-chain metadata API (create-flow-v2.md §7). The subgraph
+  /// indexes creator → legacy edges + claim-relevant config from this alone.
+  event TransferEOALegacyCreatedV2(
+    uint256 indexed legacyId,
+    address indexed legacyAddress,
+    address indexed creator,
+    TransferLegacyStruct.Distribution[] distributions,
+    TransferLegacyStruct.LegacyExtraConfig extraConfig,
+    uint256 timestamp
+  );
 
     constructor () {
     _disableInitializers();
@@ -329,6 +361,113 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     if (distribution3 != 0) {
       emit TransferEOALegacyLayer23Created(newLegacyId, 3, layer3Distribution_, nickName3);
+    }
+
+    return legacyAddress;
+  }
+
+  /**
+   * @dev Create-flow v2 (create-flow-v2.md §5.2 / §6.8): PII-free,
+   * single-confirm create.
+   *
+   * Differences from v1 `createLegacy`:
+   * - No name / note / nicknames — those move to the off-chain metadata API.
+   *   The clone's `legacyName` is never written (saves the ~40k SSTORE), and
+   *   nickname slots are fed empty strings until the clone-impl PII strip
+   *   lands.
+   * - `permit2_` carries the creator's signed Permit2 AllowanceTransfer batch
+   *   with the new legacy as `spender`. The router registers it via
+   *   `PERMIT2.permit` in the same tx — consuming the signature immediately
+   *   (fresh `sigDeadline`, no dangling authorization) and writing the
+   *   allowances into Permit2's storage. At claim time the clone pulls
+   *   through Permit2 exactly like it pulls through direct allowances; the
+   *   owner keeps full custody and use of their assets meanwhile, and can
+   *   revoke anytime via Permit2's `lockdown` / `approve(0)`.
+   * - Emits the PII-free `TransferEOALegacyCreatedV2` event.
+   *
+   * Security: `permitBatch.spender` must equal the freshly deployed legacy —
+   * anything else reverts (`Permit2SpenderMismatch`), so a bundle can never
+   * point the creator's allowances at a different spender. Permit2 itself
+   * verifies the signature against `msg.sender` (the creator), enforces
+   * `sigDeadline`, and burns the per-(owner,token,spender) nonce.
+   */
+  function createLegacyV2(
+    TransferLegacyStruct.Distribution[] calldata distributions_,
+    TransferLegacyStruct.LegacyExtraConfig calldata extraConfig_,
+    TransferLegacyStruct.Distribution calldata layer2Distribution_,
+    TransferLegacyStruct.Distribution calldata layer3Distribution_,
+    Permit2CreateBundle calldata permit2_,
+    uint256 signatureTimestamp,
+    bytes calldata agreementSignature
+  ) external returns (address) {
+    if (distributions_.length == 0) revert DistributionsInvalid();
+    if (extraConfig_.lackOfOutgoingTxRange == 0) revert ActivationTriggerInvalid();
+    if (_isCreateLegacy(msg.sender)) revert SenderIsCreatedLegacy(msg.sender);
+
+    (uint256 newLegacyId, address legacyAddress) = legacyImplementation != address(0)
+      ? _cloneLegacy(legacyImplementation, msg.sender)
+      : _createLegacy(legacyCreationCode, msg.sender);
+
+    //Verify + store user agreement signature (TOS stays a first-class on-chain
+    //artifact — see create-flow-v2.md §6.5)
+    verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);
+
+    // Clone initializer still takes nickname params until the clone-impl PII
+    // strip lands; v2 always feeds empties (writing "" is a zero-slot store).
+    string[] memory emptyNicknames = new string[](distributions_.length);
+    uint256 numberOfBeneficiaries = ITransferEOALegacy(legacyAddress).initialize(
+      newLegacyId,
+      msg.sender,
+      distributions_,
+      extraConfig_,
+      layer2Distribution_,
+      layer3Distribution_,
+      premiumSetting,
+      paymentContract,
+      uniswapRouter,
+      weth,
+      emptyNicknames,
+      "",
+      ""
+    );
+
+    if (!_checkNumBeneficiariesLimit(numberOfBeneficiaries)) revert NumBeneficiariesInvalid();
+
+    // Register the creator's batch allowance in Permit2 with the new legacy
+    // as spender. Placed after the clone exists so the spender check is
+    // against the real deployed address, and before any event so a bad
+    // bundle reverts the whole create atomically.
+    if (permit2_.permitBatch.details.length != 0) {
+      if (permit2_.permitBatch.spender != legacyAddress) revert Permit2SpenderMismatch();
+      PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
+    }
+
+    TransferLegacyStruct.LegacyExtraConfig memory _legacyExtraConfig = TransferLegacyStruct.LegacyExtraConfig({
+      lackOfOutgoingTxRange: extraConfig_.lackOfOutgoingTxRange,
+      delayLayer2: ITransferEOALegacy(legacyAddress).delayLayer2(),
+      delayLayer3: ITransferEOALegacy(legacyAddress).delayLayer3()
+    });
+
+    emit TransferEOALegacyCreatedV2(newLegacyId, legacyAddress, msg.sender, distributions_, _legacyExtraConfig, block.timestamp);
+
+    // Premium reminder bootstrap — best-effort, never blocks the create
+    // (same rationale as v1).
+    try IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender, legacyAddress)
+    {} catch {
+      emit PrivateCodeSetupNotCompleted(legacyAddress);
+    }
+
+    // Layer 2/3 events (empty nicknames — PII-free) so subgraph handlers keep
+    // one code path across v1/v2 creates.
+    uint256 distribution2 = ITransferEOALegacy(legacyAddress).getDistribution(2, layer2Distribution_.user);
+    uint256 distribution3 = ITransferEOALegacy(legacyAddress).getDistribution(3, layer3Distribution_.user);
+
+    if (distribution2 != 0) {
+      emit TransferEOALegacyLayer23Created(newLegacyId, 2, layer2Distribution_, "");
+    }
+
+    if (distribution3 != 0) {
+      emit TransferEOALegacyLayer23Created(newLegacyId, 3, layer3Distribution_, "");
     }
 
     return legacyAddress;

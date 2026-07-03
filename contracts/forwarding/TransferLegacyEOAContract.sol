@@ -13,10 +13,19 @@ import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Factory} from "../interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
+import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
 
 contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   using EnumerableSet for EnumerableSet.AddressSet;
   using SafeERC20 for IERC20;
+
+  // Canonical Permit2 (same address on every EVM chain, CREATE2-deployed).
+  // Hardcoded per create-flow-v2.md §6.2 — a configurable Permit2 address is
+  // an apocalyptic misconfiguration risk, and there is no legitimate reason
+  // to point at a non-canonical deployment. Compile-time constant: occupies
+  // no storage slot, so clone layout is untouched.
+  IAllowanceTransfer internal constant PERMIT2 =
+    IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
   /* Error */
   error NotBeneficiary();
@@ -739,16 +748,31 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       if (token == eoaStorageToken) {
         eoaStorageToken = address(0);
       }
+      // Create-flow v2: the owner's authorization for this token can live in
+      // either a direct ERC-20 allowance (pre-v2 creates) or a Permit2
+      // allowance registered at create time (§6.8). Per token, pull through
+      // whichever grants more — a single deterministic path per token keeps
+      // the accounting simple and matches the pre-v2 min(balance, allowance)
+      // semantics exactly.
       uint256 allowanceAmountErc20 = IERC20(token).allowance(ownerAddress, address(this));
+      uint256 permit2AllowanceAmount = _permit2Allowance(ownerAddress, token);
+      bool viaPermit2 = permit2AllowanceAmount > allowanceAmountErc20;
+      uint256 effectiveAllowance = viaPermit2 ? permit2AllowanceAmount : allowanceAmountErc20;
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
-      uint256 totalAmount = balanceAmountErc20 > allowanceAmountErc20 ? allowanceAmountErc20 : balanceAmountErc20;
+      uint256 totalAmount = balanceAmountErc20 > effectiveAllowance ? effectiveAllowance : balanceAmountErc20;
       if (totalAmount > 0) {
         uint256 fee = (totalAmount * adminFeePercent) / 10000;
         uint256 distributable = totalAmount - fee;
       
         if (fee > 0) {
           uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-          IERC20(token).safeTransferFrom(ownerAddress, address(this), fee);
+          if (viaPermit2) {
+            // fee <= totalAmount <= the Permit2 allowance (uint160), so the
+            // cast cannot truncate.
+            PERMIT2.transferFrom(ownerAddress, address(this), uint160(fee), token);
+          } else {
+            IERC20(token).safeTransferFrom(ownerAddress, address(this), fee);
+          }
           uint256 actualFeeReceived =  IERC20(token).balanceOf(address(this)) - balanceBefore;
           _swapAdminFee(token, actualFeeReceived);
         }
@@ -758,7 +782,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           uint256 amount = j != beneficiaries.length - 1
             ? (distributable * getDistribution(beneLayer, beneficiaries[j])) / MAX_PERCENT
             : distributable - processedAmountERC20;
-          uint256 amountSent = _transferErc20ToBeneficiary(token, ownerAddress, beneficiaries[j], amount);
+          uint256 amountSent = _transferErc20ToBeneficiary(token, ownerAddress, beneficiaries[j], amount, viaPermit2);
           // Track *delivered*, not *scheduled* — see ETH branch above.
           // `_transferErc20ToBeneficiary` returns `amount_` on success and
           // `0` on a caught revert (e.g. blacklisted recipient on USDC).
@@ -776,12 +800,36 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   }
 
   /**
+   * @dev Usable Permit2 allowance for (owner_, token_) with this legacy as
+   * spender. Returns 0 when Permit2 isn't deployed on this chain (code-length
+   * guard keeps pre-Permit2 test chains and exotic networks working), when
+   * the allowance is expired, or when none was ever granted. View-only; the
+   * actual pull (`PERMIT2.transferFrom`) re-checks expiry and amount.
+   */
+  function _permit2Allowance(address owner_, address token_) private view returns (uint256) {
+    if (address(PERMIT2).code.length == 0) return 0;
+    (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, address(this));
+    if (block.timestamp > expiration) return 0;
+    return amount;
+  }
+
+  /**
    * @dev transfer erc20 token to beneficiaries
    * @param erc20Address_  erc20 token address
    * @param from_ safe wallet address
    * @param to_ beneficiary address
+   * @param viaPermit2_ pull through Permit2's allowance instead of a direct
+   *        ERC-20 allowance (chosen per token in _transferAssetToBeneficiaries)
    */
-  function _transferErc20ToBeneficiary(address erc20Address_, address from_, address to_, uint256 amount_) private returns(uint256 amountSent) {
+  function _transferErc20ToBeneficiary(address erc20Address_, address from_, address to_, uint256 amount_, bool viaPermit2_) private returns(uint256 amountSent) {
+    if (viaPermit2_) {
+      // amount_ <= totalAmount <= the Permit2 allowance (uint160): no truncation.
+      try PERMIT2.transferFrom(from_, to_, uint160(amount_), erc20Address_) {
+        return amount_;
+      } catch {
+        return 0;
+      }
+    }
     try 
     IERC20(erc20Address_).transferFrom(from_, to_, amount_) {
       return amount_;

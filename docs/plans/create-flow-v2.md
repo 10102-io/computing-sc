@@ -616,6 +616,67 @@ Risks and mitigations:
   they can retry. But if the tx succeeds and then the user wants to
   "undo", they can't. Standard Ethereum semantics; not new.
 
+### 6.8 Design correction (2026-07-03): AllowanceTransfer, not SignatureTransfer
+
+**Found during implementation: §6.1 and §6.5/§14.1 contradict each other, and
+the §6.3 API choice only works for the reading we must reject.** §6.1 frames
+the problem as pulling tokens from the creator's wallet *at claim time*;
+§6.5's step 2 and §14.1's "recipient = legacyAddress for the create-time
+pulls" describe Permit2 moving tokens into the legacy *at create time*. These
+are different products:
+
+- **Create-time pulls = escrow.** The owner loses use of their tokens while
+  alive. That breaks the product's core promise (non-custodial dead-man's
+  switch over the owner's *own wallet*) and would also strand ERC-20s: the
+  claim path distributes from owner-wallet allowances (`allowance(owner,
+  legacy)` + `transferFrom(owner → bene)`), never from the legacy's own token
+  balance. Rejected.
+- **Claim-time pulls with `SignatureTransfer`** would require a signed permit
+  with a ~forever `deadline` kept around until the owner dies — exactly the
+  "lingering authorization" §6.3 credits SignatureTransfer with avoiding, and
+  the payload would need to be stored/emitted and replayed at claim. Rejected.
+
+**Resolution — Permit2 `AllowanceTransfer` end-to-end (implemented on
+`feat/create-flow-v2`):**
+
+- **Create:** the creator signs ONE Permit2 `PermitBatch` (spender = the
+  CREATE2-predicted legacy address via `getNextLegacyAddress`, long
+  `expiration`, short `sigDeadline`). `createLegacyV2` calls
+  `PERMIT2.permit(msg.sender, batch, sig)` in the create tx — the signature is
+  consumed immediately (fresh deadline, §6.3's spirit preserved) and the
+  allowances live in Permit2's audited storage. Zero per-token `approve` txs;
+  the one-time ecosystem `approve(Permit2, max)` per token amortizes across
+  all Permit2 dapps (§6.7 unchanged).
+- **Claim:** `_transferAssetToBeneficiaries` now computes, per token, the
+  effective allowance as the larger of the direct ERC-20 allowance and the
+  live (unexpired) Permit2 allowance, and pulls through that single path —
+  `PERMIT2.transferFrom(owner → beneficiary)` mirrors the direct
+  `transferFrom` exactly, including the delivered-not-scheduled accounting
+  and try/catch-per-beneficiary. Pre-v2 legacies and direct-approval flows
+  are untouched (the guard returns 0 when Permit2 has no code or no grant).
+- **Custody & revocation:** tokens never move before activation; the owner
+  can revoke anytime via Permit2 `lockdown()`/re-permit — strictly better UX
+  than hunting down N direct approvals. Claims skip revoked/expired tokens
+  gracefully (tested).
+- **Witness is moot:** AllowanceTransfer has no witness mechanism, and none is
+  needed — the only thing the signature grants is "this legacy address may
+  pull these tokens", and the spender binding *is* the create-params binding
+  (the legacy's config lives at that address). The TOS signature remains a
+  separate first-class artifact (§6.5's conclusion stands); the
+  witness-coupling rationale in §6.4 is superseded.
+- **Addresses hardcoded:** router + clone reference the canonical
+  `0x…78BA3` as a compile-time constant (no storage slot, no reinitializer —
+  §5.3's `permit2` storage addition is no longer needed). Tests install a
+  byte-faithful `MockPermit2` (real domain/typehashes, real
+  nonce/expiry/lockdown semantics) at the canonical address via
+  `hardhat_setCode`; fork tests against real Permit2 remain the §13.2 gate.
+- **ABI note:** `createLegacyV2` takes `distributions_` directly instead of
+  wrapping it in the one-field `LegacyMainConfigV2` struct §5.2 sketched.
+- Sizes after this slice: router 18.56 KiB, clone 15.47 KiB (limit 24.58).
+
+Sections §6.3, §6.4, §6.5 (step 2), and §14.1 are kept above as the original
+decision record but are superseded by this correction where they conflict.
+
 ## 7. Off-chain beneficiary metadata API
 
 ### 7.1 Home for the API
