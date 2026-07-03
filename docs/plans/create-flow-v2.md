@@ -1152,6 +1152,34 @@ was treated as valid. Lesson for us:
   and an adversarial fallback handler. Treat fallback-handler behavior as
   adversarial unless explicitly trusted. (Zodiac "Lessons learned" §11.1–11.2.)
 
+**✅ ERC-1271 support implemented (2026-07-03, `feat/create-flow-v2`).**
+Decided to fold it into v2 rather than defer: smart accounts (Safe, 7702
+delegations, passkey wallets) are a growing share of beneficiaries, and the
+sponsored path — the milestone's headline UX win — would otherwise exclude
+them. Implementation follows this section's own prescription:
+
+- `_consumeSponsorAuth` now verifies via `SignatureCheckerLite
+  .isValidSignatureNow` instead of raw `ECDSA.recover`: EOAs go through
+  `ECDSA.tryRecover` + exact-match (malformed/malleable signatures fail the
+  match instead of reverting differently — same net rejection); contract
+  signers go through ERC-1271 with **staticcall-success + ≥32-byte returndata +
+  exact magic value** all required.
+- `SignatureCheckerLite` (contracts/libraries) is a vendored, byte-identical
+  subset of OZ v5.4's `SignatureChecker` (the two functions we use). Vendored
+  only because OZ v5.4 pins `pragma ^0.8.24` and the repo compiles at 0.8.20;
+  tagged `TODO(deferred)` to swap back to the OZ import when the solc-upgrade
+  task lands.
+- Negative-path tests are first-class, using mocks shaped exactly like the
+  Zodiac adversaries (`MockERC1271MagicRevert` — reverts with revert data
+  beginning with the magic value; `MockERC1271WrongValue`;
+  `MockERC1271ShortReturn` — 4 raw bytes via assembly `return`), plus a
+  non-owner-key rejection and a happy-path Safe-style wallet claim
+  (`MockERC1271Wallet`). Full suite 105 passing; router 16.13 KiB.
+- Semantics note recorded in NatSpec: ERC-1271 signatures are revocable/mutable
+  by the wallet (owner rotation invalidates outstanding intents — the contract-
+  wallet analogue of `invalidateSponsorNonce`), and a buggy wallet that accepts
+  any signature only exposes *its own* allocation to a forced claim.
+
 ## 12b. Advanced legal / B2B features (trustee, contingent lines, aggregation, legal templates)
 
 **Added 2026-06-23.** Founder ask: use v2 to make 10102 a credible substrate for

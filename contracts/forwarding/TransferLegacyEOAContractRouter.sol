@@ -2,7 +2,7 @@
 pragma solidity 0.8.20;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {SignatureCheckerLite} from "../libraries/SignatureCheckerLite.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
 import {ITransferEOALegacy} from "../interfaces/ITransferLegacyEOAContract.sol";
@@ -761,9 +761,23 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /**
    * @dev Validate + consume a single-shot sponsored authorization: deadline not
    * passed, nonce equals the signer's current sequential nonce, and the EIP-712
-   * signature recovers to the asserted signer. Advances the nonce on success so
-   * the intent cannot be replayed. `ECDSA.recover` reverts on a malformed or
-   * malleable signature, so a zero-address recovery can't slip through.
+   * signature verifies for the asserted signer. Advances the nonce on success
+   * so the intent cannot be replayed.
+   *
+   * Signer support: EOAs verify via `ECDSA.tryRecover` (exact-match against
+   * `signer_`; malformed/malleable signatures simply fail the match). Smart-
+   * contract wallets (Safe, Argent, 7702-delegated accounts, …) verify via
+   * ERC-1271 `isValidSignature` — `SignatureCheckerLite` requires the
+   * staticcall to succeed AND return the exact magic value, closing the
+   * Zodiac-style bypass (revert data prefixed with the magic value is NOT
+   * acceptance). Identity semantics are unchanged either way: `signer_` is the
+   * beneficiary/owner the effects accrue to; the relayer never gains anything.
+   *
+   * NOTE (inherent to ERC-1271): contract signatures are revocable/mutable —
+   * the wallet decides validity at verification time, so a wallet that rotates
+   * owners can invalidate an outstanding intent (fine: `invalidateSponsorNonce`
+   * exists for EOAs precisely to match that power), and a buggy wallet that
+   * accepts anything only ever exposes its own allocation to a forced claim.
    */
   function _consumeSponsorAuth(
     address signer_,
@@ -774,8 +788,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   ) internal {
     if (block.timestamp > deadline_) revert SponsorshipExpired();
     if (nonce_ != sponsorNonce[signer_]) revert InvalidSponsorNonce();
-    address recovered = ECDSA.recover(_hashTypedData(structHash_), signature_);
-    if (recovered != signer_) revert InvalidSponsorSignature();
+    if (!SignatureCheckerLite.isValidSignatureNow(signer_, _hashTypedData(structHash_), signature_)) {
+      revert InvalidSponsorSignature();
+    }
     unchecked {
       sponsorNonce[signer_] = nonce_ + 1;
     }

@@ -407,6 +407,92 @@ describe("TransferEOALegacyRouter — sponsored (…For) entrypoints", function 
     assert.equal((await ethers.provider.getBalance(predicted)).toString(), "0", "legacy should be drained via relay");
   });
 
+  // ─── ERC-1271 smart-contract-wallet signers (§12a Zodiac lesson) ──────────
+
+  // Sign a ClaimAuth for `walletAddress` (the on-chain beneficiary) using
+  // `key` (the wallet's owner key). The wallet contract, not the key, is the
+  // asserted signer — verification goes through ERC-1271.
+  async function buildWalletClaimAuth(domain: any, key: any, walletAddress: string, legacyId: any) {
+    const assets: string[] = [];
+    const assetsHash = ethers.utils.solidityKeccak256(["address[]"], [assets]);
+    const deadline = (await currentTime()) + 3600;
+    const value = { beneficiary: walletAddress, legacyId, assetsHash, isETH: true, nonce: 0, deadline };
+    const signature = await key._signTypedData(domain, CLAIM_TYPES, value);
+    return { assets, auth: { beneficiary: walletAddress, nonce: 0, deadline, signature } };
+  }
+
+  it("a Safe-style ERC-1271 wallet beneficiary can claim gaslessly via a relayer", async function () {
+    const { owner, bene, relayer, transferEOALegacyRouter, domain } = await loadFixture(deployFixture);
+
+    // `bene` is the wallet's owner KEY; the wallet CONTRACT is the beneficiary.
+    const Wallet = await ethers.getContractFactory("MockERC1271Wallet");
+    const wallet = await Wallet.deploy(bene.address);
+
+    const walletBene = { address: wallet.address };
+    const { legacyId, predicted } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, walletBene);
+
+    await owner.sendTransaction({ to: predicted, value: ethers.utils.parseEther("1") });
+    await increase(86400 + 1);
+
+    const { assets, auth } = await buildWalletClaimAuth(domain, bene, wallet.address, legacyId);
+    const before = await ethers.provider.getBalance(wallet.address);
+    await transferEOALegacyRouter.connect(relayer).activeLegacyFor(legacyId, assets, true, auth);
+    const after = await ethers.provider.getBalance(wallet.address);
+
+    assert(after.sub(before).eq(ethers.utils.parseEther("1")), "wallet should receive the full balance");
+    assert.equal((await transferEOALegacyRouter.sponsorNonce(wallet.address)).toString(), "1");
+  });
+
+  it("rejects an ERC-1271 wallet signature signed by a non-owner key", async function () {
+    const { owner, bene, relayer, attacker, transferEOALegacyRouter, domain } = await loadFixture(deployFixture);
+
+    const Wallet = await ethers.getContractFactory("MockERC1271Wallet");
+    const wallet = await Wallet.deploy(bene.address);
+    const { legacyId, predicted } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, {
+      address: wallet.address,
+    });
+    await owner.sendTransaction({ to: predicted, value: ethers.utils.parseEther("1") });
+    await increase(86400 + 1);
+
+    // Attacker's key signs; the wallet's isValidSignature rejects it.
+    const { assets, auth } = await buildWalletClaimAuth(domain, attacker, wallet.address, legacyId);
+    let caught: any;
+    try {
+      await transferEOALegacyRouter.connect(relayer).activeLegacyFor(legacyId, assets, true, auth);
+    } catch (e) {
+      caught = e;
+    }
+    assert(caught, "expected non-owner wallet signature to be rejected");
+    assert(revertedWith(caught, "InvalidSponsorSignature()"), `got: ${caught?.message}`);
+  });
+
+  // The three adversarial verifier shapes from the Zodiac post-mortem. Each
+  // must be REJECTED: acceptance requires staticcall success + >=32 bytes of
+  // returndata decoding to the exact magic value.
+  for (const mock of ["MockERC1271MagicRevert", "MockERC1271WrongValue", "MockERC1271ShortReturn"]) {
+    it(`rejects adversarial ERC-1271 verifier: ${mock}`, async function () {
+      const { owner, bene, relayer, transferEOALegacyRouter, domain } = await loadFixture(deployFixture);
+
+      const Mock = await ethers.getContractFactory(mock);
+      const wallet = await Mock.deploy();
+      const { legacyId, predicted } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, {
+        address: wallet.address,
+      });
+      await owner.sendTransaction({ to: predicted, value: ethers.utils.parseEther("1") });
+      await increase(86400 + 1);
+
+      const { assets, auth } = await buildWalletClaimAuth(domain, bene, wallet.address, legacyId);
+      let caught: any;
+      try {
+        await transferEOALegacyRouter.connect(relayer).activeLegacyFor(legacyId, assets, true, auth);
+      } catch (e) {
+        caught = e;
+      }
+      assert(caught, `expected ${mock} to be rejected`);
+      assert(revertedWith(caught, "InvalidSponsorSignature()"), `got: ${caught?.message}`);
+    });
+  }
+
   it("only the legacy owner can toggle sponsored claims", async function () {
     const { owner, bene, attacker, transferEOALegacyRouter } = await loadFixture(deployFixture);
     const { legacyId } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, bene);
