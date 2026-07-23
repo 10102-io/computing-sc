@@ -136,14 +136,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   }
 
   /* Event */
-  event TransferEOALegacyCreated(
-    uint256 indexed legacyId,
-    address legacyAddress,
-    address creatorAddress,
-    LegacyMainConfig mainConfig,
-    TransferLegacyStruct.LegacyExtraConfig extraConfig,
-    uint256 timestamp
-  );
+  // TransferEOALegacyCreated (v1, carried LegacyMainConfig incl. PII) was
+  // retired by the create-flow-v2 PII strip — both create paths now emit
+  // TransferEOALegacyCreatedV2 below. Subgraph v2 (§9) indexes the new event.
   event TransferEOALegacyConfigUpdated(
     uint256 indexed legacyId,
     LegacyMainConfig mainConfig,
@@ -157,7 +152,6 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint256 timestamp
   );
   event TransferEOALegacyTriggerUpdated(uint256 indexed legacyId, uint128 lackOfOutgoingTxRange, uint256 timestamp);
-  event TransferEOALegacyNameNoteUpdated(uint256 indexed legacyId, string name, string note, uint256 timestamp);
   event TransferEOALegacyActivated(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
   event TransferEOALegacyActivedAlive(uint256 indexed legacyId, uint256 timestamp);
   event TransferEOALegacyDeleted(uint256 indexed legacyId, uint256 timestamp);
@@ -287,82 +281,36 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     return ITransferEOALegacy(legacyAddress).checkActiveLegacy();
   }
 
+  /**
+   * @dev v1 compatibility shim — DEPRECATED, kept so pre-v2 frontends keep
+   * working (create-flow-v2.md §5.2). Since the clone-impl PII strip (§5.1),
+   * `mainConfig_.name` / `.note` / `.nickNames` and `nickName2` / `nickName3`
+   * are accepted but IGNORED: no PII is stored or emitted anywhere on-chain;
+   * that metadata belongs to the off-chain metadata API (§7). Emits the same
+   * PII-free `TransferEOALegacyCreatedV2` event as the v2 path. Callers get
+   * none of the Permit2 single-confirm wins — use `createLegacyV2`.
+   */
   function createLegacy(
     LegacyMainConfig calldata mainConfig_,
     TransferLegacyStruct.LegacyExtraConfig calldata extraConfig_,
     TransferLegacyStruct.Distribution calldata layer2Distribution_,
     TransferLegacyStruct.Distribution calldata layer3Distribution_,
-    string calldata nickName2,
-    string calldata nickName3,
+    string calldata /* nickName2 — ignored, see above */,
+    string calldata /* nickName3 — ignored, see above */,
     uint256 signatureTimestamp,
     bytes calldata agreementSignature
   ) external returns (address) {
+    // Preserve v1 input validation exactly (incl. the nickNames length match)
+    // so malformed pre-v2 calls fail the same way they always did.
     if (mainConfig_.distributions.length != mainConfig_.nickNames.length || mainConfig_.distributions.length == 0) revert DistributionsInvalid();
-    if (extraConfig_.lackOfOutgoingTxRange == 0) revert ActivationTriggerInvalid();
-    //Check if msg.sender has already created a legacy
-    if (_isCreateLegacy(msg.sender)) revert SenderIsCreatedLegacy(msg.sender);
-
-    // Create new legacy contract. Clone path (EIP-1167) when an implementation
-    // is configured, otherwise full-bytecode deploy for back-compat.
-    (uint256 newLegacyId, address legacyAddress) = legacyImplementation != address(0)
-      ? _cloneLegacy(legacyImplementation, msg.sender)
-      : _createLegacy(legacyCreationCode, msg.sender);
-
-    //Verify + store user agreement signature
-    verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);
-
-    uint256 numberOfBeneficiaries = ITransferEOALegacy(legacyAddress).initialize(
-      newLegacyId,
-      msg.sender,
+    (, address legacyAddress) = _createLegacyCore(
       mainConfig_.distributions,
       extraConfig_,
       layer2Distribution_,
       layer3Distribution_,
-      premiumSetting,
-      paymentContract,
-      uniswapRouter,
-      weth,
-      mainConfig_.nickNames,
-      nickName2,
-      nickName3
+      signatureTimestamp,
+      agreementSignature
     );
-
-    // Check beneficiary limit
-    if (!_checkNumBeneficiariesLimit(numberOfBeneficiaries)) revert NumBeneficiariesInvalid();
-
-    TransferLegacyStruct.LegacyExtraConfig memory _legacyExtraConfig = TransferLegacyStruct.LegacyExtraConfig({
-      lackOfOutgoingTxRange: extraConfig_.lackOfOutgoingTxRange,
-      delayLayer2: ITransferEOALegacy(legacyAddress).delayLayer2(),
-      delayLayer3: ITransferEOALegacy(legacyAddress).delayLayer3()
-    });
-
-    ITransferEOALegacy(legacyAddress).setLegacyName(mainConfig_.name, msg.sender);
-
-    emit TransferEOALegacyCreated(newLegacyId, legacyAddress, msg.sender, mainConfig_, _legacyExtraConfig, block.timestamp);
-
-    // Set private code + register Chainlink Automation cronjob for premium
-    // users. Wrapped in try/catch so a transient downstream issue (LINK
-    // underfunded, registrar paused, Functions subscription exhausted)
-    // never blocks legacy creation — the legacy itself is fully functional
-    // without the premium reminder layer. Matches the activation-side
-    // pattern below (avtiveAlive → triggerOwnerResetReminder).
-    try IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender, legacyAddress)
-    {} catch {
-      emit PrivateCodeSetupNotCompleted(legacyAddress);
-    }
-
-    // Emit layer2/3 created if needed
-    uint256 distribution2 = ITransferEOALegacy(legacyAddress).getDistribution(2, layer2Distribution_.user);
-    uint256 distribution3 = ITransferEOALegacy(legacyAddress).getDistribution(3, layer3Distribution_.user);
-
-    if (distribution2 != 0) {
-      emit TransferEOALegacyLayer23Created(newLegacyId, 2, layer2Distribution_, nickName2);
-    }
-
-    if (distribution3 != 0) {
-      emit TransferEOALegacyLayer23Created(newLegacyId, 3, layer3Distribution_, nickName3);
-    }
-
     return legacyAddress;
   }
 
@@ -370,11 +318,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    * @dev Create-flow v2 (create-flow-v2.md §5.2 / §6.8): PII-free,
    * single-confirm create.
    *
-   * Differences from v1 `createLegacy`:
-   * - No name / note / nicknames — those move to the off-chain metadata API.
-   *   The clone's `legacyName` is never written (saves the ~40k SSTORE), and
-   *   nickname slots are fed empty strings until the clone-impl PII strip
-   *   lands.
+   * - No name / note / nicknames — those live in the off-chain metadata API.
    * - `permit2_` carries the creator's signed Permit2 AllowanceTransfer batch
    *   with the new legacy as `spender`. The router registers it via
    *   `PERMIT2.permit` in the same tx — consuming the signature immediately
@@ -383,7 +327,6 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    *   through Permit2 exactly like it pulls through direct allowances; the
    *   owner keeps full custody and use of their assets meanwhile, and can
    *   revoke anytime via Permit2's `lockdown` / `approve(0)`.
-   * - Emits the PII-free `TransferEOALegacyCreatedV2` event.
    *
    * Security: `permitBatch.spender` must equal the freshly deployed legacy —
    * anything else reverts (`Permit2SpenderMismatch`), so a bundle can never
@@ -401,10 +344,47 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     bytes calldata agreementSignature
   ) external returns (address) {
     if (distributions_.length == 0) revert DistributionsInvalid();
+
+    (, address legacyAddress) = _createLegacyCore(
+      distributions_,
+      extraConfig_,
+      layer2Distribution_,
+      layer3Distribution_,
+      signatureTimestamp,
+      agreementSignature
+    );
+
+    // Register the creator's batch allowance in Permit2 with the new legacy
+    // as spender. A bad bundle reverts the whole create atomically.
+    if (permit2_.permitBatch.details.length != 0) {
+      if (permit2_.permitBatch.spender != legacyAddress) revert Permit2SpenderMismatch();
+      PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
+    }
+
+    return legacyAddress;
+  }
+
+  /**
+   * @dev Shared create path for `createLegacy` (v1 shim) and `createLegacyV2`.
+   * PII-free by construction: the clone initializer no longer accepts
+   * name/nickname params (§5.1) and the only create event is the PII-free
+   * `TransferEOALegacyCreatedV2`.
+   */
+  function _createLegacyCore(
+    TransferLegacyStruct.Distribution[] calldata distributions_,
+    TransferLegacyStruct.LegacyExtraConfig calldata extraConfig_,
+    TransferLegacyStruct.Distribution calldata layer2Distribution_,
+    TransferLegacyStruct.Distribution calldata layer3Distribution_,
+    uint256 signatureTimestamp,
+    bytes calldata agreementSignature
+  ) internal returns (uint256 newLegacyId, address legacyAddress) {
     if (extraConfig_.lackOfOutgoingTxRange == 0) revert ActivationTriggerInvalid();
+    //Check if msg.sender has already created a legacy
     if (_isCreateLegacy(msg.sender)) revert SenderIsCreatedLegacy(msg.sender);
 
-    (uint256 newLegacyId, address legacyAddress) = legacyImplementation != address(0)
+    // Create new legacy contract. Clone path (EIP-1167) when an implementation
+    // is configured, otherwise full-bytecode deploy for back-compat.
+    (newLegacyId, legacyAddress) = legacyImplementation != address(0)
       ? _cloneLegacy(legacyImplementation, msg.sender)
       : _createLegacy(legacyCreationCode, msg.sender);
 
@@ -412,9 +392,6 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     //artifact — see create-flow-v2.md §6.5)
     verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);
 
-    // Clone initializer still takes nickname params until the clone-impl PII
-    // strip lands; v2 always feeds empties (writing "" is a zero-slot store).
-    string[] memory emptyNicknames = new string[](distributions_.length);
     uint256 numberOfBeneficiaries = ITransferEOALegacy(legacyAddress).initialize(
       newLegacyId,
       msg.sender,
@@ -425,22 +402,11 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       premiumSetting,
       paymentContract,
       uniswapRouter,
-      weth,
-      emptyNicknames,
-      "",
-      ""
+      weth
     );
 
+    // Check beneficiary limit
     if (!_checkNumBeneficiariesLimit(numberOfBeneficiaries)) revert NumBeneficiariesInvalid();
-
-    // Register the creator's batch allowance in Permit2 with the new legacy
-    // as spender. Placed after the clone exists so the spender check is
-    // against the real deployed address, and before any event so a bad
-    // bundle reverts the whole create atomically.
-    if (permit2_.permitBatch.details.length != 0) {
-      if (permit2_.permitBatch.spender != legacyAddress) revert Permit2SpenderMismatch();
-      PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
-    }
 
     TransferLegacyStruct.LegacyExtraConfig memory _legacyExtraConfig = TransferLegacyStruct.LegacyExtraConfig({
       lackOfOutgoingTxRange: extraConfig_.lackOfOutgoingTxRange,
@@ -450,15 +416,16 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     emit TransferEOALegacyCreatedV2(newLegacyId, legacyAddress, msg.sender, distributions_, _legacyExtraConfig, block.timestamp);
 
-    // Premium reminder bootstrap — best-effort, never blocks the create
-    // (same rationale as v1).
+    // Premium reminder bootstrap. Wrapped in try/catch so a transient
+    // downstream issue never blocks legacy creation — the legacy itself is
+    // fully functional without the premium reminder layer.
     try IPremiumSetting(premiumSetting).setPrivateCodeAndCronjob(msg.sender, legacyAddress)
     {} catch {
       emit PrivateCodeSetupNotCompleted(legacyAddress);
     }
 
-    // Layer 2/3 events (empty nicknames — PII-free) so subgraph handlers keep
-    // one code path across v1/v2 creates.
+    // Layer 2/3 events (nickname field permanently empty — PII-free) so
+    // subgraph handlers keep one code path across v1/v2 creates.
     uint256 distribution2 = ITransferEOALegacy(legacyAddress).getDistribution(2, layer2Distribution_.user);
     uint256 distribution3 = ITransferEOALegacy(legacyAddress).getDistribution(3, layer3Distribution_.user);
 
@@ -469,8 +436,6 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     if (distribution3 != 0) {
       emit TransferEOALegacyLayer23Created(newLegacyId, 3, layer3Distribution_, "");
     }
-
-    return legacyAddress;
   }
 
   function avtiveAlive(uint256 legacyId_) external {
@@ -505,14 +470,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     emit TransferEOALegacyActivedAlive(legacyId_, block.timestamp);
   }
 
+  /// @dev v1 ABI kept for pre-v2 frontends; since the PII strip, `name` /
+  /// `note` / nickname args are accepted but ignored (metadata API owns them)
+  /// and all emitted events carry scrubbed (empty) PII fields.
   function setLegacyConfig(
     uint256 legacyId_,
     LegacyMainConfig calldata mainConfig_,
     TransferLegacyStruct.LegacyExtraConfig calldata extraConfig_,
     TransferLegacyStruct.Distribution calldata layer2Distribution_,
     TransferLegacyStruct.Distribution calldata layer3Distribution_,
-    string calldata nickName2,
-    string calldata nickName3
+    string calldata /* nickName2 — ignored */,
+    string calldata /* nickName3 — ignored */
   ) external {
     address legacyAddress = _checkLegacyExisted(legacyId_);
 
@@ -523,8 +491,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     uint256 numberBeneficiaries = ITransferEOALegacy(legacyAddress).setLegacyDistributions(
       msg.sender,
-      mainConfig_.distributions,
-      mainConfig_.nickNames
+      mainConfig_.distributions
     );
     if (!_checkNumBeneficiariesLimit(numberBeneficiaries)) revert NumBeneficiariesInvalid();
 
@@ -536,8 +503,6 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       msg.sender,
       extraConfig_.delayLayer2,
       extraConfig_.delayLayer3,
-      nickName2,
-      nickName3,
       layer2Distribution_,
       layer3Distribution_
     );
@@ -545,23 +510,30 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     // If the user is not premium, we don't emit events for layer 2/3 distributions
     if (isPremium) {
       // Only emit events for premium users (who can actually update layer 2/3)
-      emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, 2, nickName2, layer2Distribution_, block.timestamp);
+      emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, 2, "", layer2Distribution_, block.timestamp);
 
-      emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, 3, nickName3, layer3Distribution_, block.timestamp);
+      emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, 3, "", layer3Distribution_, block.timestamp);
     }
 
-    ITransferEOALegacy(legacyAddress).setLegacyName(mainConfig_.name, msg.sender);
-
-    // Emit final config update
+    // Emit final config update with PII fields scrubbed (event shape kept for
+    // subgraph compatibility; name/note/nickNames always empty post-v2).
     TransferLegacyStruct.LegacyExtraConfig memory _legacyExtraConfig = TransferLegacyStruct.LegacyExtraConfig({
       lackOfOutgoingTxRange: extraConfig_.lackOfOutgoingTxRange,
       delayLayer2: ITransferEOALegacy(legacyAddress).delayLayer2(),
       delayLayer3: ITransferEOALegacy(legacyAddress).delayLayer3()
     });
 
-    emit TransferEOALegacyConfigUpdated(legacyId_, mainConfig_, _legacyExtraConfig, block.timestamp);
+    LegacyMainConfig memory scrubbedConfig = LegacyMainConfig({
+      name: "",
+      note: "",
+      nickNames: new string[](0),
+      distributions: mainConfig_.distributions
+    });
+
+    emit TransferEOALegacyConfigUpdated(legacyId_, scrubbedConfig, _legacyExtraConfig, block.timestamp);
   }
 
+  /// @dev v1 ABI kept; `nickNames_` accepted but ignored since the PII strip.
   function setLegacyDistributions(
     uint256 legacyId_,
     string[] calldata nickNames_,
@@ -569,32 +541,34 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   ) external {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     if (distributions_.length != nickNames_.length || distributions_.length == 0) revert DistributionsInvalid();
-    uint256 numberOfBeneficiaries = ITransferEOALegacy(legacyAddress).setLegacyDistributions(msg.sender, distributions_, nickNames_);
+    uint256 numberOfBeneficiaries = ITransferEOALegacy(legacyAddress).setLegacyDistributions(msg.sender, distributions_);
     if (!_checkNumBeneficiariesLimit(numberOfBeneficiaries)) revert NumBeneficiariesInvalid();
 
-    emit TransferEOALegacyDistributionUpdated(legacyId_, nickNames_, distributions_, block.timestamp);
+    emit TransferEOALegacyDistributionUpdated(legacyId_, new string[](0), distributions_, block.timestamp);
   }
 
+  /// @dev v1 ABI kept; nickname arg accepted but ignored since the PII strip.
   function setLayer23Distributions(
     uint256 legacyId_,
     uint8 layer_,
-    string calldata nickname_,
+    string calldata /* nickname_ — ignored */,
     TransferLegacyStruct.Distribution calldata distribution_
   ) external {
-    _setLayer23Distributions(legacyId_, layer_, nickname_, distribution_);
+    _setLayer23Distributions(legacyId_, layer_, distribution_);
   }
 
 
-    function setBothLayer23Distributions(
+  /// @dev v1 ABI kept; nickname args accepted but ignored since the PII strip.
+  function setBothLayer23Distributions(
     uint256 legacyId_,
-    string calldata nicknameLayer2_,
+    string calldata /* nicknameLayer2_ — ignored */,
     TransferLegacyStruct.Distribution calldata layer2Distribution_,
-    string calldata nicknameLayer3_,
+    string calldata /* nicknameLayer3_ — ignored */,
     TransferLegacyStruct.Distribution calldata layer3Distribution_
 
   ) external {
-    _setLayer23Distributions(legacyId_, 2, nicknameLayer2_, layer2Distribution_);
-    _setLayer23Distributions(legacyId_, 3, nicknameLayer3_, layer3Distribution_);
+    _setLayer23Distributions(legacyId_, 2, layer2Distribution_);
+    _setLayer23Distributions(legacyId_, 3, layer3Distribution_);
   }
 
   function setActivationTrigger(uint256 legacyId_, uint128 lackOfOutgoingTxRange_) external {
@@ -604,11 +578,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     emit TransferEOALegacyTriggerUpdated(legacyId_, lackOfOutgoingTxRange_, block.timestamp);
   }
 
-  function setNameNote(uint256 legacyId_, string calldata name_, string calldata note_) external {
-    address legacyAddress = _checkLegacyExisted(legacyId_);
-    ITransferEOALegacy(legacyAddress).setLegacyName(name_, msg.sender);
-    emit TransferEOALegacyNameNoteUpdated(legacyId_, name_, note_, block.timestamp);
-  }
+  // setNameNote removed in create-flow v2 (§5.1): name/note are PII and now
+  // live exclusively in the off-chain metadata API (§7). Storing them on-chain
+  // (or echoing them in events) was the PII leak the strip exists to close.
 
   function activeLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_) external {
     _runActiveLegacy(legacyId_, assets_, isETH_, msg.sender);
@@ -829,15 +801,15 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     return amounts[1];
   }
 
+  /// @dev Nickname no longer forwarded or emitted since the PII strip (§5.1).
   function _setLayer23Distributions(
     uint256 legacyId_,
     uint8 layer_,
-    string calldata nickname_,
     TransferLegacyStruct.Distribution calldata distribution_
   ) internal {
     address legacyAddress = _checkLegacyExisted(legacyId_);
-    ITransferEOALegacy(legacyAddress).setLayer23Distributions(msg.sender, layer_, nickname_, distribution_);
-    emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, layer_, nickname_, distribution_, block.timestamp);
+    ITransferEOALegacy(legacyAddress).setLayer23Distributions(msg.sender, layer_, distribution_);
+    emit TransferEOALegacyLayer23DistributionUpdated(legacyId_, layer_, "", distribution_, block.timestamp);
   }
 
   // ─── Sponsored ("…For") EIP-712 plumbing ─────────────────────────────────

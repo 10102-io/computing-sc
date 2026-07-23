@@ -199,7 +199,9 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
     const legacy = await ethers.getContractAt("TransferEOALegacy", predicted);
     assert.equal(await legacy.isLive(), true);
     assert.equal((await legacy.getLayer()).toString(), "1");
-    assert.equal(await legacy.getLegacyName(), args.mainConfig.name);
+    // PII strip (§5.1): the clone never stores the name — v1 create args are
+    // accepted for ABI compat but the name is ignored.
+    assert.equal(await legacy.getLegacyName(), "");
     assert.equal((await legacy.creator()).toLowerCase(), user1.address.toLowerCase());
 
     const [benes, l2, l3] = await legacy.getLegacyBeneficiaries();
@@ -230,10 +232,7 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
         ethers.constants.AddressZero,
         ethers.constants.AddressZero,
         ethers.constants.AddressZero,
-        ethers.constants.AddressZero,
-        args.mainConfig.nickNames,
-        args.nickName2,
-        args.nickName3
+        ethers.constants.AddressZero
       );
     } catch (e) {
       caught = e;
@@ -262,8 +261,9 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
     const l2 = await ethers.getContractAt("TransferEOALegacy", a2);
     assert.equal((await l1.creator()).toLowerCase(), user1.address.toLowerCase());
     assert.equal((await l2.creator()).toLowerCase(), user2.address.toLowerCase());
-    assert.equal(await l1.getLegacyName(), "legacy-A");
-    assert.equal(await l2.getLegacyName(), "legacy-B");
+    // PII strip (§5.1): names passed to v1 create are ignored, never stored.
+    assert.equal(await l1.getLegacyName(), "");
+    assert.equal(await l2.getLegacyName(), "");
   });
 
   it("deleteLegacy + withdraw behave correctly on a clone", async function () {

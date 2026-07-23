@@ -292,10 +292,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     address _premiumSetting,
     address _paymentContract,
     address _uniswapRouter,
-    address _weth,
-    string[] calldata nicknames,
-    string calldata nickname2,
-    string calldata nickname3
+    address _weth
   ) external notInitialized returns (uint256 numberOfBeneficiaries) {
     if (owner_ == address(0)) revert OwnerInvalid();
     _isLive = 1;
@@ -324,8 +321,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     if (premiumSetting.isPremium(creator)) {
       delayLayer2 = config_.delayLayer2;
       delayLayer3 = config_.delayLayer3;
-      _setLayer23Distributions(2, nickname2, layer2Distribution_);
-      _setLayer23Distributions(3, nickname3, layer3Distribution_);
+      _setLayer23Distributions(2, layer2Distribution_);
+      _setLayer23Distributions(3, layer3Distribution_);
       if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
     } else {
       // Check input values before assigning them to state
@@ -341,7 +338,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       }
     }
 
-    numberOfBeneficiaries = _setDistributions(owner_, distributions_, nicknames);
+    numberOfBeneficiaries = _setDistributions(owner_, distributions_);
     _lastTimestamp = block.timestamp;
   }
 
@@ -364,7 +361,11 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     return false;
   }
 
-  function _setLayer23Distributions(uint8 layer_, string calldata nickname, TransferLegacyStruct.Distribution calldata distribution_) private {
+  // Create-flow v2 PII strip (§5.1): nickname params removed — beneficiary
+  // nicknames live in the off-chain metadata API. `beneName` storage on
+  // GenericLegacy stays as a dead slot for layout safety (§14.3) and for the
+  // Multisig contracts, which are out of v2 scope.
+  function _setLayer23Distributions(uint8 layer_, TransferLegacyStruct.Distribution calldata distribution_) private {
     uint256 _distributionPercentage;
     address _beneficiary;
     if (distribution_.percent == 0) {
@@ -377,34 +378,29 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     }
     if (layer_ == 2) {
       if (_distributions[distribution_.user] != 0) revert AlreadyBeneficiary();
-      _deleteBeneName(_layer2Beneficiary);
       _layer2Beneficiary = _beneficiary;
       _layer2Distribution = _distributionPercentage;
-      _setBeneNickname(_layer2Beneficiary, nickname);
     } else {
       if (_layer2Distribution != MAX_PERCENT && _distributionPercentage != 0) revert NeedtoSetLayer2();
       if (_distributionPercentage != 0) {
         if (_layer2Distribution != MAX_PERCENT) revert NeedtoSetLayer2();
         if (_distributions[distribution_.user] != 0 || _layer2Beneficiary == distribution_.user) revert AlreadyBeneficiary();
       }
-      _deleteBeneName(_layer3Beneficiary);
       _layer3Beneficiary = _beneficiary;
       _layer3Distribution = _distributionPercentage;
-      _setBeneNickname(_layer3Beneficiary, nickname);
     }
   }
 
   function setLayer23Distributions(
     address sender_,
     uint8 layer_,
-    string calldata nickname,
     TransferLegacyStruct.Distribution calldata distribution_
   ) external onlyRouter onlyOwner(sender_) isActiveLegacy {
     if (layer_ < 2 || layer_ > 3) revert LayerInvalid();
     if (distribution_.user == address(0)) revert DistributionUserInvalid();
     if (!premiumSetting.isPremium(sender_)) revert NotPremium();
 
-    _setLayer23Distributions(layer_, nickname, distribution_);
+    _setLayer23Distributions(layer_, distribution_);
     if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
     _lastTimestamp = block.timestamp;
 
@@ -426,11 +422,10 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    */
   function setLegacyDistributions(
     address sender_,
-    TransferLegacyStruct.Distribution[] calldata distributions_,
-    string[] calldata nicknames_
+    TransferLegacyStruct.Distribution[] calldata distributions_
   ) external onlyRouter onlyLive onlyOwner(sender_) isActiveLegacy returns (uint256 numberOfBeneficiaries) {
     _clearDistributions();
-    numberOfBeneficiaries = _setDistributions(sender_, distributions_, nicknames_);
+    numberOfBeneficiaries = _setDistributions(sender_, distributions_);
 
     _lastTimestamp = block.timestamp;
   }
@@ -439,8 +434,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     address sender_,
     uint256 delayLayer2_,
     uint256 delayLayer3_,
-    string calldata nickName2,
-    string calldata nickName3,
     TransferLegacyStruct.Distribution calldata layer2Distribution_,
     TransferLegacyStruct.Distribution calldata layer3Distribution_
   ) external onlyRouter onlyOwner(sender_) isActiveLegacy {
@@ -467,17 +460,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     delayLayer2 = delayLayer2_;
     delayLayer3 = delayLayer3_;
 
-    _setLayer23Distributions(2, nickName2, layer2Distribution_);
+    _setLayer23Distributions(2, layer2Distribution_);
 
     bool skipCheck = true;
     if (layer3Distribution_.percent > 0 && layer3Distribution_.user != address(0)) {
       if (_layer2Beneficiary == layer3Distribution_.user || _distributions[layer3Distribution_.user] != 0) {
         revert AlreadyBeneficiary();
       }
-      _deleteBeneName(_layer3Beneficiary);
       _layer3Beneficiary = layer3Distribution_.user;
       _layer3Distribution = MAX_PERCENT;
-      _setBeneNickname(_layer3Beneficiary, nickName3);
       skipCheck = false;
     } else {
       _layer3Beneficiary = address(0);
@@ -609,11 +600,9 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     _transferAssetToBeneficiaries(assets_, true, bene_);
   }
 
-  function setLegacyName(string calldata legacyName_, address sender_) external onlyRouter onlyLive onlyOwner(sender_){
-    _setLegacyName(legacyName_);
-    _lastTimestamp = block.timestamp;
-
-  }
+  // setLegacyName removed in create-flow v2 (§5.1): legacy names are PII and
+  // live in the off-chain metadata API. The `legacyName` slot on GenericLegacy
+  // stays for storage-layout safety and reads "" on v2 clones.
 
   /* Utils function */
 
@@ -637,15 +626,13 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    */
   function _setDistributions(
     address owner_,
-    TransferLegacyStruct.Distribution[] calldata distributions_,
-    string[] calldata nicknames
+    TransferLegacyStruct.Distribution[] calldata distributions_
   ) internal returns (uint256 numberOfBeneficiaries) {
     uint256 totalPercent = 0;
 
     for (uint256 i = 0; i < distributions_.length; ) {
       _checkDistribution(owner_, distributions_[i]);
       _beneficiariesSet.add(distributions_[i].user);
-      _setBeneNickname(distributions_[i].user, nicknames[i]);
       _distributions[distributions_[i].user] = distributions_[i].percent;
       totalPercent += distributions_[i].percent;
       unchecked {
@@ -663,7 +650,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   function _clearDistributions() internal {
     address[] memory beneficiaries = _beneficiariesSet.values();
     for (uint256 i = 0; i < beneficiaries.length; ) {
-      _deleteBeneName(beneficiaries[i]);
       _beneficiariesSet.remove(beneficiaries[i]);
       _distributions[beneficiaries[i]] = 0;
       unchecked {

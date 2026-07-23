@@ -188,6 +188,15 @@ than the gas savings.
 
 ### 5.1 `TransferEOALegacy` clone impl — what comes out
 
+> **STATUS (2026-07-23): LANDED.** The full delete-list below is implemented
+> on `feat/create-flow-v2`. Measured effects: clone-path v1 `createLegacy`
+> gas 992,070 (down from ~1.07M); clone impl 13.97 KiB (−1.49), router
+> 16.12 KiB (−2.44). Both create paths now share `_createLegacyCore` and emit
+> only `TransferEOALegacyCreatedV2`; the v1 `TransferEOALegacyCreated` event
+> and router `setNameNote` were removed, and all remaining v1-ABI edit
+> functions accept-but-ignore their nickname/name args and emit scrubbed
+> (empty) PII fields. Subgraph impact captured in §9.
+
 Concrete delete-list in `initialize()`:
 
 - Parameter `string[] calldata nicknames` — removed.
@@ -275,6 +284,14 @@ Noteworthy properties:
   Pre-v2 frontends keep working; they just don't get the gas/UX wins. Marks
   it `@dev deprecated` in NatSpec and we remove it once we've migrated the
   frontend fully (target: release v2+1).
+
+> **STATUS (2026-07-23): LANDED**, with two implementation notes vs. the
+> sketch above: (1) both entrypoints share an internal `_createLegacyCore`
+> rather than v1 literally calling v2 (same effect, no ABI-level recursion);
+> (2) `createLegacyV2` takes `Distribution[] distributions_` directly instead
+> of a one-field `LegacyMainConfigV2` wrapper struct. The Permit2 bundle shape
+> follows the §6.8 AllowanceTransfer correction, not the SignatureTransfer
+> sketch above.
 
 ### 5.3 Storage-layout bump
 
@@ -860,10 +877,19 @@ address — trivial for an indexed event.)
 - Drop `name` + `note` from the `Legacy` entity (or keep, depending on whether
   we want to migrate to a "legacy name comes from DB" model completely —
   see §11 for the ETL coexistence).
-- Update event handlers to match the new event signatures
-  (`TransferEOALegacyCreated` no longer carries `LegacyMainConfig`, etc.).
+- Update event handlers to match the new event signatures. Exact contract-side
+  event changes as landed (2026-07-23):
+  - `TransferEOALegacyCreated` (v1, carried `LegacyMainConfig`) is **gone** —
+    both create paths emit `TransferEOALegacyCreatedV2(legacyId, legacyAddress,
+    creator, distributions, extraConfig, timestamp)`.
+  - `TransferEOALegacyNameNoteUpdated` is **gone** (with router `setNameNote`).
+  - `TransferEOALegacyConfigUpdated`, `…DistributionUpdated`,
+    `…Layer23DistributionUpdated`, `…Layer23Created` keep their signatures but
+    their name/note/nickname fields are now always empty strings.
 - Subgraph redeploy + reindex is required, coordinated with the on-chain
-  deploy.
+  deploy — **the subgraph must ship no later than the router upgrade**, or new
+  creates become invisible to the app (old handlers listen for the retired v1
+  create event).
 
 Indexing load should go **down** (shorter events, fewer string fields).
 
