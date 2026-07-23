@@ -1008,6 +1008,31 @@ with names):
 Can ship with or behind legacies. If we ship together, the release message
 becomes "Create-flow v2 for legacies + timelocks".
 
+> **STATUS (2026-07-23): Permit2 variants LANDED** on `feat/create-flow-v2`.
+> `createTimelockWithPermit2` / `createSoftTimelockWithPermit2` /
+> `createTimelockedGiftWithPermit2` on `TimeLockRouter`:
+>
+> - Unlike the legacy side (§6.8 claim-time pulls), timelock escrow at create
+>   IS the product model, so here the AllowanceTransfer batch is registered
+>   with **the router itself as spender** and the ERC-20s are pulled through
+>   `PERMIT2.transferFrom` in the same tx. Non-empty bundles with any other
+>   spender revert (`Permit2SpenderMismatch`); an empty bundle means "reuse my
+>   existing Permit2 allowance to this router" (tested).
+> - Routing uses a `transient` (EIP-1153) flag set only inside the
+>   `…WithPermit2` wrappers — no persistent storage slot added to the proxy,
+>   no internal-signature churn; the classic create paths are byte-identical
+>   in behavior (regression-tested). Requires solc ≥0.8.28 (file pragma bumped
+>   to `^0.8.28`; repo compiles at 0.8.35).
+> - ETH-swap and ERC-721/1155 legs are unchanged — Permit2 is ERC-20 only.
+> - Router 11.64 KiB (+1.17). Full suite 120/120.
+>
+> **Deliberately NOT landed**: the name/giftName → event-only strip. That
+> write happens inside `TimelockERC20/721/1155` — standalone fund-holding
+> contracts, not proxies. Redeploying them would strand existing locks behind
+> a router that can only point at one instance set (`setTimelock`). Not worth
+> it for a low-risk string; revisit only if those contracts are ever migrated
+> for a stronger reason.
+
 ## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of)
 
 **Added 2026-06-15.** Two of the founder's top product asks reduce to the

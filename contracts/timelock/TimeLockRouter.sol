@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+// ^0.8.28: the Permit2 create variants use a `transient` state variable
+// (EIP-1153), supported for value types since solc 0.8.28.
+pragma solidity ^0.8.28;
 
 import {TimelockERC20} from "./TimeLockERC20.sol";
 import {TimelockERC721} from "./TimeLockERC721.sol";
@@ -18,6 +20,7 @@ import {TimelockHelper} from "./TimelockHelper.sol";
 import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
+import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
 
 contract TimeLockRouter is OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -84,6 +87,29 @@ contract TimeLockRouter is OwnableUpgradeable {
   bytes4 private constant IERC721_ID = 0x80ac58cd;
   bytes4 private constant IERC1155_ID = 0xd9b67a26;
 
+  // ───────────── Permit2 create variants (create-flow-v2.md §12) ─────────────
+
+  /// @notice Canonical Uniswap Permit2 (same address on every supported chain).
+  IAllowanceTransfer internal constant PERMIT2 = IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+
+  /// @dev Creator-signed Permit2 AllowanceTransfer batch. `permitBatch.spender`
+  /// must be THIS router (the router executes the pulls at create time —
+  /// unlike the legacy side, timelock escrow at create IS the product model).
+  /// ERC-721/1155 items keep classic approvals; Permit2 is ERC-20 only.
+  struct Permit2CreateBundle {
+    IAllowanceTransfer.PermitBatch permitBatch;
+    bytes signature;
+  }
+
+  error Permit2SpenderMismatch();
+  error Permit2AmountOverflow();
+
+  /// @dev When true, ERC-20 pulls in `_transferERC20TokensToTimelock` route
+  /// through Permit2 instead of direct allowances. Transient (EIP-1153): no
+  /// persistent storage slot on this proxy, auto-cleared at tx end, and set
+  /// only for the duration of a `…WithPermit2` create call.
+  bool private transient _permit2Pull;
+
   // ───────────── Native Token Receive ─────────────
   receive() external payable {}
 
@@ -134,6 +160,21 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function createTimelock(TimelockRegular calldata timelockRegular) external payable {
+    _createTimelockRegular(timelockRegular);
+  }
+
+  /// @notice Single-confirm create: registers the creator's signed Permit2
+  /// AllowanceTransfer batch (spender = this router) and pulls the ERC-20s
+  /// through Permit2 in the same tx — no per-token approve txs. ETH-swap and
+  /// ERC-721/1155 legs behave exactly like `createTimelock`.
+  function createTimelockWithPermit2(TimelockRegular calldata timelockRegular, Permit2CreateBundle calldata permit2_) external payable {
+    _registerPermit2(permit2_);
+    _permit2Pull = true;
+    _createTimelockRegular(timelockRegular);
+    _permit2Pull = false;
+  }
+
+  function _createTimelockRegular(TimelockRegular calldata timelockRegular) private {
     if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
 
     timelockCounter++;
@@ -183,6 +224,18 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function createSoftTimelock(TimelockSoft calldata timelockSoft) external payable {
+    _createSoftTimelock(timelockSoft);
+  }
+
+  /// @notice Permit2 single-confirm variant of `createSoftTimelock`.
+  function createSoftTimelockWithPermit2(TimelockSoft calldata timelockSoft, Permit2CreateBundle calldata permit2_) external payable {
+    _registerPermit2(permit2_);
+    _permit2Pull = true;
+    _createSoftTimelock(timelockSoft);
+    _permit2Pull = false;
+  }
+
+  function _createSoftTimelock(TimelockSoft calldata timelockSoft) private {
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
 
     timelockCounter++;
@@ -223,6 +276,18 @@ contract TimeLockRouter is OwnableUpgradeable {
 
 
   function createTimelockedGift(TimelockGift calldata timelockGift) external payable {
+    _createTimelockedGift(timelockGift);
+  }
+
+  /// @notice Permit2 single-confirm variant of `createTimelockedGift`.
+  function createTimelockedGiftWithPermit2(TimelockGift calldata timelockGift, Permit2CreateBundle calldata permit2_) external payable {
+    _registerPermit2(permit2_);
+    _permit2Pull = true;
+    _createTimelockedGift(timelockGift);
+    _permit2Pull = false;
+  }
+
+  function _createTimelockedGift(TimelockGift calldata timelockGift) private {
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
 
@@ -454,7 +519,20 @@ contract TimeLockRouter is OwnableUpgradeable {
     timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawLastAsEth);
   }
 
+  /// @dev Registers the creator's signed Permit2 batch with this router as
+  /// spender. A non-empty bundle whose spender is anything else reverts — a
+  /// bundle can never point the creator's allowances at another spender. An
+  /// empty bundle is allowed: it means "pull via my pre-existing Permit2
+  /// allowance to this router" (no fresh signature to consume).
+  function _registerPermit2(Permit2CreateBundle calldata permit2_) private {
+    if (permit2_.permitBatch.details.length != 0) {
+      if (permit2_.permitBatch.spender != address(this)) revert Permit2SpenderMismatch();
+      PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
+    }
+  }
+
   /// @dev Transfers first `count` tokens from msg.sender to timelock; returns actual amounts received (fee-on-transfer safe).
+  /// Pulls route through Permit2 during `…WithPermit2` creates (transient flag), otherwise direct ERC-20 allowances.
   function _transferERC20TokensToTimelock(
     address[] memory tokens,
     uint256[] memory amounts,
@@ -463,7 +541,12 @@ contract TimeLockRouter is OwnableUpgradeable {
     actualReceived = new uint256[](count);
     for (uint256 i = 0; i < count; i++) {
       uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
-      IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
+      if (_permit2Pull) {
+        if (amounts[i] > type(uint160).max) revert Permit2AmountOverflow();
+        PERMIT2.transferFrom(msg.sender, address(timelockERC20Contract), uint160(amounts[i]), tokens[i]);
+      } else {
+        IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
+      }
       uint256 balanceAfter = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
       if (balanceAfter <= balanceBefore) revert TimelockHelper.NoTokensReceived();
       actualReceived[i] = balanceAfter - balanceBefore;
