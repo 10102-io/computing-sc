@@ -1245,17 +1245,18 @@ delegations, passkey wallets) are a growing share of beneficiaries, and the
 sponsored path — the milestone's headline UX win — would otherwise exclude
 them. Implementation follows this section's own prescription:
 
-- `_consumeSponsorAuth` now verifies via `SignatureCheckerLite
+- `_consumeSponsorAuth` now verifies via `SignatureChecker
   .isValidSignatureNow` instead of raw `ECDSA.recover`: EOAs go through
   `ECDSA.tryRecover` + exact-match (malformed/malleable signatures fail the
   match instead of reverting differently — same net rejection); contract
   signers go through ERC-1271 with **staticcall-success + ≥32-byte returndata +
   exact magic value** all required.
-- `SignatureCheckerLite` (contracts/libraries) is a vendored, byte-identical
-  subset of OZ v5.4's `SignatureChecker` (the two functions we use). Vendored
-  only because OZ v5.4 pins `pragma ^0.8.24` and the repo compiles at 0.8.20;
-  tagged `TODO(deferred)` to swap back to the OZ import when the solc-upgrade
-  task lands.
+- ~~`SignatureCheckerLite` (contracts/libraries) is a vendored, byte-identical
+  subset of OZ v5.4's `SignatureChecker`~~ **Resolved 2026-07-23**: the interim
+  vendored copy (needed while the repo compiled at 0.8.20 vs OZ's `^0.8.24`
+  pin) was deleted after the solc-0.8.35 bump landed; the router and
+  `MockPermit2` import OZ `SignatureChecker` directly. Semantics identical —
+  the vendored code was byte-for-byte OZ's.
 - Negative-path tests are first-class, using mocks shaped exactly like the
   Zodiac adversaries (`MockERC1271MagicRevert` — reverts with revert data
   beginning with the magic value; `MockERC1271WrongValue`;

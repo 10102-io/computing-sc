@@ -3,7 +3,7 @@ pragma solidity 0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {SignatureCheckerLite} from "../libraries/SignatureCheckerLite.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
 
 /**
@@ -69,8 +69,8 @@ contract MockPermit2 is IAllowanceTransfer {
       )
     );
     bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), structHash));
-    // Real Permit2 accepts EOA + ERC-1271 signers; SignatureCheckerLite matches.
-    if (!SignatureCheckerLite.isValidSignatureNow(owner, digest, signature)) revert InvalidSigner();
+    // Real Permit2 accepts EOA + ERC-1271 signers; OZ SignatureChecker matches.
+    if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) revert InvalidSigner();
 
     for (uint256 i = 0; i < n; ++i) {
       PermitDetails memory d = permitBatch.details[i];

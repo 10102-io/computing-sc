@@ -2,7 +2,7 @@
 pragma solidity 0.8.35;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {SignatureCheckerLite} from "../libraries/SignatureCheckerLite.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
 import {ITransferEOALegacy} from "../interfaces/ITransferLegacyEOAContract.sol";
@@ -878,7 +878,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    * Signer support: EOAs verify via `ECDSA.tryRecover` (exact-match against
    * `signer_`; malformed/malleable signatures simply fail the match). Smart-
    * contract wallets (Safe, Argent, 7702-delegated accounts, …) verify via
-   * ERC-1271 `isValidSignature` — `SignatureCheckerLite` requires the
+   * ERC-1271 `isValidSignature` — OZ `SignatureChecker` requires the
    * staticcall to succeed AND return the exact magic value, closing the
    * Zodiac-style bypass (revert data prefixed with the magic value is NOT
    * acceptance). Identity semantics are unchanged either way: `signer_` is the
@@ -899,7 +899,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   ) internal {
     if (block.timestamp > deadline_) revert SponsorshipExpired();
     if (nonce_ != sponsorNonce[signer_]) revert InvalidSponsorNonce();
-    if (!SignatureCheckerLite.isValidSignatureNow(signer_, _hashTypedData(structHash_), signature_)) {
+    if (!SignatureChecker.isValidSignatureNow(signer_, _hashTypedData(structHash_), signature_)) {
       revert InvalidSponsorSignature();
     }
     unchecked {
