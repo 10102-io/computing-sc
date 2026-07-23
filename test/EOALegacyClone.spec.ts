@@ -69,7 +69,9 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
     await transferEOALegacyRouter
       .connect(dev)
-      .setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
+      // 16M, not 20M: EIP-7825 (Fusaka, live on mainnet) caps any single tx at
+      // 16,777,216 gas and hardhat ≥2.28 enforces it. The call needs ~10M.
+      .setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 16_000_000 });
 
     const multisignLegacyRouter = await deployProxy("MultisigLegacyRouter", [
       legacyDeployer.address,
@@ -247,7 +249,10 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
 
     const fromRouter: string = await transferEOALegacyRouter.getNextLegacyAddress(user1.address);
     const bytecode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
-    const fromDeployer: string = await legacyDeployer.getNextAddress(bytecode, user1.address);
+    // Explicit gasLimit: with hardhat ≥2.28 enforcing the EIP-7825 tx gas cap
+    // (16,777,216), the auto-derived gas for this large-calldata eth_call
+    // lands just above the cap and gets rejected. Actual usage is tiny.
+    const fromDeployer: string = await legacyDeployer.getNextAddress(bytecode, user1.address, { gasLimit: 15_000_000 });
     assert.equal(fromRouter.toLowerCase(), fromDeployer.toLowerCase());
   });
 

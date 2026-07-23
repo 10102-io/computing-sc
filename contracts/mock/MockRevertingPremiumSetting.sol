@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.20;
+pragma solidity 0.8.35;
 
 /// @notice Stub `PremiumSetting` that reverts on every external call the
 /// legacy routers make during `createLegacy`. Used exclusively to exercise

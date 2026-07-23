@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts v5.x
-pragma solidity 0.8.20;
+pragma solidity 0.8.35;
 
 import {ISafeWallet} from "./interfaces/ISafeWallet.sol";
 import {Enum} from "@safe-global/safe-smart-account/contracts/common/Enum.sol";

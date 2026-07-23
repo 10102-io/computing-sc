@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.20;
+pragma solidity 0.8.35;
 
 import {SafeGuard} from "../SafeGuard.sol";
 // TransferLegacy (Safe-source variant) was hard-sunset in v2026.05.18.

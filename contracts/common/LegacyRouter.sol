@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 // OpenZeppelin Contracts v5.x
-pragma solidity 0.8.20;
+pragma solidity 0.8.35;
 
 contract LegacyRouter {
   /* State variable */

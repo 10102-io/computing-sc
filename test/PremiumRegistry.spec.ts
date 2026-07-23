@@ -119,7 +119,8 @@ describe("Premium Setting", async function () {
     // Required for CREATE2 EOA legacy deployments in tests
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
-    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 20_000_000 });
+    // 16M, not 20M: EIP-7825 (Fusaka) caps any single tx at 16,777,216 gas.
+    await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 16_000_000 });
 
     // Set dev as premium directly (impersonate registry to avoid conflicting with test subscriptions)
     await network.provider.request({ method: "hardhat_impersonateAccount", params: [registry.address] });
