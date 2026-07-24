@@ -915,6 +915,29 @@ Indexing load should go **down** (shorter events, fewer string fields).
 
 ## 10. Frontend changes (`computing`)
 
+> **Status: FIRST PASS LANDED 2026-07-24** behind `VITE_FEATURE_CREATE_FLOW_V2`
+> (default off — the v2 router isn't deployed yet). As-built deltas vs. the
+> sketch below:
+>
+> - `createWillV2` in `useContractForwardingWillEOA.ts`: predicts the clone
+>   address via `getNextLegacyAddress`, reads Permit2 nonces, signs the
+>   AllowanceTransfer `PermitBatch` (no SDK needed — hand-rolled typed data in
+>   `src/constants/permit2.ts`), sends `createLegacyV2`. Helpers for the
+>   one-time `approve(PERMIT2, max)` base approvals included.
+> - The create form doesn't collect assets (they're picked on the Config
+>   Assets step post-create), so the create-time bundle currently ships
+>   **empty** and Permit2's prompt-count win is deferred to a Config-Assets
+>   batch flow or a form redesign — tracked in `computing/docs/DEFERRED.md`.
+> - Metadata is saved to the **reminder-worker** (`saveLegacyMeta`, EIP-712
+>   `SetLegacyMeta`, §7 as-built) after the create tx confirms — best-effort,
+>   non-blocking, matching step 7's failure copy.
+> - Post-create receipt parsing checks BOTH `TransferEOALegacyCreated` (live
+>   router) and `TransferEOALegacyCreatedV2` (upgraded router) regardless of
+>   the flag, because the upgraded router's v1 shim emits the V2 event — the
+>   old parser would dead-end the redirect after the proxy upgrade.
+> - Beneficiary nicknames have no off-chain home yet (worker recipient rows
+>   require an email) — v2 legacies render address-only until that lands.
+
 ### 10.1 Create flow
 
 1. User fills the create form (beneficiaries, allocations, trigger, etc.).
