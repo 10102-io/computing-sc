@@ -924,10 +924,17 @@ Indexing load should go **down** (shorter events, fewer string fields).
 >   AllowanceTransfer `PermitBatch` (no SDK needed — hand-rolled typed data in
 >   `src/constants/permit2.ts`), sends `createLegacyV2`. Helpers for the
 >   one-time `approve(PERMIT2, max)` base approvals included.
-> - The create form doesn't collect assets (they're picked on the Config
->   Assets step post-create), so the create-time bundle currently ships
->   **empty** and Permit2's prompt-count win is deferred to a Config-Assets
->   batch flow or a form redesign — tracked in `computing/docs/DEFERRED.md`.
+> - ~~The create form doesn't collect assets … the create-time bundle
+>   currently ships **empty**~~ **SECOND PASS LANDED 2026-07-24
+>   (single-screen create)**: `AssetList` on the create form grows a
+>   selectable mode under the flag — ERC-20 rows preselected, native ETH
+>   unselectable — writing the ticked tokens to the form store. Submit runs
+>   the one-time `approve(PERMIT2, max)` only for tokens that never granted
+>   it, then `createLegacyV2` carries ONE PermitBatch signature covering all
+>   of them (spender = predicted clone). When tokens were covered, create
+>   success skips the Config Assets step and lands on the dashboard; ETH
+>   conversion / extra approvals remain in the legacy edit view. Net flow:
+>   fill one screen → (rare) base approvals → 1 signature + 1 tx.
 > - Metadata is saved to the **reminder-worker** (`saveLegacyMeta`, EIP-712
 >   `SetLegacyMeta`, §7 as-built) after the create tx confirms — best-effort,
 >   non-blocking, matching step 7's failure copy.
