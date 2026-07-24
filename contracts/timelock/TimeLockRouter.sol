@@ -15,6 +15,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 import {TimelockHelper} from "./TimelockHelper.sol";
 import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
@@ -109,6 +110,47 @@ contract TimeLockRouter is OwnableUpgradeable {
   /// persistent storage slot on this proxy, auto-cleared at tx end, and set
   /// only for the duration of a `…WithPermit2` create call.
   bool private transient _permit2Pull;
+
+  // ───────────── Sponsored withdraw (create-flow-v2.md §12a) ─────────────
+  // Mirrors the EOA legacy router's sponsored-intent machinery: the recipient
+  // signs an EIP-712 `WithdrawAuth` off-chain, any relayer submits it and pays
+  // the gas. Identity is the recovered signer — the timelock contracts already
+  // enforce `caller == lock.recipient`, so a relayer can only ever trigger the
+  // signer's own withdrawal, to the signer's own entitlement. Key use case:
+  // gift recipients (often ETH-less wallets) claiming without funding gas.
+
+  /// @dev Sequential per-signer nonce for sponsored intents. APPENDED at the
+  /// end of router storage (transient/constant members above occupy no slots),
+  /// auto-zero — layout-safe on upgrade, no reinitializer needed.
+  mapping(address => uint256) public sponsorNonce;
+
+  // EIP-712 typed-data constants (compile-time — no storage slots). Domain is
+  // recomputed per call from `block.chainid + address(this)` so a signed
+  // intent can never replay cross-chain or against a different router. NOTE:
+  // the literals returned by `eip712Domain()` (ERC-5267) must stay in sync.
+  bytes32 private constant _EIP712_DOMAIN_TYPEHASH =
+    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+  bytes32 private constant _EIP712_NAME_HASH = keccak256(bytes("10102 Timelock Sponsored"));
+  bytes32 private constant _EIP712_VERSION_HASH = keccak256(bytes("1"));
+  bytes32 private constant WITHDRAW_AUTH_TYPEHASH =
+    keccak256("WithdrawAuth(address recipient,uint256 timelockId,bool skipSwap,uint256 nonce,uint256 deadline)");
+
+  /// @notice Recipient's signed authorization for a gas-sponsored withdrawal.
+  /// `recipient` is the recovered EIP-712 signer; the underlying timelock
+  /// contracts pay out only to that recipient, so any relayer may submit it.
+  struct WithdrawAuth {
+    address recipient;
+    uint256 nonce;
+    uint256 deadline;
+    bytes signature;
+  }
+
+  error SponsorshipExpired();
+  error InvalidSponsorNonce();
+  error InvalidSponsorSignature();
+
+  event TimelockWithdrawnFor(uint256 indexed id, address indexed recipient, address indexed relayer, uint256 timestamp);
+  event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
 
   // ───────────── Native Token Receive ─────────────
   receive() external payable {}
@@ -348,6 +390,99 @@ contract TimeLockRouter is OwnableUpgradeable {
     timelockERC20Contract.withdraw(id, msg.sender, skipSwap);
     timelockERC721Contract.withdraw(id, msg.sender);
     timelockERC1155Contract.withdraw(id, msg.sender);
+  }
+
+  /**
+   * @dev Gas-sponsored withdrawal. The recipient signs an EIP-712
+   * `WithdrawAuth` off-chain (binding timelockId + skipSwap + nonce +
+   * deadline); any relayer (`msg.sender`) submits it and pays the gas. The
+   * recovered signer is passed as the withdrawing caller, so the timelock
+   * contracts' `caller == lock.recipient` checks apply exactly as in the
+   * direct `withdraw` path — the relayer never receives anything.
+   * Permissionless + single-shot (sequential per-signer nonce + deadline).
+   * ERC-1271 signatures accepted (Safe and other smart wallets).
+   */
+  function withdrawFor(uint256 id, bool skipSwap, WithdrawAuth calldata auth_) external {
+    bytes32 structHash = keccak256(
+      abi.encode(WITHDRAW_AUTH_TYPEHASH, auth_.recipient, id, skipSwap, auth_.nonce, auth_.deadline)
+    );
+    _consumeSponsorAuth(auth_.recipient, auth_.nonce, auth_.deadline, structHash, auth_.signature);
+    timelockERC20Contract.withdraw(id, auth_.recipient, skipSwap);
+    timelockERC721Contract.withdraw(id, auth_.recipient);
+    timelockERC1155Contract.withdraw(id, auth_.recipient);
+    emit TimelockWithdrawnFor(id, auth_.recipient, msg.sender, block.timestamp);
+  }
+
+  /// @notice EIP-712 domain separator for sponsored intents, scoped to this
+  /// router on the current chain. Exposed so clients can build/verify digests.
+  function sponsoredDomainSeparator() external view returns (bytes32) {
+    return _domainSeparator();
+  }
+
+  /**
+   * @notice ERC-5267 domain discovery for the sponsored-intent EIP-712 domain.
+   * `fields = 0x0f` advertises name, version, chainId and verifyingContract
+   * (no salt, no extensions).
+   */
+  function eip712Domain()
+    external
+    view
+    returns (
+      bytes1 fields,
+      string memory name,
+      string memory version,
+      uint256 chainId,
+      address verifyingContract,
+      bytes32 salt,
+      uint256[] memory extensions
+    )
+  {
+    return (hex"0f", "10102 Timelock Sponsored", "1", block.chainid, address(this), bytes32(0), new uint256[](0));
+  }
+
+  /**
+   * @notice Cancel any not-yet-relayed sponsored authorization by advancing
+   * the caller's sequential nonce. An outstanding signed `WithdrawAuth`
+   * becomes permanently unusable, since `_consumeSponsorAuth` requires an
+   * exact nonce match.
+   */
+  function invalidateSponsorNonce() external {
+    uint256 invalidated;
+    unchecked {
+      invalidated = sponsorNonce[msg.sender]++;
+    }
+    emit SponsorNonceInvalidated(msg.sender, invalidated);
+  }
+
+  function _domainSeparator() internal view returns (bytes32) {
+    return keccak256(
+      abi.encode(_EIP712_DOMAIN_TYPEHASH, _EIP712_NAME_HASH, _EIP712_VERSION_HASH, block.chainid, address(this))
+    );
+  }
+
+  /**
+   * @dev Validate + consume a single-shot sponsored authorization: deadline
+   * not passed, exact sequential nonce, and a signature valid for `signer_`
+   * (EOA ECDSA or ERC-1271). Consumes the nonce on success. Mirrors the EOA
+   * legacy router's `_consumeSponsorAuth` — see its NOTE on the inherent
+   * revocability of ERC-1271 contract signatures.
+   */
+  function _consumeSponsorAuth(
+    address signer_,
+    uint256 nonce_,
+    uint256 deadline_,
+    bytes32 structHash_,
+    bytes calldata signature_
+  ) internal {
+    if (block.timestamp > deadline_) revert SponsorshipExpired();
+    if (nonce_ != sponsorNonce[signer_]) revert InvalidSponsorNonce();
+    bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash_));
+    if (!SignatureChecker.isValidSignatureNow(signer_, digest, signature_)) {
+      revert InvalidSponsorSignature();
+    }
+    unchecked {
+      sponsorNonce[signer_] = nonce_ + 1;
+    }
   }
 
   // ───────────── private ─────────────

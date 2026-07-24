@@ -1076,6 +1076,26 @@ becomes "Create-flow v2 for legacies + timelocks".
 > it for a low-risk string; revisit only if those contracts are ever migrated
 > for a stronger reason.
 
+> **STATUS (2026-07-24): Sponsored withdraw LANDED** on `feat/create-flow-v2`.
+> `withdrawFor(uint256 id, bool skipSwap, WithdrawAuth auth)` on
+> `TimeLockRouter` — the timelock leg of the §12a primitive, motivated by the
+> gift product (recipients are often ETH-less wallets):
+>
+> - `WithdrawAuth(address recipient,uint256 timelockId,bool skipSwap,uint256
+>   nonce,uint256 deadline)` under its own domain `"10102 Timelock Sponsored"
+>   / "1"`. Same machinery as the EOA router: sequential `sponsorNonce`
+>   mapping (appended storage, auto-zero), `invalidateSponsorNonce()`,
+>   `sponsoredDomainSeparator()`, ERC-5267 `eip712Domain()`, and OZ
+>   `SignatureChecker` (ERC-1271 accepted).
+> - No owner opt-out flag (unlike sponsored claims): the signer IS the
+>   recipient the funds go to, so there is no third party whose policy could
+>   object — the relayer can only ever trigger the signer's own withdrawal.
+> - Direct `withdraw` paths byte-identical; the timelock contracts'
+>   `caller == lock.recipient` check is fed the recovered signer.
+> - Router 13.75 KiB. Suite 129/129 incl. 9 new tests (ERC-5267 parity,
+>   relayer tampering with id/skipSwap, deadline/nonce, invalidation, replay,
+>   ERC-1271 happy + non-owner-key rejection, regular-lock regression).
+
 ## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of)
 
 **Added 2026-06-15.** Two of the founder's top product asks reduce to the
