@@ -696,22 +696,42 @@ decision record but are superseded by this correction where they conflict.
 
 ## 7. Off-chain beneficiary metadata API
 
+> **Status: LANDED — as-built diverges from the sketch below.** The API lives
+> in **`computing/services/reminder-worker`** (the Railway service built for
+> the Chainlink email retirement), not `computing-admin`, and reuses its
+> existing encrypted Postgres store + EIP-712 creator-verified auth instead of
+> the plaintext schema in §7.2. See "§7.1 as-built" below and the
+> reminder-worker README for the authoritative endpoint/type reference.
+> Deltas vs. the sketch:
+>
+> - **Per-recipient names/emails** were already covered by the worker's
+>   `recipient` table (`/ingest-legacy`, `/recipients`, `/erase-legacy`) —
+>   AES-256-GCM encrypted, crypto-shred erasure. Nothing new was needed.
+> - **Legacy title/note** got a new encrypted `legacy_meta` table with
+>   `POST /legacy-meta` (write, `SetLegacyMeta` typed sig, creator-only) and
+>   `POST /legacy-meta-read` (read, `ReadLegacyMeta` typed sig, creator-only).
+>   `/erase-legacy` also shreds the meta row.
+> - **Reads are creator-signed, not public** — §7.5's CDN-cacheable public GET
+>   was dropped deliberately: names/titles are exactly the PII we removed from
+>   the chain, so serving them unauthenticated would undo the strip. The UI's
+>   failure mode is unchanged (address-only view).
+> - The stored title feeds the reminder emails' `legacy_name` variable
+>   (subgraph `name` is empty for post-strip legacies).
+> - No new infra: the worker's Railway Postgres bootstraps the table
+>   idempotently on deploy.
+
 ### 7.1 Home for the API
 
-Options:
-- **Extend `computing-admin`** (existing Next.js backend with a database + auth
-  infrastructure).
-- **New service `computing-api`.**
-
-Recommendation: **extend `computing-admin`** for v2.
-
-Rationale: `computing-admin` already has the DB layer and a deployment pipeline
-with the right operational maturity (monitoring, auth middleware, backup
-policies). Adding a `/legacies/:chainId/:address/metadata` endpoint is a
-straight extension. Spinning up a new service adds ops surface area that
-doesn't pay back until we have a reason to split (e.g. different SLAs,
-different scaling profile). Revisit if metadata read volume grows to the
-point it affects admin-dashboard latency.
+Original options considered:
+- **Extend `computing-admin`** — *rejected on inspection*: it turned out to be
+  a frontend-only Vite SPA (no server, no DB), so the premise of this option
+  was wrong.
+- **New service `computing-api`** — unnecessary ops surface.
+- **Extend `computing/services/reminder-worker`** ✅ — already deployed on
+  Railway with an encrypted Postgres store, EIP-712 wallet-signature auth that
+  verifies `signer == legacy.creator()` on-chain, and GDPR crypto-shred
+  semantics. The metadata API is a natural extension and shares the same
+  privacy posture.
 
 ### 7.2 Data model
 
