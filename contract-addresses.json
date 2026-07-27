@@ -197,6 +197,9 @@
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
+    },
+    "ERC20Token_R2USD": {
+      "address": "0xC8ab95d850Fb7fAf5192B4e01D46008E053952d3"
     }
   },
   "localhost": {
