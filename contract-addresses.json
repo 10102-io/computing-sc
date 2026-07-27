@@ -30,7 +30,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0xAe0066D8C9088df823d8D474f9756Cd462C49A52"
+      "implementation": "0x904f799525688E726D3ec1A354B4C091F20f6261"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
@@ -65,7 +65,7 @@
     },
     "TimeLockRouter": {
       "address": "0x04FB4160c519578E310ee9cC7b966B88291E5F20",
-      "implementation": "0x296Cfff4Ad123F978a70A6fBB30d5607dfCBbA05"
+      "implementation": "0x36F56298c5096860a775e57d701bD9D6285EC7Cd"
     },
     "TimelockERC20": {
       "address": "0xB7860eA69109142Bcf7ff4BC0FE52460D96a29B8",
@@ -193,7 +193,7 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0xbF10F978dE45e76338C1558cc26Ca9feAFF69922"
+      "address": "0xdeAe4937F6c7F0b8a67205B09f0f24d1CF23fca7"
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"

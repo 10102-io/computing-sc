@@ -2,116 +2,6 @@
   "address": "0x04FB4160c519578E310ee9cC7b966B88291E5F20",
   "abi": [
     {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "previousAdmin",
-          "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "newAdmin",
-          "type": "address"
-        }
-      ],
-      "name": "AdminChanged",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "beacon",
-          "type": "address"
-        }
-      ],
-      "name": "BeaconUpgraded",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "implementation",
-          "type": "address"
-        }
-      ],
-      "name": "Upgraded",
-      "type": "event"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "fallback"
-    },
-    {
-      "inputs": [],
-      "name": "admin",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "implementation",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "implementation_",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        }
-      ],
-      "name": "upgradeTo",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "data",
-          "type": "bytes"
-        }
-      ],
-      "name": "upgradeToAndCall",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "receive"
-    },
-    {
       "inputs": [],
       "name": "DuplicateTokenAddress",
       "type": "error"
@@ -134,6 +24,16 @@
     {
       "inputs": [],
       "name": "InvalidRecipient",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidSponsorNonce",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidSponsorSignature",
       "type": "error"
     },
     {
@@ -189,6 +89,16 @@
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "Permit2AmountOverflow",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Permit2SpenderMismatch",
+      "type": "error"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -197,6 +107,11 @@
         }
       ],
       "name": "SafeERC20FailedOperation",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "SponsorshipExpired",
       "type": "error"
     },
     {
@@ -254,6 +169,56 @@
         }
       ],
       "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "signer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "invalidated",
+          "type": "uint256"
+        }
+      ],
+      "name": "SponsorNonceInvalidated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "relayer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TimelockWithdrawnFor",
       "type": "event"
     },
     {
@@ -355,6 +320,165 @@
         }
       ],
       "name": "createSoftTimelock",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "storageToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amountOutMin",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "deadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockETHSwapInputData",
+              "name": "timelockETHSwap",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC20InputData[]",
+              "name": "timelockERC20",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC721InputData[]",
+              "name": "timelockERC721",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC1155InputData[]",
+              "name": "timelockERC1155",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bufferTime",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.TimelockSoft",
+          "name": "timelockSoft",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "token",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "uint160",
+                      "name": "amount",
+                      "type": "uint160"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "expiration",
+                      "type": "uint48"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "nonce",
+                      "type": "uint48"
+                    }
+                  ],
+                  "internalType": "struct IAllowanceTransfer.PermitDetails[]",
+                  "name": "details",
+                  "type": "tuple[]"
+                },
+                {
+                  "internalType": "address",
+                  "name": "spender",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "sigDeadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IAllowanceTransfer.PermitBatch",
+              "name": "permitBatch",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.Permit2CreateBundle",
+          "name": "permit2_",
+          "type": "tuple"
+        }
+      ],
+      "name": "createSoftTimelockWithPermit2",
       "outputs": [],
       "stateMutability": "payable",
       "type": "function"
@@ -550,6 +674,165 @@
               "type": "uint256"
             },
             {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.TimelockRegular",
+          "name": "timelockRegular",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "token",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "uint160",
+                      "name": "amount",
+                      "type": "uint160"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "expiration",
+                      "type": "uint48"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "nonce",
+                      "type": "uint48"
+                    }
+                  ],
+                  "internalType": "struct IAllowanceTransfer.PermitDetails[]",
+                  "name": "details",
+                  "type": "tuple[]"
+                },
+                {
+                  "internalType": "address",
+                  "name": "spender",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "sigDeadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IAllowanceTransfer.PermitBatch",
+              "name": "permitBatch",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.Permit2CreateBundle",
+          "name": "permit2_",
+          "type": "tuple"
+        }
+      ],
+      "name": "createTimelockWithPermit2",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "storageToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amountOutMin",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "deadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockETHSwapInputData",
+              "name": "timelockETHSwap",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC20InputData[]",
+              "name": "timelockERC20",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC721InputData[]",
+              "name": "timelockERC721",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC1155InputData[]",
+              "name": "timelockERC1155",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "duration",
+              "type": "uint256"
+            },
+            {
               "internalType": "address",
               "name": "recipient",
               "type": "address"
@@ -573,6 +856,218 @@
       "name": "createTimelockedGift",
       "outputs": [],
       "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "storageToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amountOutMin",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "deadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockETHSwapInputData",
+              "name": "timelockETHSwap",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC20InputData[]",
+              "name": "timelockERC20",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC721InputData[]",
+              "name": "timelockERC721",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC1155InputData[]",
+              "name": "timelockERC1155",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "duration",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "giftName",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.TimelockGift",
+          "name": "timelockGift",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "token",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "uint160",
+                      "name": "amount",
+                      "type": "uint160"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "expiration",
+                      "type": "uint48"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "nonce",
+                      "type": "uint48"
+                    }
+                  ],
+                  "internalType": "struct IAllowanceTransfer.PermitDetails[]",
+                  "name": "details",
+                  "type": "tuple[]"
+                },
+                {
+                  "internalType": "address",
+                  "name": "spender",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "sigDeadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IAllowanceTransfer.PermitBatch",
+              "name": "permitBatch",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.Permit2CreateBundle",
+          "name": "permit2_",
+          "type": "tuple"
+        }
+      ],
+      "name": "createTimelockedGiftWithPermit2",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "eip712Domain",
+      "outputs": [
+        {
+          "internalType": "bytes1",
+          "name": "fields",
+          "type": "bytes1"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "chainId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "verifyingContract",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "salt",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "extensions",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -662,6 +1157,13 @@
     },
     {
       "inputs": [],
+      "name": "invalidateSponsorNonce",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "owner",
       "outputs": [
         {
@@ -727,6 +1229,38 @@
       "name": "setUniswapRouter",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "sponsorNonce",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "sponsoredDomainSeparator",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -867,23 +1401,51 @@
     {
       "inputs": [
         {
-          "internalType": "address",
-          "name": "_logic",
-          "type": "address"
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
         },
         {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
+          "internalType": "bool",
+          "name": "skipSwap",
+          "type": "bool"
         },
         {
-          "internalType": "bytes",
-          "name": "_data",
-          "type": "bytes"
+          "components": [
+            {
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.WithdrawAuth",
+          "name": "auth_",
+          "type": "tuple"
         }
       ],
+      "name": "withdrawFor",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "stateMutability": "payable",
-      "type": "constructor"
+      "type": "receive"
     }
   ],
   "transactionHash": "0xb150b37c287bf67af8d940ff5ab6948887a92631bcd333c865b5c559a3335c8d",
