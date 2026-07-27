@@ -21,12 +21,26 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
-## [Unreleased — `feat/create-flow-v2`, live on Sepolia]
+## v2026.07.27 — Create-flow v2 live on mainnet: one-confirmation creates, PII-free events, tx-based consent
 
 The create-flow v2 program: single-confirmation legacy creation and the
-"final architecture" pass ahead of the mainnet upgrade + audit. Full
-design record in `docs/plans/create-flow-v2.md`; deployed and smoke-tested
-on Sepolia (all router/verifier proxies upgraded).
+"final architecture" pass ahead of the audit. Full design record in
+`docs/plans/create-flow-v2.md`; rehearsed on Sepolia, then deployed to
+**mainnet 2026-07-27** (all proxies upgraded in place — addresses unchanged):
+
+| Contract | Proxy | New implementation |
+|---|---|---|
+| `TransferEOALegacyRouter` | `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b` | `0x15123649ce7229f98aC25c802e2753be05Cb87A8` |
+| `TimeLockRouter` | `0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42` | `0x9f44Af0D30fFee271131059CD067ea902850CFc1` |
+| `EIP712LegacyVerifier` | `0x3d6cC3782EC0DF21B58c4C9F5ecf23e485e05F9e` | `0x7bcA85C9fE3DD8FAE178640eaebbaB13f5DA97DE` |
+| `TransferEOALegacy` (clone target) | — | `0x148469D1fF87a3FBE3A1fCE14BC7e348f2df61A3` |
+
+Post-upgrade wiring: consent recorders enabled for both routers,
+`TimeLockRouter.consentVerifier` set, and active terms published as
+**`v2026-06`** (keccak256 of `docs/tos/v2026-06.txt`, a snapshot of
+https://10102.io/disclosures "Last updated: June 04, 2026"). All state
+verified preserved (`timelockCounter`, whitelist, uniswap router, owners);
+all implementations Etherscan-verified and proxies re-linked.
 
 - **Permit2 `AllowanceTransfer` creates** (`createLegacyV2`,
   `createTimelock*WithPermit2`): one signed batch replaces N approve txs;
