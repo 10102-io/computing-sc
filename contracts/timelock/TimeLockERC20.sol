@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -11,7 +11,7 @@ import {TimelockHelper} from "./TimelockHelper.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
 
-contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
+contract TimelockERC20 is Initializable, ReentrancyGuard, OwnableUpgradeable {
   using SafeERC20 for IERC20;
 
   // ───────────── Struct ─────────────
@@ -81,7 +81,6 @@ contract TimelockERC20 is Initializable, ReentrancyGuardUpgradeable, OwnableUpgr
   // ───────────── Init ─────────────
   function initialize(address initialOwner, address _routerAddresses) public initializer {
     __Ownable_init(initialOwner);
-    __ReentrancyGuard_init();
     routerAddresses = _routerAddresses;
   }
 

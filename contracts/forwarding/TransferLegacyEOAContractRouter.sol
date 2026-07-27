@@ -49,6 +49,15 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // "Founder review (2026-06-19)".
   mapping(uint256 => bool) public sponsoredClaimsDisabled;
 
+  // Emergency circuit breaker for NEW legacy creation only. APPENDED after
+  // `sponsoredClaimsDisabled` (layout-safe, auto-zero = unpaused).
+  // Deliberately narrow: claims, check-ins, deletes, withdrawals and every
+  // other exit path are NEVER pausable — users must always be able to get
+  // their assets out. Create is the only surface where halting during an
+  // incident (bad clone impl, bad dependency, exploit-in-progress) protects
+  // users instead of trapping them.
+  bool public createPaused;
+
   // EIP-712 typed-data constants (compile-time — occupy no storage slots).
   // The domain is recomputed per call from `block.chainid + address(this)` so
   // a signed intent can never be replayed cross-chain or against a different
@@ -121,6 +130,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error InvalidSponsorSignature();
   error SponsoredClaimsDisabled();
   error Permit2SpenderMismatch();
+  error CreationPaused();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -192,6 +202,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// (`invalidated`), cancelling any outstanding signed-but-unrelayed
   /// sponsored authorization carrying that nonce.
   event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
+  /// @notice Creation circuit breaker toggled. Only `createLegacy` /
+  /// `createLegacyV2` are affected; every exit path stays live.
+  event CreatePauseSet(bool paused);
   /// @notice PII-free v2 create event: no name, no note, no nicknames — those
   /// live in the off-chain metadata API (create-flow-v2.md §7). The subgraph
   /// indexes creator → legacy edges + claim-relevant config from this alone.
@@ -262,6 +275,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    */
   function setLegacyImplementation(address impl_) external onlyCodeAdmin {
     legacyImplementation = impl_;
+  }
+
+  /**
+   * @dev Emergency circuit breaker for creation. Pauses `createLegacy` /
+   * `createLegacyV2` only — never claims, check-ins, deletes or withdrawals
+   * (users must always be able to exit). Gated on the code admin, the same
+   * role trusted to swap the clone implementation itself.
+   */
+  function setCreatePaused(bool paused_) external onlyCodeAdmin {
+    createPaused = paused_;
+    emit CreatePauseSet(paused_);
   }
 
   /**
@@ -378,6 +402,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint256 signatureTimestamp,
     bytes calldata agreementSignature
   ) internal returns (uint256 newLegacyId, address legacyAddress) {
+    if (createPaused) revert CreationPaused();
     if (extraConfig_.lackOfOutgoingTxRange == 0) revert ActivationTriggerInvalid();
     //Check if msg.sender has already created a legacy
     if (_isCreateLegacy(msg.sender)) revert SenderIsCreatedLegacy(msg.sender);
@@ -388,9 +413,20 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       ? _cloneLegacy(legacyImplementation, msg.sender)
       : _createLegacy(legacyCreationCode, msg.sender);
 
-    //Verify + store user agreement signature (TOS stays a first-class on-chain
-    //artifact — see create-flow-v2.md §6.5)
-    verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);
+    // Consent stays a first-class on-chain artifact, in one of two
+    // modalities (create-flow-v2.md §6.5 + §12c "tx-based consent"):
+    // - Empty `agreementSignature` = tx-based consent. The creator IS the tx
+    //   signer, so the tx signature is the cryptographic attribution; the
+    //   verifier records msg.sender's acceptance of the active terms
+    //   (reverts if none are published — consent must bind to a document).
+    //   No separate wallet popup, and no TimestampOutOfRange staleness class.
+    // - Non-empty = the classic signed-message path (pre-v2 frontends, and
+    //   flows where the consenting party is not the tx sender).
+    if (agreementSignature.length == 0) {
+      verifier.recordConsent(msg.sender, uint256(uint160(legacyAddress)));
+    } else {
+      verifier.storeLegacyAgreement(msg.sender, legacyAddress, signatureTimestamp, agreementSignature);
+    }
 
     uint256 numberOfBeneficiaries = ITransferEOALegacy(legacyAddress).initialize(
       newLegacyId,

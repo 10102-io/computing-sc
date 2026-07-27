@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.35;
 
+// OZ >=5.5: ReentrancyGuard is stateless (ERC-7201 slot, same slot the old
+// upgradeable variant used), so it is proxy-safe and needs no initializer.
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {LegacyFactory} from "../common/LegacyFactory.sol";
@@ -14,7 +16,7 @@ import {ISafeWallet} from "../interfaces/ISafeWallet.sol";
 import {MultisigLegacyStruct} from "../libraries/MultisigLegacyStruct.sol";
 import {EIP712LegacyVerifier} from "../term/VerifierTerm.sol";
 import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
-contract MultisigLegacyRouter is LegacyRouter, LegacyFactory, ReentrancyGuardUpgradeable {
+contract MultisigLegacyRouter is Initializable, LegacyRouter, LegacyFactory, ReentrancyGuard {
   EIP712LegacyVerifier public verifier;
   address public premiumSetting;
 
@@ -82,7 +84,6 @@ contract MultisigLegacyRouter is LegacyRouter, LegacyFactory, ReentrancyGuardUpg
   }
 
   function initialize(address _deployerContract, address _premiumSetting, address _verifier) public initializer {
-    __ReentrancyGuard_init();
     legacyDeployerContract = _deployerContract;
     premiumSetting = _premiumSetting;
     verifier = EIP712LegacyVerifier(_verifier);

@@ -16,7 +16,9 @@ import * as hre from "hardhat";
 import { getContracts, saveContract, shouldVerify, verifyProxyOnEtherscan } from "./utils";
 
 // Contract name == deployment name for all of these (files may differ).
-const ALLOWED = ["TransferEOALegacyRouter", "TimeLockRouter", "MultisigLegacyRouter"];
+// EIP712LegacyVerifier rides the same path: it sits behind the same
+// DefaultProxyAdmin-managed TransparentProxy as the routers.
+const ALLOWED = ["TransferEOALegacyRouter", "TimeLockRouter", "MultisigLegacyRouter", "EIP712LegacyVerifier"];
 
 async function main() {
   const routerName = process.env.ROUTER;

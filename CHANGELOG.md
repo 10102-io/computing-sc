@@ -21,6 +21,35 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## [Unreleased — `feat/create-flow-v2`, live on Sepolia]
+
+The create-flow v2 program: single-confirmation legacy creation and the
+"final architecture" pass ahead of the mainnet upgrade + audit. Full
+design record in `docs/plans/create-flow-v2.md`; deployed and smoke-tested
+on Sepolia (all router/verifier proxies upgraded).
+
+- **Permit2 `AllowanceTransfer` creates** (`createLegacyV2`,
+  `createTimelock*WithPermit2`): one signed batch replaces N approve txs;
+  tokens stay in the owner's wallet until claim.
+- **PII strip**: names/nicknames/notes removed from EOA legacy storage and
+  events (`TransferEOALegacyCreatedV2` et al.); metadata lives off-chain.
+- **Tx-based consent + versioned terms**: the verifier gained an
+  owner-published active-terms registry (version tag + content hash),
+  dual-accepting signed messages, and a generalized `recordConsent`
+  registry so the create tx itself records acceptance (empty-signature
+  path on the EOA router; gift-timelock consent parity on TimeLockRouter).
+- **Gas-sponsored flows**: EIP-712 + ERC-1271 sponsored claims,
+  check-ins, and timelock withdrawals (sequential nonces, ERC-5267
+  discovery, owner opt-out).
+- **Create pause**: owner-gated circuit breaker on router create functions
+  only — claims, check-ins, deletes, withdrawals are never pausable.
+- **Toolchain**: Solc 0.8.35 (cancun), Hardhat 2.28.6, and OpenZeppelin
+  5.6.1 — the OZ bump migrated the five proxied contracts off the removed
+  `ReentrancyGuardUpgradeable` / `ERC721HolderUpgradeable` /
+  `ERC1155HolderUpgradeable` onto the now-stateless main-package variants
+  (same ERC-7201 slot, storage layouts verified byte-identical; 158 tests
+  green).
+
 ## v2026.06.08 — Email reminders moved off-chain: Chainlink Automation + Functions retired (USD price feeds retained)
 
 _Released to `main` 2026-06-08 (CalVer `v2026.06.08`). The on-chain changes

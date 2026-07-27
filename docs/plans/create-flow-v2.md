@@ -1103,6 +1103,35 @@ becomes "Create-flow v2 for legacies + timelocks".
 >   relayer tampering with id/skipSwap, deadline/nonce, invalidation, replay,
 >   ERC-1271 happy + non-owner-key rejection, regular-lock regression).
 
+> **STATUS (2026-07-27): Versioned terms acceptance LANDED** (deferred item
+> `legacy-tos-version`, pulled into this round on the founder's ask). A
+> verifier-only impl upgrade — routers untouched, `storeLegacyAgreement`
+> keeps its exact external signature:
+>
+> - Owner publishes `{version tag, keccak256(full ToS document text)}` via
+>   `setActiveTerms(string,bytes32)` (both-or-neither validated; empty+zero
+>   disables). `termsVersionOf[hash]` remembers historical tags.
+> - Users sign `"… I agree to 10102's Terms of Service (version vX) at
+>   timestamp T."`; the verifier **dual-accepts** the legacy un-versioned
+>   sentence so pre-upgrade frontends / already-stashed signatures keep
+>   working (recorded with a zero hash). Versioned consents snapshot
+>   `signatureTermsHash[signature] = activeTermsHash` and emit additive
+>   `LegacySignedVersioned(user, legacyId, ts, tag, hash)`.
+> - `generateVersionedMessage(ts)` view gives frontends byte-parity with
+>   verification; `getUserLegacy` now reconstructs the exact historical
+>   message per record (also fixes a pre-existing bug where it hashed the
+>   unassigned named return, i.e. always timestamp 0).
+> - Appended storage only (`activeTermsVersion`, `activeTermsHash`, two
+>   mappings) — layout-safe on the transparent proxy; upgraded on Sepolia
+>   (impl `0xc5b3AF7d…`), QA terms `v1-qa` published. Mainnet publication
+>   waits on the canonical ToS document hash: `scripts/set-active-terms.ts`.
+> - Frontend: `useLegacyMessage` reads `generateVersionedMessage` from the
+>   verifier (fallback to the legacy sentence on pre-upgrade chains), and
+>   `ConfigWillForm` now re-signs when the stashed agreement is >25 min old
+>   (the verifier's ±30 min window made stale stashes a guaranteed
+>   `TimestampOutOfRange` revert — a live prod landmine).
+> - 13 new tests in `test/TermsVersioning.spec.ts`; suite 142/142.
+
 ## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of)
 
 **Added 2026-06-15.** Two of the founder's top product asks reduce to the
@@ -1551,6 +1580,71 @@ Auth (§7.3) extends to accept writes from `creator()` **or** the designated
 `trustee.address` (the trustee designation must itself have been written by
 `creator()` first). All new fields are PII-adjacent → covered by the same
 soft-delete / audit-log GDPR path (§7.4).
+
+## 12c. Tx-based consent + consent parity + create pause — SHIPPED 2026-07-27
+
+The "now or never" contract round locked before the audit window. Three
+pieces, motivated by (a) the 4-popup QA feedback on the v2 create flow and
+(b) the `timelock-consent-parity` / incident-response gaps flagged in review.
+
+### 12c.1 Tx-based consent (second consent modality)
+
+The signed-message ToS artifact (§6.5) assumed the consenting party signs a
+separate message. When the consenting party IS the transaction signer, that
+popup is redundant: the transaction signature is already wallet-attributable,
+timestamped, and — once the router records it — version-bound on-chain.
+Clickwrap + on-chain record is stronger evidence than typical web2 flows.
+
+- `EIP712LegacyVerifier` gains a consent registry (APPENDED storage):
+  `consentRecorders` (owner-managed allowlist of router contracts),
+  `recordConsent(user, refId)` (reverts `NoActiveTerms` when no terms are
+  published — consent must always bind to an exact document hash),
+  `userConsents[user]` (append-only `Consent{termsHash, timestamp, recorder,
+  refId}` log), `getUserConsent` view resolving the historical version tag,
+  and the `ConsentRecorded` event.
+- `TransferEOALegacyRouter._createLegacyCore`: **empty `agreementSignature`
+  = tx-based consent** → `verifier.recordConsent(msg.sender,
+  uint160(legacyAddress))`. Non-empty keeps the classic
+  `storeLegacyAgreement` path byte-for-byte (pre-v2 frontends, Safe flows,
+  future sponsored creates where msg.sender isn't the consenting party).
+- Frontend: the terms checkbox (modal + a new one on the create form for
+  deep links) is the affirmative act; `createLegacyV2` passes `(0, "0x")`.
+  The whole TimestampOutOfRange staleness/re-sign machinery disappears on
+  this path. Minimal EOA create is now **1 popup** (the tx) — 2 with a
+  Permit2 batch, +1 only if the user typed an (optional) display name.
+
+### 12c.2 Timelock consent parity (`timelock-consent-parity`)
+
+Gift timelocks are third-party-claimable → estate exposure comparable to
+legacies, but carried zero consent proof. `TimeLockRouter` gains an
+owner-set `consentVerifier` (APPENDED storage, address(0) = feature off);
+`_createTimelockedGift` records the creator's tx-based consent bound to the
+new timelock id. Self-claim regular/soft timelocks intentionally record
+nothing (they only lock the creator's own assets). Zero added popups — the
+gift UX ("average Joe" product) is unchanged.
+
+### 12c.3 Create pause (circuit breaker)
+
+Both routers gain `createPaused` + `setCreatePaused` (owner on
+`TimeLockRouter`, code-admin on the EOA router — the same role trusted to
+swap the clone implementation). Gates ONLY the create paths
+(`_createLegacyCore`, `_createTimelockRegular/Soft/Gift`); claims,
+check-ins, deletes, withdrawals and unlocks are NEVER pausable — in an
+incident we stop new exposure without ever trapping users' exits.
+
+### 12c.4 Status
+
+- Tests: `test/ConsentAndPause.spec.ts` (16 cases: registry auth, both
+  consent modalities, parity, fail-closed wiring, pause never blocking
+  exits). Full suite 158 passing.
+- Sepolia: all three proxies upgraded 2026-07-27 (verifier
+  `0xf47161…`, EOA router `0x779263…`, timelock router `0xB44702…`),
+  wired via `scripts/wire-consent.ts` (idempotent, part of the mainnet
+  runbook — requires active terms via `set-active-terms.ts` first),
+  proxies re-linked on Etherscan. Live smoke: gift create recorded
+  consent bound to terms `v1-qa` on the real verifier.
+- Subgraph: `ConsentRecorded` is deliberately not indexed for now — no UI
+  reads it; auditability is served by the event log + `getUserConsent`.
 
 ## 13. Audit + test strategy
 

@@ -14,7 +14,7 @@
     },
     "EIP712LegacyVerifier": {
       "address": "0x36e4A2f7d7c3Be6Bd8179FA110eFd9548E893442",
-      "implementation": "0x930e28A81D06065da0B477168a1837bFB1E47Adf"
+      "implementation": "0xf47161Dd8404CD8DA8Bb57b7F5653a88eA4fF0D1"
     },
     "LegacyDeployer": {
       "address": "0x0D33b36836d05549Cbd18379BC488D1Db90CEB07",
@@ -30,7 +30,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x904f799525688E726D3ec1A354B4C091F20f6261"
+      "implementation": "0x779263389D6740E66CeFc1db35904b4328CdfE29"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
@@ -65,7 +65,7 @@
     },
     "TimeLockRouter": {
       "address": "0x04FB4160c519578E310ee9cC7b966B88291E5F20",
-      "implementation": "0x36F56298c5096860a775e57d701bD9D6285EC7Cd"
+      "implementation": "0xB4470229B79821Ed437eDCc750eF86a321E7c885"
     },
     "TimelockERC20": {
       "address": "0xB7860eA69109142Bcf7ff4BC0FE52460D96a29B8",

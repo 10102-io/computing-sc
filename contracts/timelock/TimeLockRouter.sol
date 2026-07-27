@@ -22,6 +22,7 @@ import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
 import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
+import {IEIP712LegacyVerifier} from "../interfaces/IEIP712LegacyVerifier.sol";
 
 contract TimeLockRouter is OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -124,6 +125,24 @@ contract TimeLockRouter is OwnableUpgradeable {
   /// auto-zero — layout-safe on upgrade, no reinitializer needed.
   mapping(address => uint256) public sponsorNonce;
 
+  // ───── Consent parity + create pause (create-flow-v2.md §12c) ─────
+  // APPENDED after `sponsorNonce` (layout-safe, auto-zero).
+
+  /// @notice EIP712LegacyVerifier used to record tx-based consent for
+  /// third-party-claimable creates (gifts). Gift timelocks carry estate
+  /// exposure comparable to legacies (`timelock-consent-parity`), so their
+  /// creation records wallet-attributable acceptance of the active terms —
+  /// the create tx signature is the attribution, no extra popup. Self-claim
+  /// regular/soft timelocks stay consent-free (they only lock the creator's
+  /// own assets). Unset (address(0)) skips recording, so deployments without
+  /// a verifier keep working.
+  IEIP712LegacyVerifier public consentVerifier;
+
+  /// @notice Emergency circuit breaker for NEW timelock creation only.
+  /// Withdrawals, soft-unlocks and sponsored withdrawals are NEVER pausable —
+  /// users must always be able to exit.
+  bool public createPaused;
+
   // EIP-712 typed-data constants (compile-time — no storage slots). Domain is
   // recomputed per call from `block.chainid + address(this)` so a signed
   // intent can never replay cross-chain or against a different router. NOTE:
@@ -148,9 +167,14 @@ contract TimeLockRouter is OwnableUpgradeable {
   error SponsorshipExpired();
   error InvalidSponsorNonce();
   error InvalidSponsorSignature();
+  error CreationPaused();
 
   event TimelockWithdrawnFor(uint256 indexed id, address indexed recipient, address indexed relayer, uint256 timestamp);
   event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
+  /// @notice Creation circuit breaker toggled. Only the create paths are
+  /// affected; withdrawals and unlocks stay live.
+  event CreatePauseSet(bool paused);
+  event ConsentVerifierSet(address indexed verifier);
 
   // ───────────── Native Token Receive ─────────────
   receive() external payable {}
@@ -171,6 +195,21 @@ contract TimeLockRouter is OwnableUpgradeable {
 
   function setUniswapRouter(address _uniswapRouter) external onlyOwner {
     uniswapRouter = IUniswapV2Router02(_uniswapRouter);
+  }
+
+  /// @notice Wire (or clear, with address(0)) the consent verifier used for
+  /// gift-timelock creates. The router must also be authorized on the
+  /// verifier via `setConsentRecorder`.
+  function setConsentVerifier(address verifier_) external onlyOwner {
+    consentVerifier = IEIP712LegacyVerifier(verifier_);
+    emit ConsentVerifierSet(verifier_);
+  }
+
+  /// @notice Emergency circuit breaker for creation. Pauses all `create*`
+  /// paths only — never withdrawals or unlocks (users must always exit).
+  function setCreatePaused(bool paused_) external onlyOwner {
+    createPaused = paused_;
+    emit CreatePauseSet(paused_);
   }
 
   /// @param ethAmountWei Amount of ETH in wei (e.g. msg.value).
@@ -217,6 +256,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function _createTimelockRegular(TimelockRegular calldata timelockRegular) private {
+    if (createPaused) revert CreationPaused();
     if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
 
     timelockCounter++;
@@ -278,6 +318,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function _createSoftTimelock(TimelockSoft calldata timelockSoft) private {
+    if (createPaused) revert CreationPaused();
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
 
     timelockCounter++;
@@ -330,10 +371,18 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function _createTimelockedGift(TimelockGift calldata timelockGift) private {
+    if (createPaused) revert CreationPaused();
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
 
     timelockCounter++;
+
+    // Consent parity: gifts are third-party-claimable, so record the
+    // creator's tx-based acceptance of the active terms, bound to this
+    // timelock id. The create tx signature is the attribution — no popup.
+    if (address(consentVerifier) != address(0)) {
+      consentVerifier.recordConsent(msg.sender, timelockCounter);
+    }
 
     if (timelockGift.timelockERC20.length > 0 || timelockGift.timelockETHSwap.storageToken != address(0)) {
       _handleTimelockGiftERC20(

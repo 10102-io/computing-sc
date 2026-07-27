@@ -19,6 +19,7 @@ import { getContracts } from "./utils";
 const TARGETS: Record<string, string> = {
   TransferEOALegacyRouter: "TransferEOALegacyRouter",
   TimeLockRouter: "TimeLockRouter",
+  EIP712LegacyVerifier: "EIP712LegacyVerifier",
 };
 
 async function main() {
