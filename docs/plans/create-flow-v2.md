@@ -2,19 +2,24 @@
 
 **Status**: In progress — sponsored sub-track (§12a) is the first vertical
 slice; design decisions locked 2026-06-18 (see §12a "Decisions locked"). Permit2
-+ off-chain PII tracks still planned.
++ off-chain PII tracks still planned. Naming cleanup (§5.7) and advanced
+legal / B2B features (§12b) folded in 2026-06-23.
 **Priority**: Next `computing-sc` milestone after EIP-1167
 **Created**: 2026-04-22
 **Bundle**: Permit2 + off-chain beneficiary metadata + **sponsored claims /
-sponsored owner check-in** (all three bundled because each requires a
+sponsored owner check-in** + **v2 naming cleanup** + **advanced legal / B2B
+metadata** (all bundled because the on-chain pieces each require a
 `TransferEOALegacyRouter` redeploy + re-verify + artifact reconcile cycle —
 splitting them would multiply the contract-ops overhead for no benefit). The
-sponsorship track is specced in §5.6 and was added 2026-06-15 (decision:
-bundle rather than ship as a standalone train).
+sponsorship track is specced in §12a (added 2026-06-15); naming in §5.7 and the
+legal/B2B feature set in §12b (added 2026-06-23). The decision throughout is to
+keep the on-chain delta minimal and additive and push everything that can be
+metadata off-chain (gas + GDPR + reversibility).
 **Target networks**: mainnet + Sepolia
 **Touch radius**: `computing-sc` (new router impl + clone impl + storage-layout
-bump), `computing-admin` (new metadata endpoints), `computing` (new create flow +
-API client), `computing-subgraph` (drop PII fields), one-time ETL job
+bump), `computing-admin` (new metadata endpoints + legal/B2B schema), `computing`
+(new create flow + API client + trustee/contingent/aggregation UI),
+`computing-subgraph` (drop PII fields), one-time ETL job
 
 ---
 
@@ -183,6 +188,15 @@ than the gas savings.
 
 ### 5.1 `TransferEOALegacy` clone impl — what comes out
 
+> **STATUS (2026-07-23): LANDED.** The full delete-list below is implemented
+> on `feat/create-flow-v2`. Measured effects: clone-path v1 `createLegacy`
+> gas 992,070 (down from ~1.07M); clone impl 13.97 KiB (−1.49), router
+> 16.12 KiB (−2.44). Both create paths now share `_createLegacyCore` and emit
+> only `TransferEOALegacyCreatedV2`; the v1 `TransferEOALegacyCreated` event
+> and router `setNameNote` were removed, and all remaining v1-ABI edit
+> functions accept-but-ignore their nickname/name args and emit scrubbed
+> (empty) PII fields. Subgraph impact captured in §9.
+
 Concrete delete-list in `initialize()`:
 
 - Parameter `string[] calldata nicknames` — removed.
@@ -271,6 +285,14 @@ Noteworthy properties:
   it `@dev deprecated` in NatSpec and we remove it once we've migrated the
   frontend fully (target: release v2+1).
 
+> **STATUS (2026-07-23): LANDED**, with two implementation notes vs. the
+> sketch above: (1) both entrypoints share an internal `_createLegacyCore`
+> rather than v1 literally calling v2 (same effect, no ABI-level recursion);
+> (2) `createLegacyV2` takes `Distribution[] distributions_` directly instead
+> of a one-field `LegacyMainConfigV2` wrapper struct. The Permit2 bundle shape
+> follows the §6.8 AllowanceTransfer correction, not the SignatureTransfer
+> sketch above.
+
 ### 5.3 Storage-layout bump
 
 `TransferEOALegacyRouter` gains new state:
@@ -329,6 +351,74 @@ token. Permit2 applies here the same way:
     worth it for a string that's rarely read after create. Option: leave the
     field in the struct but stop writing it (empty string). This costs one
     zero-slot write instead of a full SSTORE — ~5k gas instead of ~22k.
+
+### 5.7 Naming cleanup — drop "will" / "inheritance" / "inherits" (v2-redeployed surface only)
+
+**Added 2026-06-23.** Founder ask: use the v2 redeploy as the opportunity to
+clean product vocabulary so nothing user- or integrator-facing reads as "will",
+"inheritance", or "inherits". Decision (2026-06-19): rename **only what we are
+already redeploying in v2 — not the rest** — and **never use the word
+"inherits"** in any new copy, identifier, NatSpec, or event.
+
+**5.7.1 What's already clean (no work).** A full audit of
+`computing-sc/contracts` (2026-06-23) found the contract layer is *already*
+"Legacy"-named end to end. The only matches for `inherit`/`inheritance` are:
+
+- The folder `contracts/inheritance/` holding the **Multisig** contracts
+  (`MultisigLegacyContract.sol`, `MultisigLegacyContractRouter.sol`) and its
+  one import in `LegacyDeployer.sol`.
+- Solidity's own `is` inheritance keyword and incidental prose comments
+  (e.g. "the token will be removed"). These are language/English usage, **not**
+  product vocabulary — leave them. The constraint is about the *product* word
+  "inherits/inheritance", not the Solidity inheritance relationship.
+
+The v2-redeployed contracts themselves — `TransferLegacyEOAContract.sol`
+(`TransferEOALegacy`), `TransferLegacyEOAContractRouter.sol`
+(`TransferEOALegacyRouter`), `GenericLegacy.sol`, `TransferLegacyStruct.sol`,
+`EOALegacyFactory.sol` — contain **zero** "will"/"inheritance"/"inherits"
+identifiers. So there is nothing to rename in the contracts we redeploy.
+
+**5.7.2 Where the rename effort actually lands.**
+
+1. **New v2 surface must be born clean.** Every identifier, struct, event, and
+   NatSpec line introduced by this milestone (`createLegacyV2`,
+   `LegacyMainConfigV2`, `LegacyCreateWitness`, the `…For` sponsored
+   entrypoints, the metadata-API schema, the legal/B2B fields in §12b) uses
+   "Legacy" and never "will"/"inheritance"/"inherits". This is a review-time
+   gate, not a refactor. ("Legacy" is the kept canonical product term.)
+2. **The `inheritance/` folder is OUT of v2 scope.** It holds the Multisig
+   contracts, which §4.1 explicitly does **not** redeploy. Renaming the folder
+   (`inheritance/` → e.g. `multisig/`) is a non-redeployed change, so per the
+   "only what we redeploy" rule it does not ride v2. If a future release
+   redeploys the Multisig router, fold the folder rename in then.
+3. **Frontend "Will" vocabulary stays deferred.** The large internal
+   `Will → Legacy` rename (`WillList`, `useWillData`, `will-service.ts`,
+   `WILL_STATUS`, `wil-tabs/`, …) is tracked in `computing/docs/DEFERRED.md`
+   ("Internal `Will` → `Legacy` rename (frontend-wide)") as an isolated
+   mechanical PR. v2 does **not** absorb it — bundling a repo-wide rename into a
+   feature+contract milestone would bury the real change in review noise. v2
+   only guarantees its own *new* frontend surface (the v2 create flow,
+   trustee/contingent/aggregation UI) is clean.
+
+**5.7.3 Load-bearing identifiers that must NOT change.** Renaming must never
+touch identifiers that are part of a deployed wire contract, or we silently
+break live integrations:
+
+- **On-chain ABI already deployed**: `createLegacy`, `LegacyType`,
+  `RequiredLegacyRecord`, `LegacyExtraConfig`, the `…LegacyRouter` names — keep.
+  v2 *adds* `…V2` siblings; it does not rename the v1 surface (which stays for
+  back-compat per §5.2).
+- **URL params**: `multisig` / `eoa` / `transfer` (`LegacyTypeParam`) — keep.
+  These are public deep-link contract any agent/MCP link depends on.
+- **Persisted keys**: redux-persist / `localStorage` keys, signature-storage
+  keys — keep (renaming silently wipes users' cached state).
+- **Subgraph entity/field names** that external integrators query — keep, or
+  version the subgraph (already planned in §9/§11.5) so the rename rides a
+  schema version, never an in-place break.
+
+Net: the v2 naming "work" is almost entirely a *review discipline* on new
+surface plus one deferred-folder note — not a refactor. Captured here so it
+isn't re-litigated as "we still see Will/Inheritance somewhere."
 
 ## 6. Permit2 integration — deep dive
 
@@ -543,24 +633,105 @@ Risks and mitigations:
   they can retry. But if the tx succeeds and then the user wants to
   "undo", they can't. Standard Ethereum semantics; not new.
 
+### 6.8 Design correction (2026-07-03): AllowanceTransfer, not SignatureTransfer
+
+**Found during implementation: §6.1 and §6.5/§14.1 contradict each other, and
+the §6.3 API choice only works for the reading we must reject.** §6.1 frames
+the problem as pulling tokens from the creator's wallet *at claim time*;
+§6.5's step 2 and §14.1's "recipient = legacyAddress for the create-time
+pulls" describe Permit2 moving tokens into the legacy *at create time*. These
+are different products:
+
+- **Create-time pulls = escrow.** The owner loses use of their tokens while
+  alive. That breaks the product's core promise (non-custodial dead-man's
+  switch over the owner's *own wallet*) and would also strand ERC-20s: the
+  claim path distributes from owner-wallet allowances (`allowance(owner,
+  legacy)` + `transferFrom(owner → bene)`), never from the legacy's own token
+  balance. Rejected.
+- **Claim-time pulls with `SignatureTransfer`** would require a signed permit
+  with a ~forever `deadline` kept around until the owner dies — exactly the
+  "lingering authorization" §6.3 credits SignatureTransfer with avoiding, and
+  the payload would need to be stored/emitted and replayed at claim. Rejected.
+
+**Resolution — Permit2 `AllowanceTransfer` end-to-end (implemented on
+`feat/create-flow-v2`):**
+
+- **Create:** the creator signs ONE Permit2 `PermitBatch` (spender = the
+  CREATE2-predicted legacy address via `getNextLegacyAddress`, long
+  `expiration`, short `sigDeadline`). `createLegacyV2` calls
+  `PERMIT2.permit(msg.sender, batch, sig)` in the create tx — the signature is
+  consumed immediately (fresh deadline, §6.3's spirit preserved) and the
+  allowances live in Permit2's audited storage. Zero per-token `approve` txs;
+  the one-time ecosystem `approve(Permit2, max)` per token amortizes across
+  all Permit2 dapps (§6.7 unchanged).
+- **Claim:** `_transferAssetToBeneficiaries` now computes, per token, the
+  effective allowance as the larger of the direct ERC-20 allowance and the
+  live (unexpired) Permit2 allowance, and pulls through that single path —
+  `PERMIT2.transferFrom(owner → beneficiary)` mirrors the direct
+  `transferFrom` exactly, including the delivered-not-scheduled accounting
+  and try/catch-per-beneficiary. Pre-v2 legacies and direct-approval flows
+  are untouched (the guard returns 0 when Permit2 has no code or no grant).
+- **Custody & revocation:** tokens never move before activation; the owner
+  can revoke anytime via Permit2 `lockdown()`/re-permit — strictly better UX
+  than hunting down N direct approvals. Claims skip revoked/expired tokens
+  gracefully (tested).
+- **Witness is moot:** AllowanceTransfer has no witness mechanism, and none is
+  needed — the only thing the signature grants is "this legacy address may
+  pull these tokens", and the spender binding *is* the create-params binding
+  (the legacy's config lives at that address). The TOS signature remains a
+  separate first-class artifact (§6.5's conclusion stands); the
+  witness-coupling rationale in §6.4 is superseded.
+- **Addresses hardcoded:** router + clone reference the canonical
+  `0x…78BA3` as a compile-time constant (no storage slot, no reinitializer —
+  §5.3's `permit2` storage addition is no longer needed). Tests install a
+  byte-faithful `MockPermit2` (real domain/typehashes, real
+  nonce/expiry/lockdown semantics) at the canonical address via
+  `hardhat_setCode`; fork tests against real Permit2 remain the §13.2 gate.
+- **ABI note:** `createLegacyV2` takes `distributions_` directly instead of
+  wrapping it in the one-field `LegacyMainConfigV2` struct §5.2 sketched.
+- Sizes after this slice: router 18.56 KiB, clone 15.47 KiB (limit 24.58).
+
+Sections §6.3, §6.4, §6.5 (step 2), and §14.1 are kept above as the original
+decision record but are superseded by this correction where they conflict.
+
 ## 7. Off-chain beneficiary metadata API
+
+> **Status: LANDED — as-built diverges from the sketch below.** The API lives
+> in **`computing/services/reminder-worker`** (the Railway service built for
+> the Chainlink email retirement), not `computing-admin`, and reuses its
+> existing encrypted Postgres store + EIP-712 creator-verified auth instead of
+> the plaintext schema in §7.2. See "§7.1 as-built" below and the
+> reminder-worker README for the authoritative endpoint/type reference.
+> Deltas vs. the sketch:
+>
+> - **Per-recipient names/emails** were already covered by the worker's
+>   `recipient` table (`/ingest-legacy`, `/recipients`, `/erase-legacy`) —
+>   AES-256-GCM encrypted, crypto-shred erasure. Nothing new was needed.
+> - **Legacy title/note** got a new encrypted `legacy_meta` table with
+>   `POST /legacy-meta` (write, `SetLegacyMeta` typed sig, creator-only) and
+>   `POST /legacy-meta-read` (read, `ReadLegacyMeta` typed sig, creator-only).
+>   `/erase-legacy` also shreds the meta row.
+> - **Reads are creator-signed, not public** — §7.5's CDN-cacheable public GET
+>   was dropped deliberately: names/titles are exactly the PII we removed from
+>   the chain, so serving them unauthenticated would undo the strip. The UI's
+>   failure mode is unchanged (address-only view).
+> - The stored title feeds the reminder emails' `legacy_name` variable
+>   (subgraph `name` is empty for post-strip legacies).
+> - No new infra: the worker's Railway Postgres bootstraps the table
+>   idempotently on deploy.
 
 ### 7.1 Home for the API
 
-Options:
-- **Extend `computing-admin`** (existing Next.js backend with a database + auth
-  infrastructure).
-- **New service `computing-api`.**
-
-Recommendation: **extend `computing-admin`** for v2.
-
-Rationale: `computing-admin` already has the DB layer and a deployment pipeline
-with the right operational maturity (monitoring, auth middleware, backup
-policies). Adding a `/legacies/:chainId/:address/metadata` endpoint is a
-straight extension. Spinning up a new service adds ops surface area that
-doesn't pay back until we have a reason to split (e.g. different SLAs,
-different scaling profile). Revisit if metadata read volume grows to the
-point it affects admin-dashboard latency.
+Original options considered:
+- **Extend `computing-admin`** — *rejected on inspection*: it turned out to be
+  a frontend-only Vite SPA (no server, no DB), so the premise of this option
+  was wrong.
+- **New service `computing-api`** — unnecessary ops surface.
+- **Extend `computing/services/reminder-worker`** ✅ — already deployed on
+  Railway with an encrypted Postgres store, EIP-712 wallet-signature auth that
+  verifies `signer == legacy.creator()` on-chain, and GDPR crypto-shred
+  semantics. The metadata API is a natural extension and shares the same
+  privacy posture.
 
 ### 7.2 Data model
 
@@ -726,14 +897,53 @@ address — trivial for an indexed event.)
 - Drop `name` + `note` from the `Legacy` entity (or keep, depending on whether
   we want to migrate to a "legacy name comes from DB" model completely —
   see §11 for the ETL coexistence).
-- Update event handlers to match the new event signatures
-  (`TransferEOALegacyCreated` no longer carries `LegacyMainConfig`, etc.).
+- Update event handlers to match the new event signatures. Exact contract-side
+  event changes as landed (2026-07-23):
+  - `TransferEOALegacyCreated` (v1, carried `LegacyMainConfig`) is **gone** —
+    both create paths emit `TransferEOALegacyCreatedV2(legacyId, legacyAddress,
+    creator, distributions, extraConfig, timestamp)`.
+  - `TransferEOALegacyNameNoteUpdated` is **gone** (with router `setNameNote`).
+  - `TransferEOALegacyConfigUpdated`, `…DistributionUpdated`,
+    `…Layer23DistributionUpdated`, `…Layer23Created` keep their signatures but
+    their name/note/nickname fields are now always empty strings.
 - Subgraph redeploy + reindex is required, coordinated with the on-chain
-  deploy.
+  deploy — **the subgraph must ship no later than the router upgrade**, or new
+  creates become invisible to the app (old handlers listen for the retired v1
+  create event).
 
 Indexing load should go **down** (shorter events, fewer string fields).
 
 ## 10. Frontend changes (`computing`)
+
+> **Status: FIRST PASS LANDED 2026-07-24** behind `VITE_FEATURE_CREATE_FLOW_V2`
+> (default off — the v2 router isn't deployed yet). As-built deltas vs. the
+> sketch below:
+>
+> - `createWillV2` in `useContractForwardingWillEOA.ts`: predicts the clone
+>   address via `getNextLegacyAddress`, reads Permit2 nonces, signs the
+>   AllowanceTransfer `PermitBatch` (no SDK needed — hand-rolled typed data in
+>   `src/constants/permit2.ts`), sends `createLegacyV2`. Helpers for the
+>   one-time `approve(PERMIT2, max)` base approvals included.
+> - ~~The create form doesn't collect assets … the create-time bundle
+>   currently ships **empty**~~ **SECOND PASS LANDED 2026-07-24
+>   (single-screen create)**: `AssetList` on the create form grows a
+>   selectable mode under the flag — ERC-20 rows preselected, native ETH
+>   unselectable — writing the ticked tokens to the form store. Submit runs
+>   the one-time `approve(PERMIT2, max)` only for tokens that never granted
+>   it, then `createLegacyV2` carries ONE PermitBatch signature covering all
+>   of them (spender = predicted clone). When tokens were covered, create
+>   success skips the Config Assets step and lands on the dashboard; ETH
+>   conversion / extra approvals remain in the legacy edit view. Net flow:
+>   fill one screen → (rare) base approvals → 1 signature + 1 tx.
+> - Metadata is saved to the **reminder-worker** (`saveLegacyMeta`, EIP-712
+>   `SetLegacyMeta`, §7 as-built) after the create tx confirms — best-effort,
+>   non-blocking, matching step 7's failure copy.
+> - Post-create receipt parsing checks BOTH `TransferEOALegacyCreated` (live
+>   router) and `TransferEOALegacyCreatedV2` (upgraded router) regardless of
+>   the flag, because the upgraded router's v1 shim emits the V2 event — the
+>   old parser would dead-end the redirect after the proxy upgrade.
+> - Beneficiary nicknames have no off-chain home yet (worker recipient rows
+>   require an email) — v2 legacies render address-only until that lands.
 
 ### 10.1 Create flow
 
@@ -848,7 +1058,81 @@ with names):
 Can ship with or behind legacies. If we ship together, the release message
 becomes "Create-flow v2 for legacies + timelocks".
 
-## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of) — §5.6
+> **STATUS (2026-07-23): Permit2 variants LANDED** on `feat/create-flow-v2`.
+> `createTimelockWithPermit2` / `createSoftTimelockWithPermit2` /
+> `createTimelockedGiftWithPermit2` on `TimeLockRouter`:
+>
+> - Unlike the legacy side (§6.8 claim-time pulls), timelock escrow at create
+>   IS the product model, so here the AllowanceTransfer batch is registered
+>   with **the router itself as spender** and the ERC-20s are pulled through
+>   `PERMIT2.transferFrom` in the same tx. Non-empty bundles with any other
+>   spender revert (`Permit2SpenderMismatch`); an empty bundle means "reuse my
+>   existing Permit2 allowance to this router" (tested).
+> - Routing uses a `transient` (EIP-1153) flag set only inside the
+>   `…WithPermit2` wrappers — no persistent storage slot added to the proxy,
+>   no internal-signature churn; the classic create paths are byte-identical
+>   in behavior (regression-tested). Requires solc ≥0.8.28 (file pragma bumped
+>   to `^0.8.28`; repo compiles at 0.8.35).
+> - ETH-swap and ERC-721/1155 legs are unchanged — Permit2 is ERC-20 only.
+> - Router 11.64 KiB (+1.17). Full suite 120/120.
+>
+> **Deliberately NOT landed**: the name/giftName → event-only strip. That
+> write happens inside `TimelockERC20/721/1155` — standalone fund-holding
+> contracts, not proxies. Redeploying them would strand existing locks behind
+> a router that can only point at one instance set (`setTimelock`). Not worth
+> it for a low-risk string; revisit only if those contracts are ever migrated
+> for a stronger reason.
+
+> **STATUS (2026-07-24): Sponsored withdraw LANDED** on `feat/create-flow-v2`.
+> `withdrawFor(uint256 id, bool skipSwap, WithdrawAuth auth)` on
+> `TimeLockRouter` — the timelock leg of the §12a primitive, motivated by the
+> gift product (recipients are often ETH-less wallets):
+>
+> - `WithdrawAuth(address recipient,uint256 timelockId,bool skipSwap,uint256
+>   nonce,uint256 deadline)` under its own domain `"10102 Timelock Sponsored"
+>   / "1"`. Same machinery as the EOA router: sequential `sponsorNonce`
+>   mapping (appended storage, auto-zero), `invalidateSponsorNonce()`,
+>   `sponsoredDomainSeparator()`, ERC-5267 `eip712Domain()`, and OZ
+>   `SignatureChecker` (ERC-1271 accepted).
+> - No owner opt-out flag (unlike sponsored claims): the signer IS the
+>   recipient the funds go to, so there is no third party whose policy could
+>   object — the relayer can only ever trigger the signer's own withdrawal.
+> - Direct `withdraw` paths byte-identical; the timelock contracts'
+>   `caller == lock.recipient` check is fed the recovered signer.
+> - Router 13.75 KiB. Suite 129/129 incl. 9 new tests (ERC-5267 parity,
+>   relayer tampering with id/skipSwap, deadline/nonce, invalidation, replay,
+>   ERC-1271 happy + non-owner-key rejection, regular-lock regression).
+
+> **STATUS (2026-07-27): Versioned terms acceptance LANDED** (deferred item
+> `legacy-tos-version`, pulled into this round on the founder's ask). A
+> verifier-only impl upgrade — routers untouched, `storeLegacyAgreement`
+> keeps its exact external signature:
+>
+> - Owner publishes `{version tag, keccak256(full ToS document text)}` via
+>   `setActiveTerms(string,bytes32)` (both-or-neither validated; empty+zero
+>   disables). `termsVersionOf[hash]` remembers historical tags.
+> - Users sign `"… I agree to 10102's Terms of Service (version vX) at
+>   timestamp T."`; the verifier **dual-accepts** the legacy un-versioned
+>   sentence so pre-upgrade frontends / already-stashed signatures keep
+>   working (recorded with a zero hash). Versioned consents snapshot
+>   `signatureTermsHash[signature] = activeTermsHash` and emit additive
+>   `LegacySignedVersioned(user, legacyId, ts, tag, hash)`.
+> - `generateVersionedMessage(ts)` view gives frontends byte-parity with
+>   verification; `getUserLegacy` now reconstructs the exact historical
+>   message per record (also fixes a pre-existing bug where it hashed the
+>   unassigned named return, i.e. always timestamp 0).
+> - Appended storage only (`activeTermsVersion`, `activeTermsHash`, two
+>   mappings) — layout-safe on the transparent proxy; upgraded on Sepolia
+>   (impl `0xc5b3AF7d…`), QA terms `v1-qa` published. Mainnet publication
+>   waits on the canonical ToS document hash: `scripts/set-active-terms.ts`.
+> - Frontend: `useLegacyMessage` reads `generateVersionedMessage` from the
+>   verifier (fallback to the legacy sentence on pre-upgrade chains), and
+>   `ConfigWillForm` now re-signs when the stashed agreement is >25 min old
+>   (the verifier's ±30 min window made stale stashes a guaranteed
+>   `TimestampOutOfRange` revert — a live prod landmine).
+> - 13 new tests in `test/TermsVersioning.spec.ts`; suite 142/142.
+
+## 12a. Sponsored claims + sponsored owner check-in (on-behalf-of)
 
 **Added 2026-06-15.** Two of the founder's top product asks reduce to the
 *same* missing contract primitive, so they're tracked here as one sub-track
@@ -975,6 +1259,392 @@ start as the first vertical slice of v2:
   `bene_` / `sender_` arg). EIP-712 domain is computed on the fly
   (`chainId + verifyingContract = router`) — **no new reinitializer**; the only
   new storage is an appended `sponsorNonce` mapping (auto-zero, layout-safe).
+
+### Founder review (2026-06-19) — relayer-compromise concern + owner choice
+
+Founder raised: "if 10102 (or another) relayer is attacked/compromised, can the
+legacy funds get stuck?" and "these sponsored options should be optional at the
+owner's choice." Holistic answer, which sharpens — not reverses — the locked
+decisions:
+
+1. **Sponsorship can never strand funds — it is purely additive.** The direct
+   `activeLegacy` / `avtiveAlive` paths stay byte-identical and always available.
+   A beneficiary who holds gas can always self-claim with zero dependence on any
+   relayer. The `…For` entrypoints are a *convenience layer on top*, never the
+   only door. So "funds can never be transferred" is not reachable via relayer
+   failure.
+
+2. **Permissionless is the *cure* for the compromise worry, not the cause.**
+   Because anyone can carry a validly-signed intent, a down/compromised 10102
+   relayer is routed around by literally any other party (including the
+   beneficiary themselves). A keeper-*only* model is what would create the single
+   point of failure the founder is worried about. A compromised relayer also
+   cannot steal or forge: the EIP-712 signature pins the fund recipient to the
+   beneficiary's own allocation and the check-in to the owner's own timer; a
+   relayer only pays gas and broadcasts. Worst case a malicious relayer *withholds*
+   a tx — harmless, since anyone else can submit the same signed intent.
+
+3. **Where owner choice genuinely matters — and the added knob.** Give the owner
+   an explicit, additive, router-level opt-out so the product honors "their
+   choice" without weakening the safe default:
+   - **`sponsoredClaimsEnabled` per legacy (default ON).** Settable by the legacy
+     owner via a new router setter, stored in an appended
+     `mapping(uint256 => bool)` (clone stays byte-identical, layout-safe like
+     `sponsorNonce`). `activeLegacyFor` checks it; if an owner disables it,
+     beneficiaries simply fall back to the always-available direct `activeLegacy`.
+     Default ON because gasless claim is the highest-impact UX win and the signer
+     authorizes their own claim — but B2B/legal setups that want to forbid
+     third-party relaying can turn it off.
+   - **Check-in sponsorship stays owner-signed (inherently opt-in).** Single-shot
+     `activeAliveFor` already requires the owner's fresh signature per reset, so
+     no third party can reset the timer without explicit owner consent each time.
+     The deferred *passive recurring* `authorizeCheckIns(owner, until)` is the
+     truly "set and forget" path and MUST be explicit owner opt-in with a bounded
+     expiry — keep it deferred and gated behind an owner action.
+
+   Net: keep permissionless + additive (best liveness/safety), add a single
+   owner opt-out flag for claims, and keep passive keeper auth deferred + opt-in.
+
+   **✅ Implemented (2026-06-19, `feat/create-flow-v2`).** Added an appended
+   `mapping(uint256 => bool) public sponsoredClaimsDisabled` (default false =
+   enabled), an owner-only `setSponsoredClaimsEnabled(legacyId, enabled)` setter,
+   a `SponsoredClaimsDisabled()` guard in `activeLegacyFor`, and a
+   `SponsoredClaimsConfigured` event. Clone untouched, layout append-only. 3 new
+   tests (disable→relay reverts but direct claim still works, re-enable restores
+   relay, only-owner toggle) — full suite 97 passing.
+
+### Hardening pass (2026-07-03) — cancellation + ERC-5267 discovery
+
+Review of the sponsored sub-track before continuing v2 surfaced two gaps every
+auditor would flag, both closed with additive, storage-free changes (no new
+state, no reinitializer):
+
+- **`invalidateSponsorNonce()`** — a signer who signed a `ClaimAuth` /
+  `CheckInAuth` with a long deadline previously had no way to cancel it short of
+  racing it with another sponsored action. The new function advances the
+  caller's sequential nonce (emitting `SponsorNonceInvalidated`), permanently
+  killing any outstanding signed-but-unrelayed intent. Mirrors Permit2's
+  `invalidateNonces` escape hatch.
+- **ERC-5267 `eip712Domain()`** — the custom `sponsoredDomainSeparator()` getter
+  stays, but wallets/signing tooling discover EIP-712 domains generically via
+  ERC-5267. Returns `fields = 0x0f` (name, version, chainId, verifyingContract;
+  no salt/extensions); a test rebuilds the separator purely from the ERC-5267
+  answer and asserts it matches on-chain.
+- **New negative-path test: asset-list tampering.** Proves a relayer submitting
+  a different `assets_` array under a valid signature reverts with
+  `InvalidSponsorSignature()` — the property `assetsHash` exists to enforce.
+
+Full suite 100 passing. Router deployed size after the pass: 16.02 KiB
+(comfortably under the 24 KiB limit).
+
+### Smart-contract-wallet signers + the Zodiac ERC-1271 lesson (2026-06-19)
+
+Founder flagged the Gnosis Zodiac post-mortem
+(engineering.gnosisguild.org/posts/zodiac-post-mortem, 19 Jun 2026): an
+authentication bypass where the modules' ERC-1271 contract-signature check
+accepted the magic value `0x1626ba7e` **without requiring the `staticcall` to
+have succeeded** — a reverted check whose revert data began with the magic value
+was treated as valid. Lesson for us:
+
+- **Today we are safe by construction.** The sponsored `…For` path uses
+  `ECDSA.recover` (EOA signatures only) and asserts `recovered == signer`. There
+  is no ERC-1271 path, so the exact Zodiac bug is not reachable. EOA legacies'
+  owners are EOAs by definition; an EOA beneficiary signs with their key.
+- **The gap to mind:** a beneficiary (or future owner) that is a *smart-contract
+  wallet* (Safe) cannot use the sponsored path at all today — `ECDSA.recover`
+  won't match a contract address. They fall back to the direct `activeLegacy`
+  (the Safe executes it), so nothing is stuck — just no gasless relay for them.
+- **If/when we add ERC-1271 support** (to give Safe beneficiaries gasless
+  claims), do NOT hand-roll the magic-value check. Use OpenZeppelin
+  `SignatureChecker.isValidSignatureNow`, which requires `staticcall` success
+  **and** an exact magic-value match (and falls back to ECDSA for EOAs). Add
+  negative-path tests as first-class: failed call, revert data beginning with the
+  magic value, short/empty return data, code-less address, malformed signature,
+  and an adversarial fallback handler. Treat fallback-handler behavior as
+  adversarial unless explicitly trusted. (Zodiac "Lessons learned" §11.1–11.2.)
+
+**✅ ERC-1271 support implemented (2026-07-03, `feat/create-flow-v2`).**
+Decided to fold it into v2 rather than defer: smart accounts (Safe, 7702
+delegations, passkey wallets) are a growing share of beneficiaries, and the
+sponsored path — the milestone's headline UX win — would otherwise exclude
+them. Implementation follows this section's own prescription:
+
+- `_consumeSponsorAuth` now verifies via `SignatureChecker
+  .isValidSignatureNow` instead of raw `ECDSA.recover`: EOAs go through
+  `ECDSA.tryRecover` + exact-match (malformed/malleable signatures fail the
+  match instead of reverting differently — same net rejection); contract
+  signers go through ERC-1271 with **staticcall-success + ≥32-byte returndata +
+  exact magic value** all required.
+- ~~`SignatureCheckerLite` (contracts/libraries) is a vendored, byte-identical
+  subset of OZ v5.4's `SignatureChecker`~~ **Resolved 2026-07-23**: the interim
+  vendored copy (needed while the repo compiled at 0.8.20 vs OZ's `^0.8.24`
+  pin) was deleted after the solc-0.8.35 bump landed; the router and
+  `MockPermit2` import OZ `SignatureChecker` directly. Semantics identical —
+  the vendored code was byte-for-byte OZ's.
+- Negative-path tests are first-class, using mocks shaped exactly like the
+  Zodiac adversaries (`MockERC1271MagicRevert` — reverts with revert data
+  beginning with the magic value; `MockERC1271WrongValue`;
+  `MockERC1271ShortReturn` — 4 raw bytes via assembly `return`), plus a
+  non-owner-key rejection and a happy-path Safe-style wallet claim
+  (`MockERC1271Wallet`). Full suite 105 passing; router 16.13 KiB.
+- Semantics note recorded in NatSpec: ERC-1271 signatures are revocable/mutable
+  by the wallet (owner rotation invalidates outstanding intents — the contract-
+  wallet analogue of `invalidateSponsorNonce`), and a buggy wallet that accepts
+  any signature only exposes *its own* allocation to a forced claim.
+
+## 12b. Advanced legal / B2B features (trustee, contingent lines, aggregation, legal templates)
+
+**Added 2026-06-23.** Founder ask: use v2 to make 10102 a credible substrate for
+people who want their on-chain legacy to align with a real legal trust. Four
+features:
+
+1. **Trustee** — first-class notion of a trustee, distinct from owner and
+   beneficiary.
+2. **Secondary / tertiary lines per beneficiary** — contingent recipients per
+   *individual* beneficiary (if Alice can't take her share, Alice's backup does),
+   distinct from the existing global layer-2/layer-3 fallback tiers.
+3. **One private ID to aggregate multiple legacy contracts** — group a person's
+   or org's many legacies under a single private identifier, without leaking that
+   linkage on-chain.
+4. **Legal-document note templates** — pre-built note language referencing a
+   trust/will document, up to a curated "perfect legal setup" template bundle.
+
+### 12b.0 Guiding principle — metadata-first, claim-path untouched
+
+The whole v2 thesis (§4) is "on-chain only what claims need; everything else
+off-chain for gas + GDPR + reversibility." These four features fit that
+principle almost perfectly: trustee identity, contingent designations,
+aggregation grouping, and legal note text are **legal/relationship metadata**,
+not claim mechanics. So the strong default is to deliver all four through the
+off-chain metadata API (§7) + frontend templates, with **zero claim-path
+change** (honoring the §4.1 non-goal). The one feature with a genuine on-chain
+question — *enforced* per-beneficiary contingency — is scoped as an additive,
+deferred follow-up so it never touches the byte-identical claim path. Avoid
+"will"/"inheritance"/"inherits" in all of it (§5.7).
+
+### 12b.1 Trustee
+
+A trustee administers the estate on the beneficiaries' behalf per a legal trust.
+Mapping to 10102 without new contract powers:
+
+- **Relay authority is already covered.** The permissionless sponsored relay
+  (§12a) means a designated trustee can already submit a beneficiary's
+  signed `activeLegacyFor` claim or the owner's signed `activeAliveFor`
+  check-in and pay the gas — no special on-chain role needed. A trustee is
+  just one more permitted relayer.
+- **Metadata co-authority (the real addition).** Extend the metadata-API auth
+  (§7.3) so a write is accepted from the on-chain `legacy.creator()` **or** a
+  creator-designated `trustee` address. The trustee designation itself is a
+  metadata field (`trustee: { address, name? }`), creator-signed like any other
+  field; the server verifies the designating signature chains back to
+  `creator()`. This lets a trustee maintain beneficiary nicknames, emails, and
+  legal notes if the owner is incapacitated — without any contract role or key
+  that can move funds.
+- **No fund authority, by design.** A trustee must never gain a contract path to
+  move or redirect assets — that would reintroduce custody and a coercion
+  target. Funds always follow the on-chain distributions to the recovered
+  signer. Trustee = administration + legal identity, not custody.
+
+Verdict: **off-chain only for v2.** Trustee is a metadata role + an auth
+extension on the metadata API. No `computing-sc` change.
+
+### 12b.2 Secondary / tertiary lines per beneficiary (contingent recipients)
+
+This is the one feature people will conflate with the existing layer model, so
+be precise:
+
+- **Existing global layers (`layer2Distribution` / `layer3Distribution`,
+  `delayLayer2/3`)**: a coarse, estate-wide fallback. If *no* layer-1
+  beneficiary claims within the delay, the layer-2 distribution becomes
+  eligible, then layer-3. One backup set for the whole legacy.
+- **Requested per-beneficiary lines**: granular. Each *individual* beneficiary
+  (Alice 50%, Bob 50%) has her *own* ordered backups (Alice → [A2, A3]). If
+  Alice's share goes unclaimed, *Alice's* A2 takes *Alice's* 50%; Bob's share
+  is unaffected.
+
+Two delivery levels:
+
+- **(a) Legal designation — metadata only (recommended for v2).** Record each
+  beneficiary's ordered contingent recipients as metadata
+  (`beneficiaries[i].contingents: { address, order, name? }[]`). This is the
+  legally-meaningful artifact (it's what the trust document and the beneficiary
+  cards reflect) and it's free, reversible, and GDPR-deletable. On-chain
+  failover for the unclaimed case is still served by the existing global
+  layer-2/3 tiers where a coarse tier suffices. **No claim-path change.**
+- **(b) Enforced on-chain per-beneficiary failover — deferred, additive.** If
+  B2B demand needs a backup to be able to claim a *specific* beneficiary's
+  allocation trustlessly (without the primary's cooperation and without falling
+  back to the whole-estate layer tier), that is a real claim-path change and
+  therefore collides with the §4.1 non-goal ("claim path stays byte-identical").
+  Do **not** modify `activeLegacy`. Instead, design it later as a **new additive
+  entrypoint** — mirroring the §12a `…For` pattern — e.g.
+  `activeLegacyContingentFor(legacyId, beneficiary, assets, auth)` that (i)
+  checks the primary's per-beneficiary delay has elapsed since eligibility, (ii)
+  recovers the contingent signer, (iii) pays out only the primary's allocation
+  to the recovered contingent. Storage for per-beneficiary contingents would be
+  an appended mapping on the clone — which **does** change clone layout, so it
+  must wait for a clone-impl rev and full layout validation (§14.3). Defer until
+  a real B2B contract requires enforced (not just designated) per-beneficiary
+  failover; the metadata designation in (a) covers the legal-alignment need
+  now.
+
+Verdict: **metadata designation in v2 (a); enforced on-chain failover deferred
+behind an additive entrypoint (b).** Keeps v2's claim path frozen and
+auditable.
+
+### 12b.3 Private aggregation ID (group many legacies under one identity)
+
+A person or org with multiple legacy contracts wants a single private handle
+that ties them together for their own portfolio view and for the trust
+paperwork — **without** publishing that linkage on-chain.
+
+- **Off-chain by necessity.** Putting an aggregation key on-chain would
+  publicly correlate multiple wallets/legacies of substantial value to one
+  identity — precisely the targeted-attack surface §7 / the off-chain-metadata
+  rationale exists to avoid. So the aggregation ID lives only in the metadata
+  store.
+- **Shape.** Add an optional `aggregationId: string` to `LegacyMetadata` (§7.2)
+  — an opaque, client-generated value (random UUID, or a creator-signed salted
+  hash so the same human can deterministically re-derive it across devices
+  without us learning the seed). The API's existing `by-creator` index already
+  groups a single creator's legacies; `aggregationId` additionally groups
+  legacies created from **different** creator wallets (the org-with-many-wallets
+  case). Indexed for `GET /v1/legacies/by-aggregation/:id`, auth-gated so only a
+  signer who can prove control of at least one member legacy's `creator()` can
+  enumerate the group.
+- **Privacy posture.** The ID is a bearer-ish secret: anyone who knows it can
+  ask "what's in this group" only after proving membership control. Never logged
+  in analytics; soft-deletable with the row.
+
+Verdict: **off-chain metadata field + one indexed read endpoint.** No
+`computing-sc` change.
+
+### 12b.4 Legal-document note templates ("perfect legal setup")
+
+- **Note text is already off-chain in v2** (§2.1, §7.2 `legacyNote`). The
+  feature is a **frontend template library** + the metadata field to store the
+  filled-in result. Ship a set of reviewed note templates (e.g. "This digital
+  legacy is administered under the [Trust Name] dated [date], governed by the
+  laws of [jurisdiction]; the trustee of record is [trustee].") with
+  placeholders the UI fills from the trustee/beneficiary/aggregation data above.
+- **"Perfect legal setup" = a curated bundle**, not a contract feature: a guided
+  template that pre-populates trustee + per-beneficiary contingents + note
+  language + (optionally) email reminders, producing a configuration a user can
+  take to their attorney. Pure UX over the metadata model.
+- **Disclaimer guardrail.** Templates are starting points, **not legal advice**
+  — surface the same "consult a qualified professional" line Guardian already
+  uses (`GUARDIAN_SYSTEM_PROMPT`). Legal review of the template text itself
+  before shipping.
+
+Verdict: **frontend + metadata only.** No `computing-sc` change.
+
+### 12b.5 Net contract impact + interaction with sponsorship
+
+- **v2 on-chain delta from §12b: none.** All four features land as
+  metadata-API schema (§7) + auth extension (trustee) + frontend templates. This
+  is deliberate — it keeps the audited contract surface for v2 confined to
+  Permit2 (§6) + sponsored `…For` (§12a) + the owner opt-out flag already
+  implemented, and avoids a clone-layout change.
+- **Enforced per-beneficiary contingency (12b.2b)** is the only piece that would
+  touch contracts, and it's deferred behind a new additive entrypoint + clone
+  layout rev — explicitly *not* in v2.
+- **Sponsorship interplay.** A trustee acting as relayer + permissionless relay
+  + the per-legacy `sponsoredClaimsDisabled` opt-out (already implemented, §12a)
+  compose cleanly: a B2B owner who wants strict control can disable sponsored
+  claims and require direct self-claims, while still naming a trustee for
+  metadata administration. The owner opt-out is the single knob that reconciles
+  "gasless by default" with "B2B/legal setups that forbid third-party relaying."
+
+### 12b.6 Schema additions (metadata API, §7.2 extension)
+
+```typescript
+type Contingent = { address: `0x${string}`; order: 1 | 2; name?: string };
+
+type Beneficiary = {
+  address: `0x${string}`;
+  layer: 1 | 2 | 3;
+  name?: string;
+  email?: string;
+  contingents?: Contingent[];   // 12b.2(a) legal designation, off-chain
+};
+
+type LegacyMetadata = {
+  // …existing fields (§7.2)…
+  trustee?: { address: `0x${string}`; name?: string };   // 12b.1
+  aggregationId?: string;                                 // 12b.3 (opaque, never on-chain)
+  legalTemplateId?: string;                               // 12b.4 (which template produced legacyNote)
+};
+```
+
+Auth (§7.3) extends to accept writes from `creator()` **or** the designated
+`trustee.address` (the trustee designation must itself have been written by
+`creator()` first). All new fields are PII-adjacent → covered by the same
+soft-delete / audit-log GDPR path (§7.4).
+
+## 12c. Tx-based consent + consent parity + create pause — SHIPPED 2026-07-27
+
+The "now or never" contract round locked before the audit window. Three
+pieces, motivated by (a) the 4-popup QA feedback on the v2 create flow and
+(b) the `timelock-consent-parity` / incident-response gaps flagged in review.
+
+### 12c.1 Tx-based consent (second consent modality)
+
+The signed-message ToS artifact (§6.5) assumed the consenting party signs a
+separate message. When the consenting party IS the transaction signer, that
+popup is redundant: the transaction signature is already wallet-attributable,
+timestamped, and — once the router records it — version-bound on-chain.
+Clickwrap + on-chain record is stronger evidence than typical web2 flows.
+
+- `EIP712LegacyVerifier` gains a consent registry (APPENDED storage):
+  `consentRecorders` (owner-managed allowlist of router contracts),
+  `recordConsent(user, refId)` (reverts `NoActiveTerms` when no terms are
+  published — consent must always bind to an exact document hash),
+  `userConsents[user]` (append-only `Consent{termsHash, timestamp, recorder,
+  refId}` log), `getUserConsent` view resolving the historical version tag,
+  and the `ConsentRecorded` event.
+- `TransferEOALegacyRouter._createLegacyCore`: **empty `agreementSignature`
+  = tx-based consent** → `verifier.recordConsent(msg.sender,
+  uint160(legacyAddress))`. Non-empty keeps the classic
+  `storeLegacyAgreement` path byte-for-byte (pre-v2 frontends, Safe flows,
+  future sponsored creates where msg.sender isn't the consenting party).
+- Frontend: the terms checkbox (modal + a new one on the create form for
+  deep links) is the affirmative act; `createLegacyV2` passes `(0, "0x")`.
+  The whole TimestampOutOfRange staleness/re-sign machinery disappears on
+  this path. Minimal EOA create is now **1 popup** (the tx) — 2 with a
+  Permit2 batch, +1 only if the user typed an (optional) display name.
+
+### 12c.2 Timelock consent parity (`timelock-consent-parity`)
+
+Gift timelocks are third-party-claimable → estate exposure comparable to
+legacies, but carried zero consent proof. `TimeLockRouter` gains an
+owner-set `consentVerifier` (APPENDED storage, address(0) = feature off);
+`_createTimelockedGift` records the creator's tx-based consent bound to the
+new timelock id. Self-claim regular/soft timelocks intentionally record
+nothing (they only lock the creator's own assets). Zero added popups — the
+gift UX ("average Joe" product) is unchanged.
+
+### 12c.3 Create pause (circuit breaker)
+
+Both routers gain `createPaused` + `setCreatePaused` (owner on
+`TimeLockRouter`, code-admin on the EOA router — the same role trusted to
+swap the clone implementation). Gates ONLY the create paths
+(`_createLegacyCore`, `_createTimelockRegular/Soft/Gift`); claims,
+check-ins, deletes, withdrawals and unlocks are NEVER pausable — in an
+incident we stop new exposure without ever trapping users' exits.
+
+### 12c.4 Status
+
+- Tests: `test/ConsentAndPause.spec.ts` (16 cases: registry auth, both
+  consent modalities, parity, fail-closed wiring, pause never blocking
+  exits). Full suite 158 passing.
+- Sepolia: all three proxies upgraded 2026-07-27 (verifier
+  `0xf47161…`, EOA router `0x779263…`, timelock router `0xB44702…`),
+  wired via `scripts/wire-consent.ts` (idempotent, part of the mainnet
+  runbook — requires active terms via `set-active-terms.ts` first),
+  proxies re-linked on Etherscan. Live smoke: gift create recorded
+  consent bound to terms `v1-qa` on the real verifier.
+- Subgraph: `ConsentRecorded` is deliberately not indexed for now — no UI
+  reads it; auditability is served by the event log + `getUserConsent`.
 
 ## 13. Audit + test strategy
 
@@ -1231,6 +1901,22 @@ Total: ~2 months from greenlight to mainnet. Plan accordingly.
    single-shot (per-signer sequential nonce + deadline) to start, with the
    time-bounded `authorizeCheckIns` deferred as an additive follow-up. See the
    "Decisions locked" block under §12a.
+9. **Enforced per-beneficiary contingency (§12b.2).** Do we ship only the
+   off-chain legal *designation* in v2 (recommended — no claim-path change), or
+   does a confirmed B2B contract need *enforced* on-chain failover now? Lean:
+   designation-only for v2; build the additive `activeLegacyContingentFor`
+   entrypoint + clone-layout rev later, when a real B2B requirement forces it.
+   Resolve before committing the metadata schema so the `contingents` field is
+   shaped to upgrade cleanly into the on-chain version.
+10. **Trustee metadata co-authority (§12b.1).** Confirm the auth model: writes
+    from `creator()` OR a `creator()`-designated trustee. Open sub-question:
+    should a trustee be able to *revoke* their own designation, or only the
+    creator? Lean: only the creator designates/revokes; the trustee can write
+    content but not re-scope authority.
+11. **Aggregation-ID derivation (§12b.3).** Client-random UUID vs
+    creator-signed salted hash for cross-device re-derivation. Lean: offer the
+    signed-hash option for power/B2B users, default to random UUID for
+    simplicity. Either way it never goes on-chain.
 
 ## 18. References
 

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+// ^0.8.28: the Permit2 create variants use a `transient` state variable
+// (EIP-1153), supported for value types since solc 0.8.28.
+pragma solidity ^0.8.28;
 
 import {TimelockERC20} from "./TimeLockERC20.sol";
 import {TimelockERC721} from "./TimeLockERC721.sol";
@@ -13,11 +15,14 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 import {TimelockHelper} from "./TimelockHelper.sol";
 import {ITokenWhiteList} from "../interfaces/ITokenWhiteList.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
+import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
+import {IEIP712LegacyVerifier} from "../interfaces/IEIP712LegacyVerifier.sol";
 
 contract TimeLockRouter is OwnableUpgradeable {
   using SafeERC20 for IERC20;
@@ -84,6 +89,93 @@ contract TimeLockRouter is OwnableUpgradeable {
   bytes4 private constant IERC721_ID = 0x80ac58cd;
   bytes4 private constant IERC1155_ID = 0xd9b67a26;
 
+  // ───────────── Permit2 create variants (create-flow-v2.md §12) ─────────────
+
+  /// @notice Canonical Uniswap Permit2 (same address on every supported chain).
+  IAllowanceTransfer internal constant PERMIT2 = IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+
+  /// @dev Creator-signed Permit2 AllowanceTransfer batch. `permitBatch.spender`
+  /// must be THIS router (the router executes the pulls at create time —
+  /// unlike the legacy side, timelock escrow at create IS the product model).
+  /// ERC-721/1155 items keep classic approvals; Permit2 is ERC-20 only.
+  struct Permit2CreateBundle {
+    IAllowanceTransfer.PermitBatch permitBatch;
+    bytes signature;
+  }
+
+  error Permit2SpenderMismatch();
+  error Permit2AmountOverflow();
+
+  /// @dev When true, ERC-20 pulls in `_transferERC20TokensToTimelock` route
+  /// through Permit2 instead of direct allowances. Transient (EIP-1153): no
+  /// persistent storage slot on this proxy, auto-cleared at tx end, and set
+  /// only for the duration of a `…WithPermit2` create call.
+  bool private transient _permit2Pull;
+
+  // ───────────── Sponsored withdraw (create-flow-v2.md §12a) ─────────────
+  // Mirrors the EOA legacy router's sponsored-intent machinery: the recipient
+  // signs an EIP-712 `WithdrawAuth` off-chain, any relayer submits it and pays
+  // the gas. Identity is the recovered signer — the timelock contracts already
+  // enforce `caller == lock.recipient`, so a relayer can only ever trigger the
+  // signer's own withdrawal, to the signer's own entitlement. Key use case:
+  // gift recipients (often ETH-less wallets) claiming without funding gas.
+
+  /// @dev Sequential per-signer nonce for sponsored intents. APPENDED at the
+  /// end of router storage (transient/constant members above occupy no slots),
+  /// auto-zero — layout-safe on upgrade, no reinitializer needed.
+  mapping(address => uint256) public sponsorNonce;
+
+  // ───── Consent parity + create pause (create-flow-v2.md §12c) ─────
+  // APPENDED after `sponsorNonce` (layout-safe, auto-zero).
+
+  /// @notice EIP712LegacyVerifier used to record tx-based consent for
+  /// third-party-claimable creates (gifts). Gift timelocks carry estate
+  /// exposure comparable to legacies (`timelock-consent-parity`), so their
+  /// creation records wallet-attributable acceptance of the active terms —
+  /// the create tx signature is the attribution, no extra popup. Self-claim
+  /// regular/soft timelocks stay consent-free (they only lock the creator's
+  /// own assets). Unset (address(0)) skips recording, so deployments without
+  /// a verifier keep working.
+  IEIP712LegacyVerifier public consentVerifier;
+
+  /// @notice Emergency circuit breaker for NEW timelock creation only.
+  /// Withdrawals, soft-unlocks and sponsored withdrawals are NEVER pausable —
+  /// users must always be able to exit.
+  bool public createPaused;
+
+  // EIP-712 typed-data constants (compile-time — no storage slots). Domain is
+  // recomputed per call from `block.chainid + address(this)` so a signed
+  // intent can never replay cross-chain or against a different router. NOTE:
+  // the literals returned by `eip712Domain()` (ERC-5267) must stay in sync.
+  bytes32 private constant _EIP712_DOMAIN_TYPEHASH =
+    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+  bytes32 private constant _EIP712_NAME_HASH = keccak256(bytes("10102 Timelock Sponsored"));
+  bytes32 private constant _EIP712_VERSION_HASH = keccak256(bytes("1"));
+  bytes32 private constant WITHDRAW_AUTH_TYPEHASH =
+    keccak256("WithdrawAuth(address recipient,uint256 timelockId,bool skipSwap,uint256 nonce,uint256 deadline)");
+
+  /// @notice Recipient's signed authorization for a gas-sponsored withdrawal.
+  /// `recipient` is the recovered EIP-712 signer; the underlying timelock
+  /// contracts pay out only to that recipient, so any relayer may submit it.
+  struct WithdrawAuth {
+    address recipient;
+    uint256 nonce;
+    uint256 deadline;
+    bytes signature;
+  }
+
+  error SponsorshipExpired();
+  error InvalidSponsorNonce();
+  error InvalidSponsorSignature();
+  error CreationPaused();
+
+  event TimelockWithdrawnFor(uint256 indexed id, address indexed recipient, address indexed relayer, uint256 timestamp);
+  event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
+  /// @notice Creation circuit breaker toggled. Only the create paths are
+  /// affected; withdrawals and unlocks stay live.
+  event CreatePauseSet(bool paused);
+  event ConsentVerifierSet(address indexed verifier);
+
   // ───────────── Native Token Receive ─────────────
   receive() external payable {}
 
@@ -103,6 +195,21 @@ contract TimeLockRouter is OwnableUpgradeable {
 
   function setUniswapRouter(address _uniswapRouter) external onlyOwner {
     uniswapRouter = IUniswapV2Router02(_uniswapRouter);
+  }
+
+  /// @notice Wire (or clear, with address(0)) the consent verifier used for
+  /// gift-timelock creates. The router must also be authorized on the
+  /// verifier via `setConsentRecorder`.
+  function setConsentVerifier(address verifier_) external onlyOwner {
+    consentVerifier = IEIP712LegacyVerifier(verifier_);
+    emit ConsentVerifierSet(verifier_);
+  }
+
+  /// @notice Emergency circuit breaker for creation. Pauses all `create*`
+  /// paths only — never withdrawals or unlocks (users must always exit).
+  function setCreatePaused(bool paused_) external onlyOwner {
+    createPaused = paused_;
+    emit CreatePauseSet(paused_);
   }
 
   /// @param ethAmountWei Amount of ETH in wei (e.g. msg.value).
@@ -134,6 +241,22 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function createTimelock(TimelockRegular calldata timelockRegular) external payable {
+    _createTimelockRegular(timelockRegular);
+  }
+
+  /// @notice Single-confirm create: registers the creator's signed Permit2
+  /// AllowanceTransfer batch (spender = this router) and pulls the ERC-20s
+  /// through Permit2 in the same tx — no per-token approve txs. ETH-swap and
+  /// ERC-721/1155 legs behave exactly like `createTimelock`.
+  function createTimelockWithPermit2(TimelockRegular calldata timelockRegular, Permit2CreateBundle calldata permit2_) external payable {
+    _registerPermit2(permit2_);
+    _permit2Pull = true;
+    _createTimelockRegular(timelockRegular);
+    _permit2Pull = false;
+  }
+
+  function _createTimelockRegular(TimelockRegular calldata timelockRegular) private {
+    if (createPaused) revert CreationPaused();
     if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
 
     timelockCounter++;
@@ -183,6 +306,19 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function createSoftTimelock(TimelockSoft calldata timelockSoft) external payable {
+    _createSoftTimelock(timelockSoft);
+  }
+
+  /// @notice Permit2 single-confirm variant of `createSoftTimelock`.
+  function createSoftTimelockWithPermit2(TimelockSoft calldata timelockSoft, Permit2CreateBundle calldata permit2_) external payable {
+    _registerPermit2(permit2_);
+    _permit2Pull = true;
+    _createSoftTimelock(timelockSoft);
+    _permit2Pull = false;
+  }
+
+  function _createSoftTimelock(TimelockSoft calldata timelockSoft) private {
+    if (createPaused) revert CreationPaused();
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
 
     timelockCounter++;
@@ -223,10 +359,30 @@ contract TimeLockRouter is OwnableUpgradeable {
 
 
   function createTimelockedGift(TimelockGift calldata timelockGift) external payable {
+    _createTimelockedGift(timelockGift);
+  }
+
+  /// @notice Permit2 single-confirm variant of `createTimelockedGift`.
+  function createTimelockedGiftWithPermit2(TimelockGift calldata timelockGift, Permit2CreateBundle calldata permit2_) external payable {
+    _registerPermit2(permit2_);
+    _permit2Pull = true;
+    _createTimelockedGift(timelockGift);
+    _permit2Pull = false;
+  }
+
+  function _createTimelockedGift(TimelockGift calldata timelockGift) private {
+    if (createPaused) revert CreationPaused();
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
 
     timelockCounter++;
+
+    // Consent parity: gifts are third-party-claimable, so record the
+    // creator's tx-based acceptance of the active terms, bound to this
+    // timelock id. The create tx signature is the attribution — no popup.
+    if (address(consentVerifier) != address(0)) {
+      consentVerifier.recordConsent(msg.sender, timelockCounter);
+    }
 
     if (timelockGift.timelockERC20.length > 0 || timelockGift.timelockETHSwap.storageToken != address(0)) {
       _handleTimelockGiftERC20(
@@ -283,6 +439,99 @@ contract TimeLockRouter is OwnableUpgradeable {
     timelockERC20Contract.withdraw(id, msg.sender, skipSwap);
     timelockERC721Contract.withdraw(id, msg.sender);
     timelockERC1155Contract.withdraw(id, msg.sender);
+  }
+
+  /**
+   * @dev Gas-sponsored withdrawal. The recipient signs an EIP-712
+   * `WithdrawAuth` off-chain (binding timelockId + skipSwap + nonce +
+   * deadline); any relayer (`msg.sender`) submits it and pays the gas. The
+   * recovered signer is passed as the withdrawing caller, so the timelock
+   * contracts' `caller == lock.recipient` checks apply exactly as in the
+   * direct `withdraw` path — the relayer never receives anything.
+   * Permissionless + single-shot (sequential per-signer nonce + deadline).
+   * ERC-1271 signatures accepted (Safe and other smart wallets).
+   */
+  function withdrawFor(uint256 id, bool skipSwap, WithdrawAuth calldata auth_) external {
+    bytes32 structHash = keccak256(
+      abi.encode(WITHDRAW_AUTH_TYPEHASH, auth_.recipient, id, skipSwap, auth_.nonce, auth_.deadline)
+    );
+    _consumeSponsorAuth(auth_.recipient, auth_.nonce, auth_.deadline, structHash, auth_.signature);
+    timelockERC20Contract.withdraw(id, auth_.recipient, skipSwap);
+    timelockERC721Contract.withdraw(id, auth_.recipient);
+    timelockERC1155Contract.withdraw(id, auth_.recipient);
+    emit TimelockWithdrawnFor(id, auth_.recipient, msg.sender, block.timestamp);
+  }
+
+  /// @notice EIP-712 domain separator for sponsored intents, scoped to this
+  /// router on the current chain. Exposed so clients can build/verify digests.
+  function sponsoredDomainSeparator() external view returns (bytes32) {
+    return _domainSeparator();
+  }
+
+  /**
+   * @notice ERC-5267 domain discovery for the sponsored-intent EIP-712 domain.
+   * `fields = 0x0f` advertises name, version, chainId and verifyingContract
+   * (no salt, no extensions).
+   */
+  function eip712Domain()
+    external
+    view
+    returns (
+      bytes1 fields,
+      string memory name,
+      string memory version,
+      uint256 chainId,
+      address verifyingContract,
+      bytes32 salt,
+      uint256[] memory extensions
+    )
+  {
+    return (hex"0f", "10102 Timelock Sponsored", "1", block.chainid, address(this), bytes32(0), new uint256[](0));
+  }
+
+  /**
+   * @notice Cancel any not-yet-relayed sponsored authorization by advancing
+   * the caller's sequential nonce. An outstanding signed `WithdrawAuth`
+   * becomes permanently unusable, since `_consumeSponsorAuth` requires an
+   * exact nonce match.
+   */
+  function invalidateSponsorNonce() external {
+    uint256 invalidated;
+    unchecked {
+      invalidated = sponsorNonce[msg.sender]++;
+    }
+    emit SponsorNonceInvalidated(msg.sender, invalidated);
+  }
+
+  function _domainSeparator() internal view returns (bytes32) {
+    return keccak256(
+      abi.encode(_EIP712_DOMAIN_TYPEHASH, _EIP712_NAME_HASH, _EIP712_VERSION_HASH, block.chainid, address(this))
+    );
+  }
+
+  /**
+   * @dev Validate + consume a single-shot sponsored authorization: deadline
+   * not passed, exact sequential nonce, and a signature valid for `signer_`
+   * (EOA ECDSA or ERC-1271). Consumes the nonce on success. Mirrors the EOA
+   * legacy router's `_consumeSponsorAuth` — see its NOTE on the inherent
+   * revocability of ERC-1271 contract signatures.
+   */
+  function _consumeSponsorAuth(
+    address signer_,
+    uint256 nonce_,
+    uint256 deadline_,
+    bytes32 structHash_,
+    bytes calldata signature_
+  ) internal {
+    if (block.timestamp > deadline_) revert SponsorshipExpired();
+    if (nonce_ != sponsorNonce[signer_]) revert InvalidSponsorNonce();
+    bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash_));
+    if (!SignatureChecker.isValidSignatureNow(signer_, digest, signature_)) {
+      revert InvalidSponsorSignature();
+    }
+    unchecked {
+      sponsorNonce[signer_] = nonce_ + 1;
+    }
   }
 
   // ───────────── private ─────────────
@@ -454,7 +703,20 @@ contract TimeLockRouter is OwnableUpgradeable {
     timelockERC20Contract.createTimelockedGift{value: 0}(timelockId, tokens, amounts, duration, recipient, name, giftName, owner, lockStatus, withdrawLastAsEth);
   }
 
+  /// @dev Registers the creator's signed Permit2 batch with this router as
+  /// spender. A non-empty bundle whose spender is anything else reverts — a
+  /// bundle can never point the creator's allowances at another spender. An
+  /// empty bundle is allowed: it means "pull via my pre-existing Permit2
+  /// allowance to this router" (no fresh signature to consume).
+  function _registerPermit2(Permit2CreateBundle calldata permit2_) private {
+    if (permit2_.permitBatch.details.length != 0) {
+      if (permit2_.permitBatch.spender != address(this)) revert Permit2SpenderMismatch();
+      PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
+    }
+  }
+
   /// @dev Transfers first `count` tokens from msg.sender to timelock; returns actual amounts received (fee-on-transfer safe).
+  /// Pulls route through Permit2 during `…WithPermit2` creates (transient flag), otherwise direct ERC-20 allowances.
   function _transferERC20TokensToTimelock(
     address[] memory tokens,
     uint256[] memory amounts,
@@ -463,7 +725,12 @@ contract TimeLockRouter is OwnableUpgradeable {
     actualReceived = new uint256[](count);
     for (uint256 i = 0; i < count; i++) {
       uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
-      IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
+      if (_permit2Pull) {
+        if (amounts[i] > type(uint160).max) revert Permit2AmountOverflow();
+        PERMIT2.transferFrom(msg.sender, address(timelockERC20Contract), uint160(amounts[i]), tokens[i]);
+      } else {
+        IERC20(tokens[i]).safeTransferFrom(msg.sender, address(timelockERC20Contract), amounts[i]);
+      }
       uint256 balanceAfter = IERC20(tokens[i]).balanceOf(address(timelockERC20Contract));
       if (balanceAfter <= balanceBefore) revert TimelockHelper.NoTokensReceived();
       actualReceived[i] = balanceAfter - balanceBefore;

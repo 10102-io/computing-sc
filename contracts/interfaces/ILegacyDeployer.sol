@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 // OpenZeppelin Contracts v5.x
-pragma solidity 0.8.20;
+pragma solidity 0.8.35;
 
 interface ILegacyDeployer {
     function getNextAddress(bytes calldata byteCode, address user) external view returns (address nextLegacy);

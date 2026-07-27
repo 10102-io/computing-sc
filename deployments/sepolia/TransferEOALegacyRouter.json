@@ -2,114 +2,9 @@
   "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
   "abi": [
     {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "previousAdmin",
-          "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "newAdmin",
-          "type": "address"
-        }
-      ],
-      "name": "AdminChanged",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "beacon",
-          "type": "address"
-        }
-      ],
-      "name": "BeaconUpgraded",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "implementation",
-          "type": "address"
-        }
-      ],
-      "name": "Upgraded",
-      "type": "event"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "fallback"
-    },
-    {
       "inputs": [],
-      "name": "admin",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        }
-      ],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "implementation",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "implementation_",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        }
-      ],
-      "name": "upgradeTo",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "data",
-          "type": "bytes"
-        }
-      ],
-      "name": "upgradeToAndCall",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "receive"
+      "type": "constructor"
     },
     {
       "inputs": [],
@@ -119,6 +14,11 @@
     {
       "inputs": [],
       "name": "CannotClaim",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "CreationPaused",
       "type": "error"
     },
     {
@@ -134,6 +34,16 @@
     {
       "inputs": [],
       "name": "InvalidInitialization",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidSponsorNonce",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidSponsorSignature",
       "type": "error"
     },
     {
@@ -182,6 +92,11 @@
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "Permit2SpenderMismatch",
+      "type": "error"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -191,6 +106,42 @@
       ],
       "name": "SenderIsCreatedLegacy",
       "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "SponsoredClaimsDisabled",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "SponsorshipExpired",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "paused",
+          "type": "bool"
+        }
+      ],
+      "name": "CreatePauseSet",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "legacyAddress",
+          "type": "address"
+        }
+      ],
+      "name": "EmailActivatedNotCompleted",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -229,6 +180,50 @@
         }
       ],
       "name": "PrivateCodeSetupNotCompleted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "signer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "invalidated",
+          "type": "uint256"
+        }
+      ],
+      "name": "SponsorNonceInvalidated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "legacyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "SponsoredClaimsConfigured",
       "type": "event"
     },
     {
@@ -329,6 +324,68 @@
         }
       ],
       "name": "TransferEOALegacyAutoSwapped",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "legacyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "relayer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TransferEOALegacyCheckedInFor",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "legacyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "beneficiary",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "relayer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TransferEOALegacyClaimedFor",
       "type": "event"
     },
     {
@@ -448,56 +505,34 @@
           "type": "uint256"
         },
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "address",
           "name": "legacyAddress",
           "type": "address"
         },
         {
-          "indexed": false,
+          "indexed": true,
           "internalType": "address",
-          "name": "creatorAddress",
+          "name": "creator",
           "type": "address"
         },
         {
           "components": [
             {
-              "internalType": "string",
-              "name": "name",
-              "type": "string"
+              "internalType": "address",
+              "name": "user",
+              "type": "address"
             },
             {
-              "internalType": "string",
-              "name": "note",
-              "type": "string"
-            },
-            {
-              "internalType": "string[]",
-              "name": "nickNames",
-              "type": "string[]"
-            },
-            {
-              "components": [
-                {
-                  "internalType": "address",
-                  "name": "user",
-                  "type": "address"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "percent",
-                  "type": "uint256"
-                }
-              ],
-              "internalType": "struct TransferLegacyStruct.Distribution[]",
-              "name": "distributions",
-              "type": "tuple[]"
+              "internalType": "uint256",
+              "name": "percent",
+              "type": "uint256"
             }
           ],
           "indexed": false,
-          "internalType": "struct TransferEOALegacyRouter.LegacyMainConfig",
-          "name": "mainConfig",
-          "type": "tuple"
+          "internalType": "struct TransferLegacyStruct.Distribution[]",
+          "name": "distributions",
+          "type": "tuple[]"
         },
         {
           "components": [
@@ -529,7 +564,7 @@
           "type": "uint256"
         }
       ],
-      "name": "TransferEOALegacyCreated",
+      "name": "TransferEOALegacyCreatedV2",
       "type": "event"
     },
     {
@@ -697,37 +732,6 @@
         },
         {
           "indexed": false,
-          "internalType": "string",
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "note",
-          "type": "string"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "timestamp",
-          "type": "uint256"
-        }
-      ],
-      "name": "TransferEOALegacyNameNoteUpdated",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "uint256",
-          "name": "legacyId",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
           "internalType": "uint128",
           "name": "lackOfOutgoingTxRange",
           "type": "uint128"
@@ -807,6 +811,46 @@
           "type": "uint256"
         },
         {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TransferEOALegacyRouter.CheckInAuth",
+          "name": "auth_",
+          "type": "tuple"
+        }
+      ],
+      "name": "activeAliveFor",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "legacyId_",
+          "type": "uint256"
+        },
+        {
           "internalType": "address[]",
           "name": "assets_",
           "type": "address[]"
@@ -846,6 +890,56 @@
         }
       ],
       "name": "activeLegacyAndUnswap",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "legacyId_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address[]",
+          "name": "assets_",
+          "type": "address[]"
+        },
+        {
+          "internalType": "bool",
+          "name": "isETH_",
+          "type": "bool"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "beneficiary",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TransferEOALegacyRouter.ClaimAuth",
+          "name": "auth_",
+          "type": "tuple"
+        }
+      ],
+      "name": "activeLegacyFor",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1016,12 +1110,12 @@
         },
         {
           "internalType": "string",
-          "name": "nickName2",
+          "name": "",
           "type": "string"
         },
         {
           "internalType": "string",
-          "name": "nickName3",
+          "name": "",
           "type": "string"
         },
         {
@@ -1049,6 +1143,172 @@
     {
       "inputs": [
         {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "user",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "percent",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TransferLegacyStruct.Distribution[]",
+          "name": "distributions_",
+          "type": "tuple[]"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "lackOfOutgoingTxRange",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "delayLayer2",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "delayLayer3",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TransferLegacyStruct.LegacyExtraConfig",
+          "name": "extraConfig_",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "user",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "percent",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TransferLegacyStruct.Distribution",
+          "name": "layer2Distribution_",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "user",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "percent",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TransferLegacyStruct.Distribution",
+          "name": "layer3Distribution_",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "token",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "uint160",
+                      "name": "amount",
+                      "type": "uint160"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "expiration",
+                      "type": "uint48"
+                    },
+                    {
+                      "internalType": "uint48",
+                      "name": "nonce",
+                      "type": "uint48"
+                    }
+                  ],
+                  "internalType": "struct IAllowanceTransfer.PermitDetails[]",
+                  "name": "details",
+                  "type": "tuple[]"
+                },
+                {
+                  "internalType": "address",
+                  "name": "spender",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "sigDeadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IAllowanceTransfer.PermitBatch",
+              "name": "permitBatch",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct TransferEOALegacyRouter.Permit2CreateBundle",
+          "name": "permit2_",
+          "type": "tuple"
+        },
+        {
+          "internalType": "uint256",
+          "name": "signatureTimestamp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "agreementSignature",
+          "type": "bytes"
+        }
+      ],
+      "name": "createLegacyV2",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "createPaused",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint256",
           "name": "legacyId_",
           "type": "uint256"
@@ -1057,6 +1317,49 @@
       "name": "deleteLegacy",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "eip712Domain",
+      "outputs": [
+        {
+          "internalType": "bytes1",
+          "name": "fields",
+          "type": "bytes1"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "chainId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "verifyingContract",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "salt",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "extensions",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -1186,6 +1489,13 @@
         }
       ],
       "name": "initializeV3",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "invalidateSponsorNonce",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1333,7 +1643,7 @@
         },
         {
           "internalType": "string",
-          "name": "nicknameLayer2_",
+          "name": "",
           "type": "string"
         },
         {
@@ -1355,7 +1665,7 @@
         },
         {
           "internalType": "string",
-          "name": "nicknameLayer3_",
+          "name": "",
           "type": "string"
         },
         {
@@ -1384,6 +1694,19 @@
     {
       "inputs": [
         {
+          "internalType": "bool",
+          "name": "paused_",
+          "type": "bool"
+        }
+      ],
+      "name": "setCreatePaused",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint256",
           "name": "legacyId_",
           "type": "uint256"
@@ -1395,7 +1718,7 @@
         },
         {
           "internalType": "string",
-          "name": "nickname_",
+          "name": "",
           "type": "string"
         },
         {
@@ -1525,12 +1848,12 @@
         },
         {
           "internalType": "string",
-          "name": "nickName2",
+          "name": "",
           "type": "string"
         },
         {
           "internalType": "string",
-          "name": "nickName3",
+          "name": "",
           "type": "string"
         }
       ],
@@ -1608,19 +1931,65 @@
           "type": "uint256"
         },
         {
-          "internalType": "string",
-          "name": "name_",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "note_",
-          "type": "string"
+          "internalType": "bool",
+          "name": "enabled_",
+          "type": "bool"
         }
       ],
-      "name": "setNameNote",
+      "name": "setSponsoredClaimsEnabled",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "sponsorNonce",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "sponsoredClaimsDisabled",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "sponsoredDomainSeparator",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -1707,27 +2076,6 @@
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_logic",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "_data",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "payable",
-      "type": "constructor"
     }
   ],
   "transactionHash": "0x1345e0c4d8b0ede989b6e0708ddbf0a263b8f398a8116ab5e172f2b28e537fef",

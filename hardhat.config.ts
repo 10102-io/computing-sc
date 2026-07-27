@@ -109,24 +109,22 @@ const config: HardhatUserConfig = {
     },
   },
   solidity: {
+    // Single compiler entry since the solc-upgrade task (docs/plans/solc-upgrade.md,
+    // landed 2026-07-23): 0.8.20 (+0.8.22 secondary) → 0.8.35. evmVersion is
+    // pinned explicitly so bytecode doesn't silently change when solc bumps its
+    // default target (cancun is live on mainnet + sepolia). storageLayout output
+    // feeds scripts/dump-storage-layouts.ts for proxy-upgrade layout diffing.
     compilers: [
       {
-        version: "0.8.20",
+        version: "0.8.35",
         settings: {
+          evmVersion: "cancun",
           optimizer: {
             enabled: true,
             runs: 200,
           },
           viaIR: true,
-        },
-      },
-      {
-        version: "0.8.22",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
+          outputSelection: { "*": { "*": ["storageLayout"] } },
         },
       },
     ],

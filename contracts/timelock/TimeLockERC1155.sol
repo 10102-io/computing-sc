@@ -2,13 +2,13 @@
 pragma solidity ^0.8.20;
 
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ERC1155HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
+import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {TimelockHelper} from "./TimelockHelper.sol";
 
-contract TimelockERC1155 is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, ERC1155HolderUpgradeable {
+contract TimelockERC1155 is Initializable, OwnableUpgradeable, ReentrancyGuard, ERC1155Holder {
   // ──────────────── Struct ────────────────
   struct TimelockInfo {
     address[] tokenAddresses;
@@ -61,8 +61,6 @@ contract TimelockERC1155 is Initializable, OwnableUpgradeable, ReentrancyGuardUp
   // ──────────────── Init ────────────────
   function initialize(address initialOwner, address _routerAddresses) public initializer {
     __Ownable_init(initialOwner);
-    __ReentrancyGuard_init();
-    __ERC1155Holder_init();
     routerAddresses = _routerAddresses;
   }
 

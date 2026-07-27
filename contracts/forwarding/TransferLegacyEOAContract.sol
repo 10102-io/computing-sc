@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts v5.x
-pragma solidity 0.8.20;
+pragma solidity 0.8.35;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {GenericLegacy} from "../common/GenericLegacy.sol";
@@ -13,10 +13,19 @@ import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Factory} from "../interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
+import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
 
 contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   using EnumerableSet for EnumerableSet.AddressSet;
   using SafeERC20 for IERC20;
+
+  // Canonical Permit2 (same address on every EVM chain, CREATE2-deployed).
+  // Hardcoded per create-flow-v2.md §6.2 — a configurable Permit2 address is
+  // an apocalyptic misconfiguration risk, and there is no legitimate reason
+  // to point at a non-canonical deployment. Compile-time constant: occupies
+  // no storage slot, so clone layout is untouched.
+  IAllowanceTransfer internal constant PERMIT2 =
+    IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
   /* Error */
   error NotBeneficiary();
@@ -283,10 +292,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     address _premiumSetting,
     address _paymentContract,
     address _uniswapRouter,
-    address _weth,
-    string[] calldata nicknames,
-    string calldata nickname2,
-    string calldata nickname3
+    address _weth
   ) external notInitialized returns (uint256 numberOfBeneficiaries) {
     if (owner_ == address(0)) revert OwnerInvalid();
     _isLive = 1;
@@ -315,8 +321,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     if (premiumSetting.isPremium(creator)) {
       delayLayer2 = config_.delayLayer2;
       delayLayer3 = config_.delayLayer3;
-      _setLayer23Distributions(2, nickname2, layer2Distribution_);
-      _setLayer23Distributions(3, nickname3, layer3Distribution_);
+      _setLayer23Distributions(2, layer2Distribution_);
+      _setLayer23Distributions(3, layer3Distribution_);
       if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
     } else {
       // Check input values before assigning them to state
@@ -332,7 +338,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       }
     }
 
-    numberOfBeneficiaries = _setDistributions(owner_, distributions_, nicknames);
+    numberOfBeneficiaries = _setDistributions(owner_, distributions_);
     _lastTimestamp = block.timestamp;
   }
 
@@ -355,7 +361,11 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     return false;
   }
 
-  function _setLayer23Distributions(uint8 layer_, string calldata nickname, TransferLegacyStruct.Distribution calldata distribution_) private {
+  // Create-flow v2 PII strip (§5.1): nickname params removed — beneficiary
+  // nicknames live in the off-chain metadata API. `beneName` storage on
+  // GenericLegacy stays as a dead slot for layout safety (§14.3) and for the
+  // Multisig contracts, which are out of v2 scope.
+  function _setLayer23Distributions(uint8 layer_, TransferLegacyStruct.Distribution calldata distribution_) private {
     uint256 _distributionPercentage;
     address _beneficiary;
     if (distribution_.percent == 0) {
@@ -368,34 +378,29 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     }
     if (layer_ == 2) {
       if (_distributions[distribution_.user] != 0) revert AlreadyBeneficiary();
-      _deleteBeneName(_layer2Beneficiary);
       _layer2Beneficiary = _beneficiary;
       _layer2Distribution = _distributionPercentage;
-      _setBeneNickname(_layer2Beneficiary, nickname);
     } else {
       if (_layer2Distribution != MAX_PERCENT && _distributionPercentage != 0) revert NeedtoSetLayer2();
       if (_distributionPercentage != 0) {
         if (_layer2Distribution != MAX_PERCENT) revert NeedtoSetLayer2();
         if (_distributions[distribution_.user] != 0 || _layer2Beneficiary == distribution_.user) revert AlreadyBeneficiary();
       }
-      _deleteBeneName(_layer3Beneficiary);
       _layer3Beneficiary = _beneficiary;
       _layer3Distribution = _distributionPercentage;
-      _setBeneNickname(_layer3Beneficiary, nickname);
     }
   }
 
   function setLayer23Distributions(
     address sender_,
     uint8 layer_,
-    string calldata nickname,
     TransferLegacyStruct.Distribution calldata distribution_
   ) external onlyRouter onlyOwner(sender_) isActiveLegacy {
     if (layer_ < 2 || layer_ > 3) revert LayerInvalid();
     if (distribution_.user == address(0)) revert DistributionUserInvalid();
     if (!premiumSetting.isPremium(sender_)) revert NotPremium();
 
-    _setLayer23Distributions(layer_, nickname, distribution_);
+    _setLayer23Distributions(layer_, distribution_);
     if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
     _lastTimestamp = block.timestamp;
 
@@ -417,11 +422,10 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    */
   function setLegacyDistributions(
     address sender_,
-    TransferLegacyStruct.Distribution[] calldata distributions_,
-    string[] calldata nicknames_
+    TransferLegacyStruct.Distribution[] calldata distributions_
   ) external onlyRouter onlyLive onlyOwner(sender_) isActiveLegacy returns (uint256 numberOfBeneficiaries) {
     _clearDistributions();
-    numberOfBeneficiaries = _setDistributions(sender_, distributions_, nicknames_);
+    numberOfBeneficiaries = _setDistributions(sender_, distributions_);
 
     _lastTimestamp = block.timestamp;
   }
@@ -430,8 +434,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     address sender_,
     uint256 delayLayer2_,
     uint256 delayLayer3_,
-    string calldata nickName2,
-    string calldata nickName3,
     TransferLegacyStruct.Distribution calldata layer2Distribution_,
     TransferLegacyStruct.Distribution calldata layer3Distribution_
   ) external onlyRouter onlyOwner(sender_) isActiveLegacy {
@@ -458,17 +460,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     delayLayer2 = delayLayer2_;
     delayLayer3 = delayLayer3_;
 
-    _setLayer23Distributions(2, nickName2, layer2Distribution_);
+    _setLayer23Distributions(2, layer2Distribution_);
 
     bool skipCheck = true;
     if (layer3Distribution_.percent > 0 && layer3Distribution_.user != address(0)) {
       if (_layer2Beneficiary == layer3Distribution_.user || _distributions[layer3Distribution_.user] != 0) {
         revert AlreadyBeneficiary();
       }
-      _deleteBeneName(_layer3Beneficiary);
       _layer3Beneficiary = layer3Distribution_.user;
       _layer3Distribution = MAX_PERCENT;
-      _setBeneNickname(_layer3Beneficiary, nickName3);
       skipCheck = false;
     } else {
       _layer3Beneficiary = address(0);
@@ -600,11 +600,9 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     _transferAssetToBeneficiaries(assets_, true, bene_);
   }
 
-  function setLegacyName(string calldata legacyName_, address sender_) external onlyRouter onlyLive onlyOwner(sender_){
-    _setLegacyName(legacyName_);
-    _lastTimestamp = block.timestamp;
-
-  }
+  // setLegacyName removed in create-flow v2 (§5.1): legacy names are PII and
+  // live in the off-chain metadata API. The `legacyName` slot on GenericLegacy
+  // stays for storage-layout safety and reads "" on v2 clones.
 
   /* Utils function */
 
@@ -628,15 +626,13 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    */
   function _setDistributions(
     address owner_,
-    TransferLegacyStruct.Distribution[] calldata distributions_,
-    string[] calldata nicknames
+    TransferLegacyStruct.Distribution[] calldata distributions_
   ) internal returns (uint256 numberOfBeneficiaries) {
     uint256 totalPercent = 0;
 
     for (uint256 i = 0; i < distributions_.length; ) {
       _checkDistribution(owner_, distributions_[i]);
       _beneficiariesSet.add(distributions_[i].user);
-      _setBeneNickname(distributions_[i].user, nicknames[i]);
       _distributions[distributions_[i].user] = distributions_[i].percent;
       totalPercent += distributions_[i].percent;
       unchecked {
@@ -654,7 +650,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   function _clearDistributions() internal {
     address[] memory beneficiaries = _beneficiariesSet.values();
     for (uint256 i = 0; i < beneficiaries.length; ) {
-      _deleteBeneName(beneficiaries[i]);
       _beneficiariesSet.remove(beneficiaries[i]);
       _distributions[beneficiaries[i]] = 0;
       unchecked {
@@ -739,16 +734,31 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       if (token == eoaStorageToken) {
         eoaStorageToken = address(0);
       }
+      // Create-flow v2: the owner's authorization for this token can live in
+      // either a direct ERC-20 allowance (pre-v2 creates) or a Permit2
+      // allowance registered at create time (§6.8). Per token, pull through
+      // whichever grants more — a single deterministic path per token keeps
+      // the accounting simple and matches the pre-v2 min(balance, allowance)
+      // semantics exactly.
       uint256 allowanceAmountErc20 = IERC20(token).allowance(ownerAddress, address(this));
+      uint256 permit2AllowanceAmount = _permit2Allowance(ownerAddress, token);
+      bool viaPermit2 = permit2AllowanceAmount > allowanceAmountErc20;
+      uint256 effectiveAllowance = viaPermit2 ? permit2AllowanceAmount : allowanceAmountErc20;
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
-      uint256 totalAmount = balanceAmountErc20 > allowanceAmountErc20 ? allowanceAmountErc20 : balanceAmountErc20;
+      uint256 totalAmount = balanceAmountErc20 > effectiveAllowance ? effectiveAllowance : balanceAmountErc20;
       if (totalAmount > 0) {
         uint256 fee = (totalAmount * adminFeePercent) / 10000;
         uint256 distributable = totalAmount - fee;
       
         if (fee > 0) {
           uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-          IERC20(token).safeTransferFrom(ownerAddress, address(this), fee);
+          if (viaPermit2) {
+            // fee <= totalAmount <= the Permit2 allowance (uint160), so the
+            // cast cannot truncate.
+            PERMIT2.transferFrom(ownerAddress, address(this), uint160(fee), token);
+          } else {
+            IERC20(token).safeTransferFrom(ownerAddress, address(this), fee);
+          }
           uint256 actualFeeReceived =  IERC20(token).balanceOf(address(this)) - balanceBefore;
           _swapAdminFee(token, actualFeeReceived);
         }
@@ -758,7 +768,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           uint256 amount = j != beneficiaries.length - 1
             ? (distributable * getDistribution(beneLayer, beneficiaries[j])) / MAX_PERCENT
             : distributable - processedAmountERC20;
-          uint256 amountSent = _transferErc20ToBeneficiary(token, ownerAddress, beneficiaries[j], amount);
+          uint256 amountSent = _transferErc20ToBeneficiary(token, ownerAddress, beneficiaries[j], amount, viaPermit2);
           // Track *delivered*, not *scheduled* — see ETH branch above.
           // `_transferErc20ToBeneficiary` returns `amount_` on success and
           // `0` on a caught revert (e.g. blacklisted recipient on USDC).
@@ -776,12 +786,36 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   }
 
   /**
+   * @dev Usable Permit2 allowance for (owner_, token_) with this legacy as
+   * spender. Returns 0 when Permit2 isn't deployed on this chain (code-length
+   * guard keeps pre-Permit2 test chains and exotic networks working), when
+   * the allowance is expired, or when none was ever granted. View-only; the
+   * actual pull (`PERMIT2.transferFrom`) re-checks expiry and amount.
+   */
+  function _permit2Allowance(address owner_, address token_) private view returns (uint256) {
+    if (address(PERMIT2).code.length == 0) return 0;
+    (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, address(this));
+    if (block.timestamp > expiration) return 0;
+    return amount;
+  }
+
+  /**
    * @dev transfer erc20 token to beneficiaries
    * @param erc20Address_  erc20 token address
    * @param from_ safe wallet address
    * @param to_ beneficiary address
+   * @param viaPermit2_ pull through Permit2's allowance instead of a direct
+   *        ERC-20 allowance (chosen per token in _transferAssetToBeneficiaries)
    */
-  function _transferErc20ToBeneficiary(address erc20Address_, address from_, address to_, uint256 amount_) private returns(uint256 amountSent) {
+  function _transferErc20ToBeneficiary(address erc20Address_, address from_, address to_, uint256 amount_, bool viaPermit2_) private returns(uint256 amountSent) {
+    if (viaPermit2_) {
+      // amount_ <= totalAmount <= the Permit2 allowance (uint160): no truncation.
+      try PERMIT2.transferFrom(from_, to_, uint160(amount_), erc20Address_) {
+        return amount_;
+      } catch {
+        return 0;
+      }
+    }
     try 
     IERC20(erc20Address_).transferFrom(from_, to_, amount_) {
       return amount_;
