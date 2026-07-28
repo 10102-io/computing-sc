@@ -13,6 +13,7 @@ import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
+import {ILegacyPullVault} from "../interfaces/ILegacyPullVault.sol";
 
 contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable {
   address public premiumSetting;
@@ -57,6 +58,16 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // incident (bad clone impl, bad dependency, exploit-in-progress) protects
   // users instead of trapping them.
   bool public createPaused;
+
+  // The LegacyPullVault: the single, permanent, verified Permit2 spender for
+  // new creates (docs/plans/legacy-pull-vault.md). APPENDED after
+  // `createPaused` (layout-safe, auto-zero = vault flow disabled; per-clone
+  // spender bundles keep working exactly as before). Settable by the code
+  // admin because the vault is pinned to one clone implementation's codehash
+  // — vault and implementation rotate together via `setLegacyImplementation`
+  // + `setPullVault`. address(0) disables the vault path for new creates;
+  // existing bindings on an old vault keep serving their legacies forever.
+  address public pullVault;
 
   // EIP-712 typed-data constants (compile-time — occupy no storage slots).
   // The domain is recomputed per call from `block.chainid + address(this)` so
@@ -205,6 +216,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// @notice Creation circuit breaker toggled. Only `createLegacy` /
   /// `createLegacyV2` are affected; every exit path stays live.
   event CreatePauseSet(bool paused);
+  /// @notice The LegacyPullVault wiring changed. New creates bind to (and may
+  /// name as Permit2 spender) the new vault; existing legacies are unaffected.
+  event PullVaultSet(address vault);
   /// @notice PII-free v2 create event: no name, no note, no nicknames — those
   /// live in the off-chain metadata API (create-flow-v2.md §7). The subgraph
   /// indexes creator → legacy edges + claim-relevant config from this alone.
@@ -286,6 +300,18 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   function setCreatePaused(bool paused_) external onlyCodeAdmin {
     createPaused = paused_;
     emit CreatePauseSet(paused_);
+  }
+
+  /**
+   * @dev Wire (or rotate) the LegacyPullVault. The vault is immutable and
+   * admin-free; it pins one clone implementation's codehash, so it must be
+   * redeployed whenever `legacyImplementation` changes — always update the
+   * two together. `address(0)` disables the vault path for new creates.
+   * Existing legacies and their bindings are never affected by this setter.
+   */
+  function setPullVault(address vault_) external onlyCodeAdmin {
+    pullVault = vault_;
+    emit PullVaultSet(vault_);
   }
 
   /**
@@ -378,10 +404,18 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       agreementSignature
     );
 
-    // Register the creator's batch allowance in Permit2 with the new legacy
-    // as spender. A bad bundle reverts the whole create atomically.
+    // Register the creator's batch allowance in Permit2. Two accepted
+    // spenders, nothing else (a bad bundle reverts the whole create):
+    // - the LegacyPullVault (preferred since docs/plans/legacy-pull-vault.md):
+    //   one permanent, verified spender — wallets render a normal permit
+    //   screen instead of flagging the code-less predicted clone address.
+    //   The vault only honors pulls from the legacy bound to the owner
+    //   (bound in _createLegacyCore, same tx).
+    // - the freshly deployed legacy itself (pre-vault v2 frontends).
     if (permit2_.permitBatch.details.length != 0) {
-      if (permit2_.permitBatch.spender != legacyAddress) revert Permit2SpenderMismatch();
+      address spender = permit2_.permitBatch.spender;
+      bool spenderIsVault = pullVault != address(0) && spender == pullVault;
+      if (!spenderIsVault && spender != legacyAddress) revert Permit2SpenderMismatch();
       PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
     }
 
@@ -443,6 +477,15 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     // Check beneficiary limit
     if (!_checkNumBeneficiariesLimit(numberOfBeneficiaries)) revert NumBeneficiariesInvalid();
+
+    // Bind the owner to their new legacy in the pull vault (clone path only —
+    // the vault's codehash pin rejects full-bytecode deploys by design).
+    // Runs AFTER initialize so the vault can verify the clone's owner. Not
+    // best-effort: if binding fails the create must fail, otherwise a
+    // vault-spender permit registered below would be unusable at claim time.
+    if (pullVault != address(0) && legacyImplementation != address(0)) {
+      ILegacyPullVault(pullVault).bind(msg.sender, legacyAddress);
+    }
 
     TransferLegacyStruct.LegacyExtraConfig memory _legacyExtraConfig = TransferLegacyStruct.LegacyExtraConfig({
       lackOfOutgoingTxRange: extraConfig_.lackOfOutgoingTxRange,

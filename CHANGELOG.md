@@ -21,6 +21,38 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## Unreleased (`feat/legacy-pull-vault`) — LegacyPullVault: one permanent, verified Permit2 spender
+
+Kills the red "deceptive request" wallet interstitial on v2 creates at its
+root. Creators' Permit2 batches previously named the CREATE2-predicted (still
+code-less) clone as spender — the exact fingerprint Blockaid flags as a
+drainer, and an address that can never be allowlisted or verified. New
+`LegacyPullVault` (immutable, admin-free, ~1.5 KiB) is the single spender for
+all new creates:
+
+- Vault pins the clone implementation's EIP-1167 codehash and holds a
+  first-write-wins `owner → legacy` binding set by the router inside the
+  create tx; only the owner's own bound legacy can pull, only through
+  Permit2's per-owner signed envelope. Delete releases the binding;
+  a non-live binding (deleted/claimed) may be replaced by the next create.
+- Router: appended `pullVault` storage (slot-packed after `createPaused`,
+  layout verified append-only), `setPullVault` under the existing code-admin
+  role, `createLegacyV2` accepts vault-or-clone spender (pre-vault frontends
+  unchanged), create binds after clone init.
+- Clone impl: zero storage/initializer changes — discovers the vault via
+  `router.pullVault()` and picks, per token, the most generous of three
+  rails (direct ERC-20 / Permit2-to-clone / Permit2-via-vault). All guarded
+  reads; claims never revert on missing vault/Permit2.
+- One stable spender address unlocks the trust-registry track: Etherscan +
+  Sourcify verification, Blockaid/MetaMask registration, ERC-7730
+  clear-signing descriptor. Deployment + registry checklist in
+  `docs/plans/legacy-pull-vault.md`; deploy via `scripts/deploy-pull-vault.ts`
+  (vault rotates together with the clone implementation).
+- Tests: `test/LegacyPullVault.spec.ts` (13 cases) covering bind/release/pull
+  gating, codehash pinning, back-compat rails, lockdown revocation, rebind
+  lifecycle, and the signature-less `Permit2.approve` top-up path
+  (`MockPermit2` gained canonical `approve`). Full suite 171 passing.
+
 ## v2026.07.27 — Create-flow v2 live on mainnet: one-confirmation creates, PII-free events, tx-based consent
 
 The create-flow v2 program: single-confirmation legacy creation and the

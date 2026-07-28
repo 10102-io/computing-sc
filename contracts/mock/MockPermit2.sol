@@ -106,6 +106,15 @@ contract MockPermit2 is IAllowanceTransfer {
     return (allowed.amount, allowed.expiration, allowed.nonce);
   }
 
+  /// @dev Real Permit2's direct (transaction-based, signature-less) approval —
+  /// the owner-initiated top-up path. Mirrors canonical semantics: sets amount
+  /// + expiration for (msg.sender, token, spender), does not touch the nonce.
+  function approve(address token, address spender, uint160 amount, uint48 expiration) external {
+    PackedAllowance storage allowed = _allowances[msg.sender][token][spender];
+    allowed.amount = amount;
+    allowed.expiration = expiration;
+  }
+
   function lockdown(TokenSpenderPair[] calldata approvals) external {
     for (uint256 i = 0; i < approvals.length; ++i) {
       _allowances[msg.sender][approvals[i].token][approvals[i].spender].amount = 0;
