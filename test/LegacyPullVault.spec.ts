@@ -45,7 +45,10 @@ function revertedWith(err: any, signature: string): boolean {
 describe("LegacyPullVault — verified singleton Permit2 spender", function () {
   this.timeout(150000);
 
-  async function deployFixture() {
+  // `withFee`: nonzero admin claim fee (1%) + a working MockUniswapV2Router,
+  // to exercise the fee-pull rails (the default fixture's fee is 0, which the
+  // security review flagged as an untested path).
+  async function fixtureCore(withFee: boolean) {
     const [treasury, dev, user1, user2, owner, bene, bene2, attacker] = await ethers.getSigners();
 
     const mockArtifact = await artifacts.readArtifact("MockPermit2");
@@ -59,6 +62,15 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
     const premiumSetting = await deployProxy("PremiumSetting", [], "initialize", dev);
     const Payment = await ethers.getContractFactory("Payment");
     const payment = await Payment.deploy();
+
+    let uniswapRouterAddr = uniRouter;
+    if (withFee) {
+      const MockRouter = await ethers.getContractFactory("MockUniswapV2Router");
+      const mockUni = await MockRouter.deploy(weth);
+      uniswapRouterAddr = mockUni.address;
+      await payment.grantRole(await payment.OPERATOR(), treasury.address);
+      await payment.connect(treasury).setClaimFee(100, true); // 1%
+    }
 
     const premiumRegistry = await deployProxy(
       "PremiumRegistry",
@@ -83,7 +95,7 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
       premiumSetting.address,
       verifierTerm.address,
       payment.address,
-      uniRouter,
+      uniswapRouterAddr,
       weth,
     ]);
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
@@ -124,9 +136,12 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
 
     return {
       treasury, dev, owner, bene, bene2, attacker,
-      transferEOALegacyRouter, legacyImpl, vault, permit2, permit2Domain, usdt, usdc,
+      transferEOALegacyRouter, legacyImpl, vault, permit2, permit2Domain, usdt, usdc, payment,
     };
   }
+
+  const deployFixture = async () => fixtureCore(false);
+  const deployFeeFixture = async () => fixtureCore(true);
 
   async function signPermitBatch(signer: any, domain: any, tokens: string[], spender: string, opts: any = {}) {
     const now = await currentTime();
@@ -356,6 +371,89 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
     await increase(86400 + 1);
     await transferEOALegacyRouter.connect(bene).activeLegacy(legacyId, [usdt.address], false);
     assert.equal((await usdt.balanceOf(bene.address)).toString(), "1000000000");
+  });
+
+  it("vault rotation cannot strand a pre-rotation legacy: the clone pulls through its PINNED vault", async function () {
+    const { dev, owner, bene, transferEOALegacyRouter, legacyImpl, vault, permit2Domain, usdt } =
+      await loadFixture(deployFixture);
+
+    const bundle = await signPermitBatch(owner, permit2Domain, [usdt.address], vault.address);
+    const { legacy, legacyId } = await createV2(transferEOALegacyRouter, owner, [{ user: bene.address, percent: 1000000 }], bundle);
+    assert.equal(await legacy.pullVault(), vault.address, "clone must pin the vault it was created under");
+
+    // Rotate: new vault wired for FUTURE creates (e.g. new clone impl cycle).
+    const Vault = await ethers.getContractFactory("LegacyPullVault");
+    const vault2 = await Vault.deploy(transferEOALegacyRouter.address, legacyImpl.address);
+    await transferEOALegacyRouter.connect(dev).setPullVault(vault2.address);
+
+    // The owner is (by scenario) dead and cannot re-sign — the claim must
+    // still find the old vault's allowance through the pinned reference.
+    await increase(86400 + 1);
+    await transferEOALegacyRouter.connect(bene).activeLegacy(legacyId, [usdt.address], false);
+    assert.equal((await usdt.balanceOf(bene.address)).toString(), "1000000000", "pre-rotation permits must keep working");
+  });
+
+  it("nonzero admin fee flows through the vault rail without approvals from the legacy", async function () {
+    const { owner, bene, transferEOALegacyRouter, vault, permit2Domain, usdt, payment } =
+      await loadFixture(deployFeeFixture);
+
+    const bundle = await signPermitBatch(owner, permit2Domain, [usdt.address], vault.address);
+    const { legacyId } = await createV2(transferEOALegacyRouter, owner, [{ user: bene.address, percent: 1000000 }], bundle);
+
+    await increase(86400 + 1);
+    await transferEOALegacyRouter.connect(bene).activeLegacy(legacyId, [usdt.address], false);
+
+    // 1% of 1,000 USDT. The mock swap has no ETH to pay out, so
+    // _swapAdminFee's fallback delivers the fee as tokens to Payment —
+    // either way the fee must not silently vanish or brick the claim.
+    assert.equal((await usdt.balanceOf(payment.address)).toString(), "10000000", "fee lands at the payment contract");
+    assert.equal((await usdt.balanceOf(bene.address)).toString(), "990000000", "beneficiary gets the remainder");
+    assert.equal((await usdt.balanceOf(owner.address)).toString(), "0");
+  });
+
+  it("a non-pullable fee forfeits that token's fee instead of bricking the claim batch", async function () {
+    const { owner, bene, transferEOALegacyRouter, vault, permit2Domain, usdt, usdc, payment } =
+      await loadFixture(deployFeeFixture);
+
+    const bundle = await signPermitBatch(owner, permit2Domain, [usdt.address], vault.address);
+    const { legacy, legacyId } = await createV2(transferEOALegacyRouter, owner, [{ user: bene.address, percent: 1000000 }], bundle);
+    await usdc.connect(owner).approve(legacy.address, ethers.constants.MaxUint256);
+
+    // Sabotage the USDT rail underneath Permit2: the Permit2 record still
+    // reads a huge allowance (so USDT's totalAmount > 0 and a fee is due),
+    // but every actual pull reverts.
+    await usdt.connect(owner).approve(PERMIT2_ADDRESS, 0);
+
+    await increase(86400 + 1);
+    // Must NOT revert: USDT fee + transfers fail silently, USDC (direct
+    // rail) still distributes with its fee taken.
+    await transferEOALegacyRouter.connect(bene).activeLegacy(legacyId, [usdt.address, usdc.address], false);
+
+    assert.equal((await usdt.balanceOf(owner.address)).toString(), "1000000000", "sabotaged token stays with the owner");
+    assert.equal((await usdt.balanceOf(bene.address)).toString(), "0");
+    assert.equal((await usdc.balanceOf(payment.address)).toString(), "5000000", "1% USDC fee still collected");
+    assert.equal((await usdc.balanceOf(bene.address)).toString(), "495000000", "USDC still distributed");
+  });
+
+  it("ERC-777-style re-entry into activeLegacy is blocked and distribution happens exactly once", async function () {
+    const { owner, bene, transferEOALegacyRouter } = await loadFixture(deployFixture);
+
+    const Reentrant = await ethers.getContractFactory("MockReentrantERC20");
+    const rnt = await Reentrant.deploy();
+    await rnt.mint(owner.address, 1_000_000);
+
+    const { legacy, legacyId } = await createV2(
+      transferEOALegacyRouter, owner, [{ user: bene.address, percent: 1000000 }], EMPTY_BUNDLE
+    );
+    await rnt.connect(owner).approve(legacy.address, ethers.constants.MaxUint256);
+    await rnt.setAttack(transferEOALegacyRouter.address, legacyId);
+
+    await increase(86400 + 1);
+    await transferEOALegacyRouter.connect(bene).activeLegacy(legacyId, [rnt.address], false);
+
+    assert.equal(await rnt.reentryAttempted(), true, "probe must have fired");
+    assert.equal(await rnt.reentrySucceeded(), false, "re-entry must be blocked by the guard");
+    assert.equal((await rnt.balanceOf(bene.address)).toString(), "1000000", "distributed exactly once");
   });
 
   it("empty bundle + vault wired: still binds, and a later direct vault-spender approval is claimable", async function () {

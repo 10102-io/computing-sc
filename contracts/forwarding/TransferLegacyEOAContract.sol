@@ -80,6 +80,14 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   address public creator;
   address public eoaStorageToken; // address(0) means no active swap
 
+  // The LegacyPullVault this legacy was created under, pinned at initialize
+  // (APPENDED storage — new clones only; docs/plans/legacy-pull-vault.md).
+  // Pinned rather than read live from the router so that a later vault
+  // rotation (`setPullVault`) can never strand this legacy's already-signed
+  // vault-spender permits — a dead owner cannot re-sign. address(0) = created
+  // without a vault; the direct/per-clone rails cover it.
+  address public pullVault;
+
   modifier onlyLive() {
     if (!isLive()) {
       revert LegacyIsDeleted();
@@ -300,6 +308,12 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     uniswapRouter = _uniswapRouter;
     weth = _weth;
     _setLegacyInfo(legacyId_, owner_, 1, config_.lackOfOutgoingTxRange, msg.sender);
+    // Pin the pull vault for this legacy's lifetime (msg.sender is the
+    // router, recorded just above). Guarded so routers that predate the
+    // vault surface degrade to "no vault" instead of failing the create.
+    try IPullVaultProvider(msg.sender).pullVault() returns (address vault_) {
+      pullVault = vault_;
+    } catch {}
     premiumSetting = IPremiumSetting(_premiumSetting);
     paymentContract = _paymentContract;
     adminFeePercent = IPayment(paymentContract).getFee();
@@ -505,17 +519,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     _isLive = 2;
     _lastTimestamp = block.timestamp;
 
-    // Relinquish the owner's LegacyPullVault binding so their next create can
-    // bind immediately. Best-effort: the vault's `bind` also accepts
-    // rebinding over a non-live legacy, so a failure here (vault-less router,
-    // unbound clone) must never block the delete. NOT done on activation —
-    // multi-tranche claims keep pulling through the binding after the legacy
-    // tombstones.
-    try IPullVaultProvider(router).pullVault() returns (address vault) {
-      if (vault != address(0) && ILegacyPullVault(vault).boundLegacy(sender_) == address(this)) {
-        try ILegacyPullVault(vault).release(sender_) {} catch {}
-      }
-    } catch {}
+    // Relinquish the owner's binding in this legacy's pinned vault so their
+    // next create can bind immediately. Best-effort: the vault's `bind` also
+    // accepts rebinding over a non-live legacy, so a failure here must never
+    // block the delete. NOT done on activation — multi-tranche claims keep
+    // pulling through the binding after the legacy tombstones.
+    address vault = pullVault;
+    if (vault != address(0) && ILegacyPullVault(vault).boundLegacy(sender_) == address(this)) {
+      try ILegacyPullVault(vault).release(sender_) {} catch {}
+    }
 
     payable(sender_).transfer(address(this).balance);
   }
@@ -777,17 +789,16 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       
         if (fee > 0) {
           uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-          if (route == PullRoute.Vault) {
-            // fee <= totalAmount <= the Permit2 allowance (uint160), so the
-            // casts below cannot truncate.
-            ILegacyPullVault(vault).pull(ownerAddress, token, address(this), uint160(fee));
-          } else if (route == PullRoute.Permit2Clone) {
-            PERMIT2.transferFrom(ownerAddress, address(this), uint160(fee), token);
-          } else {
-            IERC20(token).safeTransferFrom(ownerAddress, address(this), fee);
-          }
+          // The fee pull rides the same guarded rail helper as beneficiary
+          // transfers: a non-pullable fee (revoked underlying approval,
+          // stale rail, quirky token) forfeits the fee for this token
+          // instead of reverting — and thereby bricking — the whole claim
+          // batch. Actual receipts are measured, never assumed.
+          _transferErc20ToBeneficiary(token, ownerAddress, address(this), fee, route, vault);
           uint256 actualFeeReceived =  IERC20(token).balanceOf(address(this)) - balanceBefore;
-          _swapAdminFee(token, actualFeeReceived);
+          if (actualFeeReceived > 0) {
+            _swapAdminFee(token, actualFeeReceived);
+          }
         }
         
         uint256 processedAmountERC20 = 0;
@@ -827,25 +838,21 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   }
 
   /**
-   * @dev Usable Permit2 allowance for (owner_, token_) with the
-   * LegacyPullVault as spender — but only when this clone is the legacy
-   * currently bound to the owner in that vault, since only the bound legacy
-   * can trigger `vault.pull`. The vault address is discovered through the
-   * router (no clone storage), and every read is guarded so routers that
-   * predate the vault, an unset vault, or a missing Permit2 all degrade to
-   * "no allowance" instead of reverting the claim.
+   * @dev Usable Permit2 allowance for (owner_, token_) with this legacy's
+   * PINNED LegacyPullVault as spender — but only when this clone is the
+   * legacy currently bound to the owner in that vault, since only the bound
+   * legacy can trigger `vault.pull`. Using the pinned vault (not a live
+   * router read) means a vault rotation can never strand the owner's
+   * already-signed permits. Degrades to "no allowance" when the legacy has
+   * no vault, Permit2 is absent, the binding moved, or the grant expired.
    */
   function _vaultAllowance(address owner_, address token_) private view returns (uint256, address) {
-    if (address(PERMIT2).code.length == 0) return (0, address(0));
-    try IPullVaultProvider(router).pullVault() returns (address vault) {
-      if (vault == address(0)) return (0, address(0));
-      if (ILegacyPullVault(vault).boundLegacy(owner_) != address(this)) return (0, address(0));
-      (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, vault);
-      if (block.timestamp > expiration) return (0, address(0));
-      return (amount, vault);
-    } catch {
-      return (0, address(0));
-    }
+    address vault = pullVault;
+    if (vault == address(0) || address(PERMIT2).code.length == 0) return (0, address(0));
+    if (ILegacyPullVault(vault).boundLegacy(owner_) != address(this)) return (0, address(0));
+    (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, vault);
+    if (block.timestamp > expiration) return (0, address(0));
+    return (amount, vault);
   }
 
   /// @dev Which authorization rail a token is pulled through at claim time.

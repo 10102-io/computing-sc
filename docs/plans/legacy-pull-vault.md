@@ -48,15 +48,20 @@ implementation.
 
 ### Clone impl (`TransferEOALegacy`)
 
-- **No storage or initializer changes.** The clone discovers the vault
-  through `router.pullVault()` (guarded staticcall; older routers, unset
-  vault, or missing Permit2 degrade to "no allowance", never a revert).
-- Claim path now picks, per token, the **most generous of three rails**:
+- **Pins its vault at `initialize`** in appended storage (`pullVault`,
+  slot 25 — new clones only; no initializer signature change). Read from the
+  router via a guarded staticcall, so routers that predate the vault surface
+  degrade to "no vault" instead of failing the create. All later vault
+  interactions use the pinned address — see the rotation rule in §4 for why
+  this matters (HIGH finding in the review round).
+- Claim path picks, per token, the **most generous of three rails**:
   direct ERC-20 allowance, Permit2-with-clone-as-spender, Permit2-via-vault
   (only when this clone is the owner's bound legacy). Same
-  `min(balance, allowance)` semantics as before.
-- `deleteLegacy` releases the binding, best-effort (bind-over-non-live is the
-  backstop if release ever fails).
+  `min(balance, allowance)` semantics as before. The admin-fee pull rides the
+  same guarded rails: a non-pullable fee is forfeited, never a claim-wide
+  revert.
+- `deleteLegacy` releases the binding in the pinned vault, best-effort
+  (bind-over-non-live is the backstop if release ever fails).
 
 ## 3. Trust model (deliberately narrower than router-as-spender)
 
@@ -79,10 +84,16 @@ implementation.
 The codehash pin means **a new clone implementation requires a new vault**.
 `scripts/deploy-pull-vault.ts` reads the router's current
 `legacyImplementation()` and pins exactly that; always run it after
-`deploy-eoa-clone-impl.ts`. Old-vault bindings keep serving their existing
-legacies (clones resolve the vault via the router — after a rotation, the
-frontend should prompt affected owners to re-sign against the new vault, or
-existing per-clone/direct rails continue to cover them).
+`deploy-eoa-clone-impl.ts`.
+
+Rotation is safe for existing legacies **by construction**: each clone pins
+the vault address in its own storage at `initialize` (appended slot, new
+clones only) and pulls through that pinned vault forever. A `setPullVault`
+rotation therefore only affects *future* creates — it can never strand the
+already-signed permits of a pre-rotation legacy whose owner may since have
+died. (The first cut resolved the vault live via `router.pullVault()`, which
+the adversarial review flagged as a HIGH: rotation would have orphaned every
+pre-rotation vault permit. Fixed by pinning.)
 
 ## 5. Deployment + trust-registry checklist (per network)
 
@@ -103,12 +114,47 @@ existing per-clone/direct rails continue to cover them).
 
 ## 6. Test coverage
 
-`test/LegacyPullVault.spec.ts` (13 cases): vault-spender create → bind →
+`test/LegacyPullVault.spec.ts` (17 cases): vault-spender create → bind →
 claim through vault (60/40 split); pre-vault clone-spender back-compat;
 spender-mismatch revert; bind gating (router-only, codehash pin vs EOA and
 non-clone contract, owner mismatch, live-binding protection); pull gating;
 delete → release → re-create; claim-tombstone → rebind-over-non-live;
 lockdown revocation; mixed rails; vault-unset fallback; empty-bundle create +
 later signature-less `Permit2.approve` top-up (the future top-up UX).
-`MockPermit2` gained the canonical `approve()` for that last case. Full suite:
-171 passing.
+`MockPermit2` gained the canonical `approve()` for that last case.
+
+## 7. Adversarial review round (findings → fixes)
+
+An independent security review of the first cut surfaced, and this branch
+fixes, the following:
+
+- **HIGH — vault rotation stranded pre-rotation permits.** The clone read
+  `router.pullVault()` live; after a rotation the old vault became
+  undiscoverable and a dead owner can't re-sign. Fix: the clone pins the
+  vault in its own storage at `initialize` and uses only the pinned address
+  (`_vaultAllowance`, `deleteLegacy` release). Regression test: create →
+  rotate to a second vault → claim still pulls through the pinned one.
+- **MEDIUM — unguarded admin-fee pull could brick a claim batch.** A single
+  non-pullable fee (revoked underlying approval, stale rail) reverted the
+  whole claim. Fix: the fee pull now rides the same guarded rail helper as
+  beneficiary transfers and forfeits the fee on failure; `_swapAdminFee` only
+  runs on measured receipts. Tests now run with a **nonzero fee** (the old
+  fixture's zero fee had left the path untested): fee-through-vault-rail and
+  sabotaged-rail-doesn't-brick-the-batch.
+- **MEDIUM (pre-existing) — no reentrancy guard on the EOA router.** Claim
+  paths loop over arbitrary caller-supplied token addresses; an ERC-777-style
+  token could re-enter `activeLegacy` mid-distribution and re-run it. Fix:
+  `ReentrancyGuardTransient` (EIP-1153, zero storage slots — layout-safe on
+  the live proxy) with `nonReentrant` on `activeLegacy`, `activeLegacyFor`,
+  `activeLegacyAndUnswap`. Probe test (`MockReentrantERC20`) asserts the
+  re-entry fails and distribution happens exactly once.
+- **INFO — vault spender accepted with the clone path disabled.**
+  `createLegacyV2` now rejects a vault-spender bundle when
+  `legacyImplementation` is unset (binding could never happen, the permit
+  would be dead weight).
+
+Confirmed non-issues from the same review: codehash pin is byte-exact for OZ
+Clones v5.5.0, cross-owner pulls blocked at three layers, bind/permit
+ordering atomic, storage append safe (router slot 14, clone slot 25).
+
+Full suite after the review round: 175 passing.

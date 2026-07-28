@@ -2,6 +2,7 @@
 pragma solidity 0.8.35;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
@@ -15,7 +16,11 @@ import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
 import {ILegacyPullVault} from "../interfaces/ILegacyPullVault.sol";
 
-contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable {
+// ReentrancyGuardTransient (EIP-1153) closes the ERC-777-style callback
+// re-entry into the claim paths, which loop over arbitrary caller-supplied
+// token addresses. Transient storage only — zero storage slots — so adding it
+// to this live, already-deployed proxy is layout-safe by construction.
+contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable, ReentrancyGuardTransient {
   address public premiumSetting;
   IEIP712LegacyVerifier public verifier;
   address public paymentContract;
@@ -414,7 +419,11 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     // - the freshly deployed legacy itself (pre-vault v2 frontends).
     if (permit2_.permitBatch.details.length != 0) {
       address spender = permit2_.permitBatch.spender;
-      bool spenderIsVault = pullVault != address(0) && spender == pullVault;
+      // Vault spender is only meaningful on the clone path (binding happens
+      // there); on the full-bytecode fallback a vault permit would register
+      // but never be pullable, so fail fast instead.
+      bool spenderIsVault =
+        pullVault != address(0) && legacyImplementation != address(0) && spender == pullVault;
       if (!spenderIsVault && spender != legacyAddress) revert Permit2SpenderMismatch();
       PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
     }
@@ -661,7 +670,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // live exclusively in the off-chain metadata API (§7). Storing them on-chain
   // (or echoing them in events) was the PII leak the strip exists to close.
 
-  function activeLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_) external {
+  function activeLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_) external nonReentrant {
     _runActiveLegacy(legacyId_, assets_, isETH_, msg.sender);
   }
 
@@ -679,7 +688,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     address[] calldata assets_,
     bool isETH_,
     ClaimAuth calldata auth_
-  ) external {
+  ) external nonReentrant {
     if (sponsoredClaimsDisabled[legacyId_]) revert SponsoredClaimsDisabled();
     bytes32 structHash = keccak256(
       abi.encode(
@@ -752,7 +761,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     address[] calldata assets_,
     uint256 amountOutMin_,
     uint256 deadline_
-  ) external {
+  ) external nonReentrant {
     address legacyAddress = _checkLegacyExisted(legacyId_);
 
     ITransferEOALegacy(legacyAddress).activeLegacyAndUnswap(

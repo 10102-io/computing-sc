@@ -39,19 +39,31 @@ all new creates:
   layout verified append-only), `setPullVault` under the existing code-admin
   role, `createLegacyV2` accepts vault-or-clone spender (pre-vault frontends
   unchanged), create binds after clone init.
-- Clone impl: zero storage/initializer changes — discovers the vault via
-  `router.pullVault()` and picks, per token, the most generous of three
-  rails (direct ERC-20 / Permit2-to-clone / Permit2-via-vault). All guarded
-  reads; claims never revert on missing vault/Permit2.
+- Clone impl: pins its vault in appended storage at `initialize` (new clones
+  only) and picks, per token, the most generous of three rails (direct
+  ERC-20 / Permit2-to-clone / Permit2-via-vault). All guarded reads; claims
+  never revert on missing vault/Permit2. Pinning means a `setPullVault`
+  rotation only affects future creates — it can never strand the
+  already-signed permits of an existing legacy.
 - One stable spender address unlocks the trust-registry track: Etherscan +
   Sourcify verification, Blockaid/MetaMask registration, ERC-7730
   clear-signing descriptor. Deployment + registry checklist in
   `docs/plans/legacy-pull-vault.md`; deploy via `scripts/deploy-pull-vault.ts`
   (vault rotates together with the clone implementation).
-- Tests: `test/LegacyPullVault.spec.ts` (13 cases) covering bind/release/pull
+- Hardening from the adversarial review round (details in the plan doc §7):
+  the admin-fee pull now rides the same guarded rails as beneficiary
+  transfers, so one non-pullable fee forfeits that fee instead of bricking
+  the whole claim batch (fee paths now tested with a **nonzero** fee); the
+  EOA router gains `ReentrancyGuardTransient` (EIP-1153, zero storage —
+  layout-safe on the live proxy) on all claim entrypoints, closing
+  ERC-777-style re-entry into distribution; vault-spender bundles are
+  rejected when the clone path is disabled.
+- Tests: `test/LegacyPullVault.spec.ts` (17 cases) covering bind/release/pull
   gating, codehash pinning, back-compat rails, lockdown revocation, rebind
-  lifecycle, and the signature-less `Permit2.approve` top-up path
-  (`MockPermit2` gained canonical `approve`). Full suite 171 passing.
+  lifecycle, vault-rotation pinning, nonzero-fee rails + sabotaged-rail
+  resilience, a reentrancy probe (`MockReentrantERC20`), and the
+  signature-less `Permit2.approve` top-up path (`MockPermit2` gained
+  canonical `approve`). Full suite 175 passing.
 
 ## v2026.07.27 — Create-flow v2 live on mainnet: one-confirmation creates, PII-free events, tx-based consent
 
