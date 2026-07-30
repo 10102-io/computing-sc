@@ -21,7 +21,32 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
-## Unreleased (`feat/legacy-pull-vault`) — LegacyPullVault: one permanent, verified Permit2 spender
+## Unreleased (`feat/legacy-pull-vault`) — LegacyPullVault + EOA activity auto-renew
+
+Two riders on one router-upgrade train (one mainnet upgrade event instead of
+two): the LegacyPullVault below, and **EOA activity auto-renew (Phase 1)** —
+the original product promise ("we monitor your wallet activity") made true
+on-chain:
+
+- Owner-opt-in (premium-gated, default OFF) `setAutoRenew` per legacy, plus a
+  code-admin-wired `activityAttestor`. When the off-chain worker sees the
+  owner's transaction count rise near the deadline, `recordActivity` resets
+  the inactivity timer — no email, no click, no gas from the owner.
+- Four hard bounds, all on-chain: opt-in; strictly-increasing attested nonce
+  (an observation can never be replayed, even across disable/re-enable);
+  attestations only within 30 days of the activation deadline (~one per
+  period); and a 365-day budget since the owner's last REAL check-in, after
+  which the owner must check in themselves. Premium is re-checked at each
+  renewal.
+- Honest trust model: a fully compromised attestor can only DELAY activation
+  by the remaining budget — never accelerate it, never claim, never move
+  funds. Real check-ins (direct or sponsored) refill the budget; attestations
+  never extend their own leash.
+- Storage appended after `pullVault` (`activityAttestor` slot 15,
+  `autoRenewState` slot 16 — layout verified append-only). No clone changes:
+  covers every existing legacy. Tests: `test/EOAAutoRenew.spec.ts` (7 cases).
+
+### LegacyPullVault: one permanent, verified Permit2 spender
 
 Kills the red "deceptive request" wallet interstitial on v2 creates at its
 root. Creators' Permit2 batches previously named the CREATE2-predicted (still
