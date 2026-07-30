@@ -194,6 +194,8 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error AutoRenewTooEarly();
   error AutoRenewTooLate();
   error AutoRenewBudgetExhausted();
+  error AutoRenewLegacyNotLive();
+  error AutoRenewInfeasible();
   error CheckInDeadlineTooFar();
 
   modifier onlyCodeAdmin() {
@@ -644,6 +646,18 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     address legacyAddress = _checkLegacyExisted(legacyId_);
     if (IPremiumLegacy(legacyAddress).getLegacyOwner() != msg.sender) revert OnlyOwner();
     if (enabled_ && !IPremiumSetting(premiumSetting).isPremium(msg.sender)) revert AutoRenewNotPremium();
+    if (enabled_) {
+      // Fail loudly instead of silently never firing (review L2): a deleted/
+      // claimed legacy has nothing to renew, and a trigger period longer than
+      // BUDGET + WINDOW means the renewal window would only ever open after
+      // the budget is spent — every attestation would revert and the owner
+      // would wrongly believe their wallet is being watched. Disable stays
+      // unconditional.
+      if (!IPremiumLegacy(legacyAddress).isLive()) revert AutoRenewLegacyNotLive();
+      if (uint256(IPremiumLegacy(legacyAddress).getActivationTrigger()) > AUTO_RENEW_BUDGET + AUTO_RENEW_WINDOW) {
+        revert AutoRenewInfeasible();
+      }
+    }
 
     AutoRenewState storage renewState = autoRenewState[legacyId_];
     renewState.enabled = enabled_;
@@ -662,8 +676,11 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    * the contract enforces what it can: strict monotonicity, the near-deadline
    * window, and the since-last-real-check-in budget). All four bounds are
    * hard reverts so a misbehaving worker fails loudly instead of silently
-   * shifting timelines. Worst-case compromise = inheritance DELAYED by at
-   * most the remaining budget; activation can never be accelerated here.
+   * shifting timelines. Worst-case compromise = inheritance DELAYED, never
+   * accelerated: the LAST renewal can land up to AUTO_RENEW_BUDGET after the
+   * owner's last real check-in, and activation then follows one further full
+   * inactivity period (review L1 — the budget bounds when renewals may
+   * happen, not the final deadline).
    */
   function recordActivity(uint256 legacyId_, uint64 observedNonce_) external {
     if (msg.sender != activityAttestor || activityAttestor == address(0)) revert NotActivityAttestor();

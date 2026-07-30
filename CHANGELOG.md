@@ -39,9 +39,11 @@ on-chain:
   which the owner must check in themselves. Premium is re-checked at each
   renewal.
 - Honest trust model: a fully compromised attestor can only DELAY activation
-  by the remaining budget — never accelerate it, never claim, never move
-  funds. Real check-ins (direct or sponsored) refill the budget; attestations
-  never extend their own leash.
+  — never accelerate it, never claim, never move funds. Stated precisely,
+  the last renewal can land up to 12 months after the owner's last real
+  check-in and activation then follows one further inactivity period (so
+  worst case ≈ 12 months + one period). Real check-ins (direct or
+  sponsored) refill the budget; attestations never extend their own leash.
 - Hardened after an independent adversarial review (no HIGH findings): an
   attestation can never re-arm an already-claimable legacy
   (`AutoRenewTooLate` once the deadline passes — the claim window belongs to
@@ -50,9 +52,17 @@ on-chain:
   can't refill the budget months after signing. A nonce-poisoning attestor
   can only brick auto-renew for a legacy, which fails safe: renewals stop,
   reminders take over, activation proceeds.
+- Second review round: enabling now fails loudly instead of silently never
+  firing — rejected on tombstoned legacies (`AutoRenewLegacyNotLive`) and on
+  trigger periods past the ~395-day feasibility cliff (`AutoRenewInfeasible`,
+  where the renewal window would only open after the budget is spent). The
+  exact budget-refill set is documented and test-pinned: check-ins and the
+  owner's own re-enable toggle refill; config actions (trigger edits,
+  withdrawals, swaps) deliberately don't.
 - Storage appended after `pullVault` (`activityAttestor` slot 15,
   `autoRenewState` slot 16 — layout verified append-only). No clone changes:
-  covers every existing legacy. Tests: `test/EOAAutoRenew.spec.ts` (9 cases).
+  covers every existing legacy. Tests: `test/EOAAutoRenew.spec.ts`
+  (15 cases). Full suite: 190 passing.
 
 ### LegacyPullVault: one permanent, verified Permit2 spender
 

@@ -104,6 +104,8 @@ describe("EOA activity auto-renew (Phase 1)", function () {
     await ethers.provider.send("hardhat_setBalance", [premiumRegistry.address, "0x1000000000000000000"]);
     const registrySigner = await ethers.getSigner(premiumRegistry.address);
     await premiumSetting.connect(registrySigner).updatePremiumTime(owner.address, 100 * 365 * DAY);
+    // `other` doubles as a second legacy owner in the isolation test.
+    await premiumSetting.connect(registrySigner).updatePremiumTime(other.address, 100 * 365 * DAY);
 
     await usdt.mint(owner.address, 1_000_000_000);
 
@@ -358,5 +360,203 @@ describe("EOA activity auto-renew (Phase 1)", function () {
     } catch (err) {
       assert(err, "expected revert");
     }
+  });
+
+  it("enable fails loudly when it could never fire: infeasible trigger, tombstoned legacy, unknown id", async function () {
+    const { owner, bene, transferEOALegacyRouter } = await loadFixture(deployFixture);
+
+    // 400-day trigger: the window would only open after the budget is spent —
+    // every attestation would revert, so the opt-in itself is rejected.
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 400 * DAY);
+    try {
+      await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+      assert.fail("infeasible trigger should revert");
+    } catch (err) {
+      assert(revertedWith(err, "AutoRenewInfeasible()"), `unexpected: ${err}`);
+    }
+
+    // Tombstoned legacy: enable rejected, disable still accepted.
+    await transferEOALegacyRouter.connect(owner).deleteLegacy(legacyId);
+    try {
+      await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+      assert.fail("tombstoned enable should revert");
+    } catch (err) {
+      assert(revertedWith(err, "AutoRenewLegacyNotLive()"), `unexpected: ${err}`);
+    }
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, false);
+
+    // Unknown id.
+    try {
+      await transferEOALegacyRouter.connect(owner).setAutoRenew(999999, true);
+      assert.fail("unknown id should revert");
+    } catch (err) {
+      assert(revertedWith(err, "LegacyNotFound()"), `unexpected: ${err}`);
+    }
+  });
+
+  it("attestations never extend their own leash; a toggle re-anchors the budget (documented L4 semantics)", async function () {
+    const { attestor, owner, bene, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+    const { budgetAnchor: anchor0 } = await transferEOALegacyRouter.autoRenewState(legacyId);
+
+    // Five renewals across ~325 days: each resets the 90-day timer but the
+    // budget anchor must not move an inch.
+    for (let i = 1; i <= 5; i++) {
+      await increase(65 * DAY);
+      await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, i);
+    }
+    const { budgetAnchor: anchorAfter } = await transferEOALegacyRouter.autoRenewState(legacyId);
+    assert.equal(anchorAfter.toString(), anchor0.toString(), "renewals must not refill the budget");
+
+    // Day ~390 (> 365 since opt-in): exhausted, exactly on schedule.
+    await increase(65 * DAY);
+    try {
+      await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, 6);
+      assert.fail("budget should be exhausted");
+    } catch (err) {
+      assert(revertedWith(err, "AutoRenewBudgetExhausted()"), `unexpected: ${err}`);
+    }
+
+    // An owner toggle is an owner-authenticated consent renewal: it
+    // re-anchors the budget (without touching the clone timer or the nonce
+    // baseline) and renewals resume.
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, false);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+    await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, 6);
+  });
+
+  it("owner-signed sponsored check-in refills the budget; a config action does not", async function () {
+    const { attestor, owner, bene, other, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+    const { budgetAnchor: anchor0 } = await transferEOALegacyRouter.autoRenewState(legacyId);
+
+    await increase(30 * DAY);
+
+    // Config action resets the clone timer but is NOT a check-in: the
+    // budget anchor must not move (documented refill set — see plan doc).
+    await transferEOALegacyRouter.connect(owner).setActivationTrigger(legacyId, 90 * DAY);
+    const { budgetAnchor: anchorAfterConfig } = await transferEOALegacyRouter.autoRenewState(legacyId);
+    assert.equal(anchorAfterConfig.toString(), anchor0.toString(), "config action must not refill");
+
+    // Sponsored check-in (owner-signed, relayed by `other`) IS a real
+    // check-in: the budget refills.
+    const network = await ethers.provider.getNetwork();
+    const domain = {
+      name: "10102 Legacy Sponsored",
+      version: "1",
+      chainId: network.chainId,
+      verifyingContract: transferEOALegacyRouter.address,
+    };
+    const CHECKIN_TYPES = {
+      CheckInAuth: [
+        { name: "owner", type: "address" },
+        { name: "legacyId", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+    const nonce = (await transferEOALegacyRouter.sponsorNonce(owner.address)).toNumber();
+    const deadline = (await currentTime()) + 1800;
+    const signature = await owner._signTypedData(domain, CHECKIN_TYPES, {
+      owner: owner.address,
+      legacyId,
+      nonce,
+      deadline,
+    });
+    await transferEOALegacyRouter
+      .connect(other)
+      .activeAliveFor(legacyId, { owner: owner.address, nonce, deadline, signature });
+    const { budgetAnchor: anchorAfterCheckIn } = await transferEOALegacyRouter.autoRenewState(legacyId);
+    assert(anchorAfterCheckIn.gt(anchor0), "sponsored check-in must refill the budget");
+
+    void attestor;
+  });
+
+  it("attestor rotation: old key locked out, new key works, zeroing pauses everything", async function () {
+    const { attestor, dev, owner, bene, other, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+    await increase(65 * DAY);
+
+    await transferEOALegacyRouter.connect(dev).setActivityAttestor(other.address);
+    try {
+      await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, 1);
+      assert.fail("rotated-out key should revert");
+    } catch (err) {
+      assert(revertedWith(err, "NotActivityAttestor()"), `unexpected: ${err}`);
+    }
+    await transferEOALegacyRouter.connect(other).recordActivity(legacyId, 1);
+
+    // Zeroing pauses ALL renewals (kill switch) without touching opt-ins.
+    await transferEOALegacyRouter.connect(dev).setActivityAttestor(ethers.constants.AddressZero);
+    await increase(65 * DAY);
+    try {
+      await transferEOALegacyRouter.connect(other).recordActivity(legacyId, 2);
+      assert.fail("zeroed attestor should revert");
+    } catch (err) {
+      assert(revertedWith(err, "NotActivityAttestor()"), `unexpected: ${err}`);
+    }
+    const state = await transferEOALegacyRouter.autoRenewState(legacyId);
+    assert.equal(state.enabled, true, "opt-in untouched by the kill switch");
+  });
+
+  it("nonce poisoning (accepted L1): a max-uint64 attestation permanently stops renewals — fail-safe direction", async function () {
+    const { attestor, dev, owner, bene, other, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+    await increase(65 * DAY);
+
+    const MAX_U64 = ethers.BigNumber.from(2).pow(64).sub(1);
+    await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, MAX_U64);
+
+    // Survives attestor rotation AND owner toggles — renewals are dead, but
+    // only toward activation (the owner can always check in themselves).
+    await transferEOALegacyRouter.connect(dev).setActivityAttestor(other.address);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, false);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+    await increase(65 * DAY);
+    try {
+      await transferEOALegacyRouter.connect(other).recordActivity(legacyId, MAX_U64);
+      assert.fail("poisoned baseline should reject everything");
+    } catch (err) {
+      assert(revertedWith(err, "StaleActivityNonce()"), `unexpected: ${err}`);
+    }
+    await transferEOALegacyRouter.connect(owner).avtiveAlive(legacyId); // owner path unaffected
+  });
+
+  it("multi-legacy isolation + event payloads", async function () {
+    const { attestor, owner, bene, other, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const a = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+    const b = await createLegacy(transferEOALegacyRouter, other, bene.address, 90 * DAY);
+
+    const setTx = await transferEOALegacyRouter.connect(owner).setAutoRenew(a.legacyId, true);
+    const setRc = await setTx.wait();
+    const setEv = setRc.events?.find((e: any) => e.event === "TransferEOALegacyAutoRenewSet");
+    assert(setEv, "AutoRenewSet event missing");
+    assert.equal(setEv!.args!.legacyId.toString(), a.legacyId.toString());
+    assert.equal(setEv!.args!.owner, owner.address);
+    assert.equal(setEv!.args!.enabled, true);
+
+    await transferEOALegacyRouter.connect(other).setAutoRenew(b.legacyId, true);
+    const stateB0 = await transferEOALegacyRouter.autoRenewState(b.legacyId);
+
+    await increase(65 * DAY);
+    const renewTx = await transferEOALegacyRouter.connect(attestor).recordActivity(a.legacyId, 7);
+    const renewRc = await renewTx.wait();
+    const renewEv = renewRc.events?.find((e: any) => e.event === "TransferEOALegacyAutoRenewed");
+    assert(renewEv, "AutoRenewed event missing");
+    assert.equal(renewEv!.args!.legacyId.toString(), a.legacyId.toString());
+    assert.equal(renewEv!.args!.owner, owner.address);
+    assert.equal(renewEv!.args!.observedNonce.toString(), "7");
+
+    // B is untouched: same nonce baseline, same budget anchor, same deadline.
+    const stateB1 = await transferEOALegacyRouter.autoRenewState(b.legacyId);
+    assert.equal(stateB1.lastNonceSeen.toString(), stateB0.lastNonceSeen.toString());
+    assert.equal(stateB1.budgetAnchor.toString(), stateB0.budgetAnchor.toString());
+    const [deadlineB] = await b.legacy.getTriggerActivationTimestamp();
+    const [deadlineA] = await a.legacy.getTriggerActivationTimestamp();
+    assert(deadlineA.gt(deadlineB), "only A's deadline moved");
   });
 });
