@@ -1,8 +1,7 @@
 # LegacyPullVault — one permanent, verified Permit2 spender
 
-Status: **code complete** on `feat/legacy-pull-vault` (2026-07-28). Not yet
-deployed. Companion frontend work tracked in `computing/docs/DEFERRED.md`
-(`permit2-spender-trust`).
+Status: **live on mainnet** (2026-07-30, see §6c). Companion frontend work
+tracked in `computing/docs/DEFERRED.md` (`permit2-spender-trust`).
 
 ## 1. Problem
 
@@ -144,6 +143,30 @@ deferred (API v1 brownout — use the v2 flow before mainnet). Ops note:
 public-RPC `estimateGas` under-quoted a small write by ~5% (OOG at 98%);
 the smoke script now sets explicit gas margins — keep that habit for the
 mainnet runbook.
+
+## 6c. Mainnet deployment — 2026-07-30 (COMPLETE)
+
+Full train executed from branch tip `6664137` (190 tests passing; storage
+layout re-verified append-only against the live create-flow-v2 impl before
+sending anything). All proxies upgraded in place — public addresses
+unchanged. Total spend: 8,279,644 gas ≈ 0.0088 ETH at ~1 gwei.
+
+| Step | Address | Tx |
+|---|---|---|
+| Router impl (new) | `0x355BBf74B91e021f18Cee0de191b295B4159E4A1` | deploy `0x1917d3c5e3efd0290bcf3d0c50418a9514699a6e70ae2d5efcb0321b110d4d74`, upgrade `0xe61cd6e60f9f3fbae915d5bee04e051b033d96bac190a544dfc32df27597ec34` |
+| Clone impl (new) | `0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3` | deploy `0xb86efdc144b3d9bd9855db531c612911f367c4616bbb738366803b17a2d67bef`, wire `0x53d62350f2823741741444799fe01b815268deb6054f89b7d1a855574f269e44` |
+| LegacyPullVault | `0x95F0981026C7e804fD6ba8bE738cA7c380C7f978` | deploy `0x20915319da71a1b03b787d0259be39ebb6aa458e1620613e24e783ee7dc79276`, wire `0x01f2a1ce6bb16f3efb4c36c508270be18e5d20fd23de7e4e8fa2f0f96b65d485` |
+| Activity attestor | `0x4B05aC1b0BF109A9CE30dCEc2831990d694d74D0` (dedicated worker key) | wire `0x80e7f26105097e804b339ce7d2f5ac79e21765171781ec94b1c0e9b83912eed7` |
+
+Vault pinned codehash `0xc2ded76c91a0a870733a530572a9a5df666fc45106611e1551e4eaf75834d9f3`
+(= keccak of the EIP-1167 clone of the new impl, verified post-deploy).
+Post-deploy read-only suite: proxy impl, `pullVault()`, `activityAttestor()`,
+codehash, `AUTO_RENEW_WINDOW`/`BUDGET`/`CHECKIN_AUTH_MAX_TTL` all PASS; state
+preservation spot-checked on existing legacies #1 and #2 (owners + triggers
+intact, both expose `getTriggerActivationTimestamp`). Router impl, clone impl
+and vault Etherscan-verified; proxy page relinked via `verify-proxies.ts`.
+Sourcify deferred — API v1 brownout window runs through 2027-01-08; use the
+v2 flow when doing the §5 trust-registry pass.
 
 ## 7. Adversarial review round (findings → fixes)
 

@@ -320,7 +320,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0x15123649ce7229f98aC25c802e2753be05Cb87A8"
+      "implementation": "0x355BBf74B91e021f18Cee0de191b295B4159E4A1"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -371,7 +371,7 @@
       "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4"
     },
     "TransferEOALegacyImpl": {
-      "address": "0x148469D1fF87a3FBE3A1fCE14BC7e348f2df61A3"
+      "address": "0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3"
     },
     "_deprecated": {
       "_note": "Replaced or superseded contracts kept for historical reference.",
@@ -393,6 +393,9 @@
         "address": "0xEA190eE175e180c375fd9796AA11fdaA26f71A40",
         "note": "First mainnet view deploy on 2026-06-02; defaultNotifyAhead was 150s (stale value read from PremiumAutomationManager). Replaced minutes later by the 7d-default view above. Unused."
       }
+    },
+    "LegacyPullVault": {
+      "address": "0x95F0981026C7e804fD6ba8bE738cA7c380C7f978"
     }
   }
 }

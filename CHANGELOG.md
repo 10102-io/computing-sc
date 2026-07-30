@@ -21,12 +21,29 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
-## Unreleased (`feat/legacy-pull-vault`) — LegacyPullVault + EOA activity auto-renew
+## v2026.07.30 — One permanent verified Permit2 spender + EOA activity auto-renew, live on mainnet
 
-Two riders on one router-upgrade train (one mainnet upgrade event instead of
-two): the LegacyPullVault below, and **EOA activity auto-renew (Phase 1)** —
-the original product promise ("we monitor your wallet activity") made true
-on-chain:
+**LegacyPullVault kills the red "deceptive request" wallet warning at the
+root** — every new create now names one permanent, Etherscan-verified
+contract as its Permit2 spender instead of a code-less counterfactual clone
+address — and **EOA activity auto-renew (Phase 1)** makes the original
+product promise ("we monitor your wallet activity") true on-chain. Two
+riders on one router-upgrade train (one mainnet upgrade event instead of
+two), deployed to **mainnet 2026-07-30** from a twice-rehearsed Sepolia
+runbook (all proxies upgraded in place — addresses unchanged; total spend
+~0.0088 ETH):
+
+| Contract | Address |
+|---|---|
+| `TransferEOALegacyRouter` impl (proxy `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b`) | `0x355BBf74B91e021f18Cee0de191b295B4159E4A1` |
+| `TransferEOALegacy` clone impl | `0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3` |
+| `LegacyPullVault` | `0x95F0981026C7e804fD6ba8bE738cA7c380C7f978` |
+| Activity attestor (worker key) | `0x4B05aC1b0BF109A9CE30dCEc2831990d694d74D0` |
+
+Deployment record with tx hashes and the post-deploy verification suite:
+`docs/plans/legacy-pull-vault.md` §6c.
+
+### EOA activity auto-renew (Phase 1)
 
 - Owner-opt-in (premium-gated, default OFF) `setAutoRenew` per legacy, plus a
   code-admin-wired `activityAttestor`. When the off-chain worker sees the
