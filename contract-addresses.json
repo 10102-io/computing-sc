@@ -30,7 +30,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x779263389D6740E66CeFc1db35904b4328CdfE29"
+      "implementation": "0x29Eec75dC5113a4d69eE044fcAF49c9EdbC3344F"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
@@ -193,13 +193,16 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0xdeAe4937F6c7F0b8a67205B09f0f24d1CF23fca7"
+      "address": "0x0600e9D8A2B5F6c896C56B7D06acF9F13A8e13ED"
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
     },
     "ERC20Token_R2USD": {
       "address": "0xC8ab95d850Fb7fAf5192B4e01D46008E053952d3"
+    },
+    "LegacyPullVault": {
+      "address": "0x2FaB98a58211F7FF48F78E8880c0F0e6A5e6E5f3"
     }
   },
   "localhost": {

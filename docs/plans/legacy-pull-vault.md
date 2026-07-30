@@ -123,6 +123,28 @@ lockdown revocation; mixed rails; vault-unset fallback; empty-bundle create +
 later signature-less `Permit2.approve` top-up (the future top-up UX).
 `MockPermit2` gained the canonical `approve()` for that last case.
 
+## 6b. Sepolia rehearsal — 2026-07-30 (PASSED)
+
+Full deploy train executed against live Sepolia + canonical Permit2:
+
+| Step | Result |
+|---|---|
+| Router proxy upgrade | impl `0x29Eec75dC5113a4d69eE044fcAF49c9EdbC3344F`, Etherscan-verified |
+| New clone impl | `0x0600e9D8A2B5F6c896C56B7D06acF9F13A8e13ED`, wired + verified |
+| LegacyPullVault | `0x2FaB98a58211F7FF48F78E8880c0F0e6A5e6E5f3`, wired + verified |
+| Activity attestor | deployer key (rehearsal only — dedicated worker key before mainnet) |
+
+E2E smoke (`scripts/smoke-vault-autorenew.ts`, fresh throwaway owner, real
+Permit2): create with vault as spender → clone at predicted address, binding
+registered, clone pinned the vault, Permit2 allowance names the vault;
+premium + `setAutoRenew`; `recordActivity` reset the timer, nonce replay and
+non-attestor both rejected on-chain; trigger lowered → beneficiary claim
+pulled the full balance **through the vault rail**. Sourcify verification
+deferred (API v1 brownout — use the v2 flow before mainnet). Ops note:
+public-RPC `estimateGas` under-quoted a small write by ~5% (OOG at 98%);
+the smoke script now sets explicit gas margins — keep that habit for the
+mainnet runbook.
+
 ## 7. Adversarial review round (findings → fixes)
 
 An independent security review of the first cut surfaced, and this branch
