@@ -30,7 +30,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x267DAfA23682335aCbF6888B4DCb339d22A3Db66"
+      "implementation": "0x580E53D243F4156B77A56c53093B6e7aa3B97eaF"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
