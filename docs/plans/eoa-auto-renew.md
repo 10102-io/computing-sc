@@ -36,8 +36,10 @@ delegation (MetaMask only signs its own delegator).
    owner nonce than the last recorded one. The baseline survives
    disable/re-enable toggles, so an old observation can never be replayed.
 3. **Near-deadline window** — attestations land only within
-   `AUTO_RENEW_WINDOW` (30 days) of the activation deadline: ~one renewal
-   per period, and the timeline is never quietly extended mid-period.
+   `AUTO_RENEW_WINDOW` (30 days) of the activation deadline, and never at
+   or after it (`AutoRenewTooLate`): ~one renewal per period, the timeline
+   is never quietly extended mid-period, and a claimable legacy can never
+   be re-armed by an attestation (only the owner's own check-in does that).
 4. **Budget** — renewals stop `AUTO_RENEW_BUDGET` (365 days) after the
    owner's last REAL check-in (direct `avtiveAlive` or owner-signed
    sponsored `activeAliveFor`), which refills the budget. `recordActivity`
@@ -55,6 +57,30 @@ owners' opt-ins.
 
 Consent copy (frontend): "we watch this wallet's public transaction count;
 after 12 months of auto-renewals we ask you to check in for real."
+
+## Adversarial review round (findings + dispositions)
+
+An independent security review found no HIGH issues; three findings, two
+fixed and one accepted:
+
+- **M1 (fixed)** — the budget refill happens at *relay* time of a sponsored
+  check-in, so a relayer hoarding an owner-signed `CheckInAuth` with a
+  far-future deadline could stretch the worst-case delay leash. Fix:
+  `activeAliveFor` now rejects deadlines more than `CHECKIN_AUTH_MAX_TTL`
+  (1 hour) in the future (`CheckInDeadlineTooFar`). A check-in is proof of
+  life *now*; its signature must be fresh. Worker note: sign `CheckInAuth`
+  deadlines ≤ 1 hour out.
+- **L2 (fixed)** — the renewal window had no upper bound, so an attestation
+  landing after the deadline could re-arm an already-claimable legacy (claim
+  sniping). Fix: `recordActivity` reverts with `AutoRenewTooLate` once
+  `block.timestamp >= beneficiariesTrigger`. The claim window belongs to the
+  beneficiaries; only the owner's own check-in can recover a lapsed legacy.
+- **L1 (accepted, fail-safe)** — a compromised attestor could poison
+  `lastNonceSeen` with `type(uint64).max`, permanently bricking auto-renew
+  for that legacy. Accepted: this fails SAFE — renewals stop, reminder
+  emails take over, and activation proceeds on schedule. Any owner-callable
+  nonce reset would weaken the replay protection (bound 2) for a pure
+  availability gain in an already-compromised scenario; not worth it.
 
 ## Storage / layout
 
@@ -81,8 +107,9 @@ whenever; not gated on this upgrade.
 
 ## Tests
 
-`test/EOAAutoRenew.spec.ts` (7 cases): owner/premium gating on the toggle,
+`test/EOAAutoRenew.spec.ts` (9 cases): owner/premium gating on the toggle,
 happy-path renewal, all four bounds (attestor-only, opt-in, monotonic nonce,
 window), toggle-replay protection, budget exhaustion + refill by real
 check-in, deadline-only-moves-away, premium-lapse pause, deleted-legacy
-rejection.
+rejection, post-deadline attestation rejection (L2), and far-future
+`CheckInAuth` deadline rejection (M1).

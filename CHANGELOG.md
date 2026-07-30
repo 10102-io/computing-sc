@@ -42,9 +42,17 @@ on-chain:
   by the remaining budget — never accelerate it, never claim, never move
   funds. Real check-ins (direct or sponsored) refill the budget; attestations
   never extend their own leash.
+- Hardened after an independent adversarial review (no HIGH findings): an
+  attestation can never re-arm an already-claimable legacy
+  (`AutoRenewTooLate` once the deadline passes — the claim window belongs to
+  the beneficiaries), and sponsored `CheckInAuth` signatures must now carry a
+  deadline ≤ 1 hour out (`CheckInDeadlineTooFar`) so a hoarded signature
+  can't refill the budget months after signing. A nonce-poisoning attestor
+  can only brick auto-renew for a legacy, which fails safe: renewals stop,
+  reminders take over, activation proceeds.
 - Storage appended after `pullVault` (`activityAttestor` slot 15,
   `autoRenewState` slot 16 — layout verified append-only). No clone changes:
-  covers every existing legacy. Tests: `test/EOAAutoRenew.spec.ts` (7 cases).
+  covers every existing legacy. Tests: `test/EOAAutoRenew.spec.ts` (9 cases).
 
 ### LegacyPullVault: one permanent, verified Permit2 spender
 

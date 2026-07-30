@@ -259,6 +259,71 @@ describe("EOA activity auto-renew (Phase 1)", function () {
     await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, 1); // works again
   });
 
+  it("cannot re-arm a claimable legacy: attestations are rejected once the deadline passed", async function () {
+    const { attestor, owner, bene, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+    await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
+
+    await increase(91 * DAY); // past the deadline — beneficiaries' claim window
+    try {
+      await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, 1);
+      assert.fail("post-deadline attestation should revert");
+    } catch (err) {
+      assert(revertedWith(err, "AutoRenewTooLate()"), `unexpected: ${err}`);
+    }
+
+    // The owner themselves can still check in past the deadline (grace).
+    await transferEOALegacyRouter.connect(owner).avtiveAlive(legacyId);
+  });
+
+  it("sponsored check-ins must be fresh: far-future CheckInAuth deadlines are rejected", async function () {
+    const { owner, bene, other, transferEOALegacyRouter } = await loadFixture(deployFixture);
+    const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
+
+    const network = await ethers.provider.getNetwork();
+    const domain = {
+      name: "10102 Legacy Sponsored",
+      version: "1",
+      chainId: network.chainId,
+      verifyingContract: transferEOALegacyRouter.address,
+    };
+    const CHECKIN_TYPES = {
+      CheckInAuth: [
+        { name: "owner", type: "address" },
+        { name: "legacyId", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+
+    const signCheckIn = async (deadline: number) => {
+      const nonce = (await transferEOALegacyRouter.sponsorNonce(owner.address)).toNumber();
+      const signature = await owner._signTypedData(domain, CHECKIN_TYPES, {
+        owner: owner.address,
+        legacyId,
+        nonce,
+        deadline,
+      });
+      return { owner: owner.address, nonce, deadline, signature };
+    };
+
+    // A hoarded signature (deadline 30 days out) is rejected outright —
+    // review M1: relaying it months later would refill the auto-renew
+    // budget at RELAY time, stretching the compromise leash.
+    const now = await currentTime();
+    const hoarded = await signCheckIn(now + 30 * DAY);
+    try {
+      await transferEOALegacyRouter.connect(other).activeAliveFor(legacyId, hoarded);
+      assert.fail("far-future deadline should revert");
+    } catch (err) {
+      assert(revertedWith(err, "CheckInDeadlineTooFar()"), `unexpected: ${err}`);
+    }
+
+    // A fresh signature (deadline 30 min out) relays fine.
+    const fresh = await signCheckIn((await currentTime()) + 1800);
+    await transferEOALegacyRouter.connect(other).activeAliveFor(legacyId, fresh);
+  });
+
   it("cannot accelerate: a renewal only ever pushes the activation deadline out", async function () {
     const { attestor, owner, bene, transferEOALegacyRouter } = await loadFixture(deployFixture);
     const { legacy, legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);

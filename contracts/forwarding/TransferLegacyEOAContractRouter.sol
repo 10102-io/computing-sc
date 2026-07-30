@@ -107,6 +107,12 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   uint256 public constant AUTO_RENEW_WINDOW = 30 days;
   /// @dev Max time auto-renewals may carry a legacy without a real check-in.
   uint256 public constant AUTO_RENEW_BUDGET = 365 days;
+  /// @dev Max future-dated deadline on a sponsored CheckInAuth. Bounds how
+  /// long a relayer can sit on an owner-signed check-in before submitting it
+  /// (security review M1: a hoarded signature relayed months later would
+  /// refill the auto-renew budget at RELAY time, stretching the worst-case
+  /// delay leash). One hour is generous for a relay round-trip.
+  uint256 public constant CHECKIN_AUTH_MAX_TTL = 1 hours;
 
   // EIP-712 typed-data constants (compile-time — occupy no storage slots).
   // The domain is recomputed per call from `block.chainid + address(this)` so
@@ -186,7 +192,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error AutoRenewNotPremium();
   error StaleActivityNonce();
   error AutoRenewTooEarly();
+  error AutoRenewTooLate();
   error AutoRenewBudgetExhausted();
+  error CheckInDeadlineTooFar();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -592,6 +600,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    * (sequential per-signer nonce + deadline). See create-flow-v2.md §12a.
    */
   function activeAliveFor(uint256 legacyId_, CheckInAuth calldata auth_) external {
+    // A check-in is treated as proof of life "now", so its signature must be
+    // fresh: reject far-future deadlines a relayer could hoard and replay
+    // months later (which would also refill the auto-renew budget then).
+    if (auth_.deadline > block.timestamp + CHECKIN_AUTH_MAX_TTL) revert CheckInDeadlineTooFar();
     bytes32 structHash = keccak256(
       abi.encode(CHECKIN_AUTH_TYPEHASH, auth_.owner, legacyId_, auth_.nonce, auth_.deadline)
     );
@@ -669,6 +681,11 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     (uint256 beneficiariesTrigger, , ) = IPremiumLegacy(legacyAddress).getTriggerActivationTimestamp();
     if (block.timestamp + AUTO_RENEW_WINDOW < beneficiariesTrigger) revert AutoRenewTooEarly();
+    // Upper bound (security review L2): once the deadline has passed the
+    // claim window belongs to the beneficiaries — an attestation must never
+    // re-arm a claimable legacy. A genuinely alive owner can still check in
+    // themselves at any time (check-ins have no such bound).
+    if (block.timestamp >= beneficiariesTrigger) revert AutoRenewTooLate();
     if (block.timestamp > uint256(renewState.budgetAnchor) + AUTO_RENEW_BUDGET) revert AutoRenewBudgetExhausted();
 
     renewState.lastNonceSeen = observedNonce_;
