@@ -2,6 +2,7 @@
 pragma solidity 0.8.35;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
@@ -13,8 +14,13 @@ import {IPremiumSetting} from "../interfaces/IPremiumSetting.sol";
 import {IPayment} from "../interfaces/IPayment.sol";
 import {IUniswapV2Router02} from "../interfaces/IUniswapV2Router02.sol";
 import {IAllowanceTransfer} from "../interfaces/IAllowanceTransfer.sol";
+import {ILegacyPullVault} from "../interfaces/ILegacyPullVault.sol";
 
-contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable {
+// ReentrancyGuardTransient (EIP-1153) closes the ERC-777-style callback
+// re-entry into the claim paths, which loop over arbitrary caller-supplied
+// token addresses. Transient storage only — zero storage slots — so adding it
+// to this live, already-deployed proxy is layout-safe by construction.
+contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializable, ReentrancyGuardTransient {
   address public premiumSetting;
   IEIP712LegacyVerifier public verifier;
   address public paymentContract;
@@ -57,6 +63,56 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // incident (bad clone impl, bad dependency, exploit-in-progress) protects
   // users instead of trapping them.
   bool public createPaused;
+
+  // The LegacyPullVault: the single, permanent, verified Permit2 spender for
+  // new creates (docs/plans/legacy-pull-vault.md). APPENDED after
+  // `createPaused` (layout-safe, auto-zero = vault flow disabled; per-clone
+  // spender bundles keep working exactly as before). Settable by the code
+  // admin because the vault is pinned to one clone implementation's codehash
+  // — vault and implementation rotate together via `setLegacyImplementation`
+  // + `setPullVault`. address(0) disables the vault path for new creates;
+  // existing bindings on an old vault keep serving their legacies forever.
+  address public pullVault;
+
+  // ─── EOA activity auto-renew (Phase 1) ────────────────────────────────────
+  // Owner-opt-in automatic inactivity-timer renewal driven by an off-chain
+  // attestor that watches the owner's public transaction count (nonce). The
+  // whole point of an EOA legacy is "we monitor your wallet"; this closes the
+  // gap where ordinary wallet activity did not reset the countdown. Honest
+  // trust model (design memo, ROADMAP track 4): a compromised attestor can
+  // only DELAY activation — never accelerate it, never claim, never move
+  // funds — and only within four hard bounds enforced here:
+  //   1. per-legacy owner opt-in (premium-gated, default OFF),
+  //   2. strictly increasing attested nonce (no re-using one observation),
+  //   3. only within AUTO_RENEW_WINDOW of the activation deadline
+  //      (~one renewal per period),
+  //   4. an AUTO_RENEW_BUDGET since the owner's last REAL check-in, after
+  //      which the owner must check in themselves before renewals resume.
+  // APPENDED after `pullVault` (layout-safe, auto-zero = feature off).
+  address public activityAttestor;
+
+  /// @dev Packed per-legacy auto-renew state (single slot).
+  /// `budgetAnchor` = timestamp of opt-in or the owner's last real check-in;
+  /// `lastNonceSeen` survives disable/re-enable so a stale observation can
+  /// never be replayed after a toggle.
+  struct AutoRenewState {
+    bool enabled;
+    uint64 lastNonceSeen;
+    uint64 budgetAnchor;
+  }
+
+  mapping(uint256 => AutoRenewState) public autoRenewState;
+
+  /// @dev How close to the activation deadline an attestation may land.
+  uint256 public constant AUTO_RENEW_WINDOW = 30 days;
+  /// @dev Max time auto-renewals may carry a legacy without a real check-in.
+  uint256 public constant AUTO_RENEW_BUDGET = 365 days;
+  /// @dev Max future-dated deadline on a sponsored CheckInAuth. Bounds how
+  /// long a relayer can sit on an owner-signed check-in before submitting it
+  /// (security review M1: a hoarded signature relayed months later would
+  /// refill the auto-renew budget at RELAY time, stretching the worst-case
+  /// delay leash). One hour is generous for a relay round-trip.
+  uint256 public constant CHECKIN_AUTH_MAX_TTL = 1 hours;
 
   // EIP-712 typed-data constants (compile-time — occupy no storage slots).
   // The domain is recomputed per call from `block.chainid + address(this)` so
@@ -131,6 +187,16 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error SponsoredClaimsDisabled();
   error Permit2SpenderMismatch();
   error CreationPaused();
+  error NotActivityAttestor();
+  error AutoRenewDisabled();
+  error AutoRenewNotPremium();
+  error StaleActivityNonce();
+  error AutoRenewTooEarly();
+  error AutoRenewTooLate();
+  error AutoRenewBudgetExhausted();
+  error AutoRenewLegacyNotLive();
+  error AutoRenewInfeasible();
+  error CheckInDeadlineTooFar();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -205,6 +271,18 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// @notice Creation circuit breaker toggled. Only `createLegacy` /
   /// `createLegacyV2` are affected; every exit path stays live.
   event CreatePauseSet(bool paused);
+  /// @notice The LegacyPullVault wiring changed. New creates bind to (and may
+  /// name as Permit2 spender) the new vault; existing legacies are unaffected.
+  event PullVaultSet(address vault);
+  /// @notice The activity attestor wiring changed (code admin).
+  /// address(0) pauses all auto-renewals; owner opt-ins are untouched.
+  event ActivityAttestorSet(address attestor);
+  /// @notice The legacy owner toggled automatic activity renewal.
+  event TransferEOALegacyAutoRenewSet(uint256 indexed legacyId, address indexed owner, bool enabled, uint256 timestamp);
+  /// @notice The attestor renewed this legacy's inactivity timer based on
+  /// observed on-chain activity (owner nonce increase). The standard
+  /// `TransferEOALegacyActivedAlive` is also emitted.
+  event TransferEOALegacyAutoRenewed(uint256 indexed legacyId, address indexed owner, uint64 observedNonce, uint256 timestamp);
   /// @notice PII-free v2 create event: no name, no note, no nicknames — those
   /// live in the off-chain metadata API (create-flow-v2.md §7). The subgraph
   /// indexes creator → legacy edges + claim-relevant config from this alone.
@@ -286,6 +364,23 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   function setCreatePaused(bool paused_) external onlyCodeAdmin {
     createPaused = paused_;
     emit CreatePauseSet(paused_);
+  }
+
+  /**
+   * @dev Wire (or rotate) the LegacyPullVault. The vault is immutable and
+   * admin-free; it pins one clone implementation's codehash, so it must be
+   * redeployed whenever `legacyImplementation` changes — always update the
+   * two together. `address(0)` disables the vault path for new creates.
+   * Existing legacies and their bindings are never affected by this setter.
+   */
+  function setPullVault(address vault_) external onlyCodeAdmin {
+    pullVault = vault_;
+    emit PullVaultSet(vault_);
+  }
+
+  function setActivityAttestor(address attestor_) external onlyCodeAdmin {
+    activityAttestor = attestor_;
+    emit ActivityAttestorSet(attestor_);
   }
 
   /**
@@ -378,10 +473,22 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       agreementSignature
     );
 
-    // Register the creator's batch allowance in Permit2 with the new legacy
-    // as spender. A bad bundle reverts the whole create atomically.
+    // Register the creator's batch allowance in Permit2. Two accepted
+    // spenders, nothing else (a bad bundle reverts the whole create):
+    // - the LegacyPullVault (preferred since docs/plans/legacy-pull-vault.md):
+    //   one permanent, verified spender — wallets render a normal permit
+    //   screen instead of flagging the code-less predicted clone address.
+    //   The vault only honors pulls from the legacy bound to the owner
+    //   (bound in _createLegacyCore, same tx).
+    // - the freshly deployed legacy itself (pre-vault v2 frontends).
     if (permit2_.permitBatch.details.length != 0) {
-      if (permit2_.permitBatch.spender != legacyAddress) revert Permit2SpenderMismatch();
+      address spender = permit2_.permitBatch.spender;
+      // Vault spender is only meaningful on the clone path (binding happens
+      // there); on the full-bytecode fallback a vault permit would register
+      // but never be pullable, so fail fast instead.
+      bool spenderIsVault =
+        pullVault != address(0) && legacyImplementation != address(0) && spender == pullVault;
+      if (!spenderIsVault && spender != legacyAddress) revert Permit2SpenderMismatch();
       PERMIT2.permit(msg.sender, permit2_.permitBatch, permit2_.signature);
     }
 
@@ -444,6 +551,15 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     // Check beneficiary limit
     if (!_checkNumBeneficiariesLimit(numberOfBeneficiaries)) revert NumBeneficiariesInvalid();
 
+    // Bind the owner to their new legacy in the pull vault (clone path only —
+    // the vault's codehash pin rejects full-bytecode deploys by design).
+    // Runs AFTER initialize so the vault can verify the clone's owner. Not
+    // best-effort: if binding fails the create must fail, otherwise a
+    // vault-spender permit registered below would be unusable at claim time.
+    if (pullVault != address(0) && legacyImplementation != address(0)) {
+      ILegacyPullVault(pullVault).bind(msg.sender, legacyAddress);
+    }
+
     TransferLegacyStruct.LegacyExtraConfig memory _legacyExtraConfig = TransferLegacyStruct.LegacyExtraConfig({
       lackOfOutgoingTxRange: extraConfig_.lackOfOutgoingTxRange,
       delayLayer2: ITransferEOALegacy(legacyAddress).delayLayer2(),
@@ -486,6 +602,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    * (sequential per-signer nonce + deadline). See create-flow-v2.md §12a.
    */
   function activeAliveFor(uint256 legacyId_, CheckInAuth calldata auth_) external {
+    // A check-in is treated as proof of life "now", so its signature must be
+    // fresh: reject far-future deadlines a relayer could hoard and replay
+    // months later (which would also refill the auto-renew budget then).
+    if (auth_.deadline > block.timestamp + CHECKIN_AUTH_MAX_TTL) revert CheckInDeadlineTooFar();
     bytes32 structHash = keccak256(
       abi.encode(CHECKIN_AUTH_TYPEHASH, auth_.owner, legacyId_, auth_.nonce, auth_.deadline)
     );
@@ -504,6 +624,98 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     }
     ITransferEOALegacy(legacyAddress).activeAlive(actor_);
     emit TransferEOALegacyActivedAlive(legacyId_, block.timestamp);
+
+    // A REAL check-in (direct or owner-signed sponsored) refills the
+    // auto-renew budget. Deliberately NOT done in `recordActivity` — an
+    // attestation must never extend its own leash. Placed after the clone
+    // call so a failed check-in (non-owner, dead legacy) refills nothing.
+    AutoRenewState storage renewState = autoRenewState[legacyId_];
+    if (renewState.enabled) {
+      renewState.budgetAnchor = uint64(block.timestamp);
+    }
+  }
+
+  /**
+   * @dev Owner toggle for automatic activity renewal (Phase 1 of the EOA
+   * activity-monitoring track). Enabling requires premium and anchors a fresh
+   * renewal budget; the consent shown in the frontend is explicit about the
+   * mechanism: "we watch this wallet's public transaction count; after 12
+   * months of auto-renewals we ask you to check in for real."
+   */
+  function setAutoRenew(uint256 legacyId_, bool enabled_) external {
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+    if (IPremiumLegacy(legacyAddress).getLegacyOwner() != msg.sender) revert OnlyOwner();
+    if (enabled_ && !IPremiumSetting(premiumSetting).isPremium(msg.sender)) revert AutoRenewNotPremium();
+    if (enabled_) {
+      // Fail loudly instead of silently never firing (review L2): a deleted/
+      // claimed legacy has nothing to renew, and a trigger period longer than
+      // BUDGET + WINDOW means the renewal window would only ever open after
+      // the budget is spent — every attestation would revert and the owner
+      // would wrongly believe their wallet is being watched. Disable stays
+      // unconditional.
+      if (!IPremiumLegacy(legacyAddress).isLive()) revert AutoRenewLegacyNotLive();
+      if (uint256(IPremiumLegacy(legacyAddress).getActivationTrigger()) > AUTO_RENEW_BUDGET + AUTO_RENEW_WINDOW) {
+        revert AutoRenewInfeasible();
+      }
+    }
+
+    AutoRenewState storage renewState = autoRenewState[legacyId_];
+    renewState.enabled = enabled_;
+    if (enabled_) {
+      // Fresh budget from the moment of consent. `lastNonceSeen` is
+      // intentionally preserved across toggles so a pre-disable observation
+      // can never be replayed after re-enabling.
+      renewState.budgetAnchor = uint64(block.timestamp);
+    }
+    emit TransferEOALegacyAutoRenewSet(legacyId_, msg.sender, enabled_, block.timestamp);
+  }
+
+  /**
+   * @dev Attestor-only automatic renewal. `observedNonce_` is the owner's
+   * account nonce as seen off-chain (EOA nonces are unreadable on-chain, so
+   * the contract enforces what it can: strict monotonicity, the near-deadline
+   * window, and the since-last-real-check-in budget). All four bounds are
+   * hard reverts so a misbehaving worker fails loudly instead of silently
+   * shifting timelines. Worst-case compromise = inheritance DELAYED, never
+   * accelerated: the LAST renewal can land up to AUTO_RENEW_BUDGET after the
+   * owner's last real check-in, and activation then follows one further full
+   * inactivity period (review L1 — the budget bounds when renewals may
+   * happen, not the final deadline).
+   */
+  function recordActivity(uint256 legacyId_, uint64 observedNonce_) external {
+    if (msg.sender != activityAttestor || activityAttestor == address(0)) revert NotActivityAttestor();
+    address legacyAddress = _checkLegacyExisted(legacyId_);
+
+    AutoRenewState storage renewState = autoRenewState[legacyId_];
+    if (!renewState.enabled) revert AutoRenewDisabled();
+    if (observedNonce_ <= renewState.lastNonceSeen) revert StaleActivityNonce();
+
+    address owner = IPremiumLegacy(legacyAddress).getLegacyOwner();
+    // Premium is re-checked at renewal time, not just at opt-in — a lapsed
+    // subscription pauses renewals (the reminder emails take over) instead
+    // of granting the feature forever.
+    if (!IPremiumSetting(premiumSetting).isPremium(owner)) revert AutoRenewNotPremium();
+
+    (uint256 beneficiariesTrigger, , ) = IPremiumLegacy(legacyAddress).getTriggerActivationTimestamp();
+    if (block.timestamp + AUTO_RENEW_WINDOW < beneficiariesTrigger) revert AutoRenewTooEarly();
+    // Upper bound (security review L2): once the deadline has passed the
+    // claim window belongs to the beneficiaries — an attestation must never
+    // re-arm a claimable legacy. A genuinely alive owner can still check in
+    // themselves at any time (check-ins have no such bound).
+    if (block.timestamp >= beneficiariesTrigger) revert AutoRenewTooLate();
+    if (block.timestamp > uint256(renewState.budgetAnchor) + AUTO_RENEW_BUDGET) revert AutoRenewBudgetExhausted();
+
+    renewState.lastNonceSeen = observedNonce_;
+
+    try
+    IPremiumSetting(premiumSetting).triggerOwnerResetReminder(legacyAddress)
+    {} catch {
+      emit EmailOwnerResetNotCompleted(legacyAddress);
+    }
+    // The clone's own gates still apply (`onlyLive`, not-yet-activated).
+    ITransferEOALegacy(legacyAddress).activeAlive(owner);
+    emit TransferEOALegacyActivedAlive(legacyId_, block.timestamp);
+    emit TransferEOALegacyAutoRenewed(legacyId_, owner, observedNonce_, block.timestamp);
   }
 
   /// @dev v1 ABI kept for pre-v2 frontends; since the PII strip, `name` /
@@ -618,7 +830,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // live exclusively in the off-chain metadata API (§7). Storing them on-chain
   // (or echoing them in events) was the PII leak the strip exists to close.
 
-  function activeLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_) external {
+  function activeLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_) external nonReentrant {
     _runActiveLegacy(legacyId_, assets_, isETH_, msg.sender);
   }
 
@@ -636,7 +848,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     address[] calldata assets_,
     bool isETH_,
     ClaimAuth calldata auth_
-  ) external {
+  ) external nonReentrant {
     if (sponsoredClaimsDisabled[legacyId_]) revert SponsoredClaimsDisabled();
     bytes32 structHash = keccak256(
       abi.encode(
@@ -709,7 +921,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     address[] calldata assets_,
     uint256 amountOutMin_,
     uint256 deadline_
-  ) external {
+  ) external nonReentrant {
     address legacyAddress = _checkLegacyExisted(legacyId_);
 
     ITransferEOALegacy(legacyAddress).activeLegacyAndUnswap(

@@ -30,7 +30,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x779263389D6740E66CeFc1db35904b4328CdfE29"
+      "implementation": "0x580E53D243F4156B77A56c53093B6e7aa3B97eaF"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
@@ -193,13 +193,16 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0xdeAe4937F6c7F0b8a67205B09f0f24d1CF23fca7"
+      "address": "0x0600e9D8A2B5F6c896C56B7D06acF9F13A8e13ED"
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
     },
     "ERC20Token_R2USD": {
       "address": "0xC8ab95d850Fb7fAf5192B4e01D46008E053952d3"
+    },
+    "LegacyPullVault": {
+      "address": "0x2FaB98a58211F7FF48F78E8880c0F0e6A5e6E5f3"
     }
   },
   "localhost": {
@@ -317,7 +320,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0x15123649ce7229f98aC25c802e2753be05Cb87A8"
+      "implementation": "0x355BBf74B91e021f18Cee0de191b295B4159E4A1"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -368,7 +371,7 @@
       "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4"
     },
     "TransferEOALegacyImpl": {
-      "address": "0x148469D1fF87a3FBE3A1fCE14BC7e348f2df61A3"
+      "address": "0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3"
     },
     "_deprecated": {
       "_note": "Replaced or superseded contracts kept for historical reference.",
@@ -390,6 +393,9 @@
         "address": "0xEA190eE175e180c375fd9796AA11fdaA26f71A40",
         "note": "First mainnet view deploy on 2026-06-02; defaultNotifyAhead was 150s (stale value read from PremiumAutomationManager). Replaced minutes later by the 7d-default view above. Unused."
       }
+    },
+    "LegacyPullVault": {
+      "address": "0x95F0981026C7e804fD6ba8bE738cA7c380C7f978"
     }
   }
 }

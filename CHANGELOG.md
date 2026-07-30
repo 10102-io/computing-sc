@@ -21,6 +21,110 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## v2026.07.30 — One permanent verified Permit2 spender + EOA activity auto-renew, live on mainnet
+
+**LegacyPullVault kills the red "deceptive request" wallet warning at the
+root** — every new create now names one permanent, Etherscan-verified
+contract as its Permit2 spender instead of a code-less counterfactual clone
+address — and **EOA activity auto-renew (Phase 1)** makes the original
+product promise ("we monitor your wallet activity") true on-chain. Two
+riders on one router-upgrade train (one mainnet upgrade event instead of
+two), deployed to **mainnet 2026-07-30** from a twice-rehearsed Sepolia
+runbook (all proxies upgraded in place — addresses unchanged; total spend
+~0.0088 ETH):
+
+| Contract | Address |
+|---|---|
+| `TransferEOALegacyRouter` impl (proxy `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b`) | `0x355BBf74B91e021f18Cee0de191b295B4159E4A1` |
+| `TransferEOALegacy` clone impl | `0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3` |
+| `LegacyPullVault` | `0x95F0981026C7e804fD6ba8bE738cA7c380C7f978` |
+| Activity attestor (worker key) | `0x4B05aC1b0BF109A9CE30dCEc2831990d694d74D0` |
+
+Deployment record with tx hashes and the post-deploy verification suite:
+`docs/plans/legacy-pull-vault.md` §6c.
+
+### EOA activity auto-renew (Phase 1)
+
+- Owner-opt-in (premium-gated, default OFF) `setAutoRenew` per legacy, plus a
+  code-admin-wired `activityAttestor`. When the off-chain worker sees the
+  owner's transaction count rise near the deadline, `recordActivity` resets
+  the inactivity timer — no email, no click, no gas from the owner.
+- Four hard bounds, all on-chain: opt-in; strictly-increasing attested nonce
+  (an observation can never be replayed, even across disable/re-enable);
+  attestations only within 30 days of the activation deadline (~one per
+  period); and a 365-day budget since the owner's last REAL check-in, after
+  which the owner must check in themselves. Premium is re-checked at each
+  renewal.
+- Honest trust model: a fully compromised attestor can only DELAY activation
+  — never accelerate it, never claim, never move funds. Stated precisely,
+  the last renewal can land up to 12 months after the owner's last real
+  check-in and activation then follows one further inactivity period (so
+  worst case ≈ 12 months + one period). Real check-ins (direct or
+  sponsored) refill the budget; attestations never extend their own leash.
+- Hardened after an independent adversarial review (no HIGH findings): an
+  attestation can never re-arm an already-claimable legacy
+  (`AutoRenewTooLate` once the deadline passes — the claim window belongs to
+  the beneficiaries), and sponsored `CheckInAuth` signatures must now carry a
+  deadline ≤ 1 hour out (`CheckInDeadlineTooFar`) so a hoarded signature
+  can't refill the budget months after signing. A nonce-poisoning attestor
+  can only brick auto-renew for a legacy, which fails safe: renewals stop,
+  reminders take over, activation proceeds.
+- Second review round: enabling now fails loudly instead of silently never
+  firing — rejected on tombstoned legacies (`AutoRenewLegacyNotLive`) and on
+  trigger periods past the ~395-day feasibility cliff (`AutoRenewInfeasible`,
+  where the renewal window would only open after the budget is spent). The
+  exact budget-refill set is documented and test-pinned: check-ins and the
+  owner's own re-enable toggle refill; config actions (trigger edits,
+  withdrawals, swaps) deliberately don't.
+- Storage appended after `pullVault` (`activityAttestor` slot 15,
+  `autoRenewState` slot 16 — layout verified append-only). No clone changes:
+  covers every existing legacy. Tests: `test/EOAAutoRenew.spec.ts`
+  (15 cases). Full suite: 190 passing.
+
+### LegacyPullVault: one permanent, verified Permit2 spender
+
+Kills the red "deceptive request" wallet interstitial on v2 creates at its
+root. Creators' Permit2 batches previously named the CREATE2-predicted (still
+code-less) clone as spender — the exact fingerprint Blockaid flags as a
+drainer, and an address that can never be allowlisted or verified. New
+`LegacyPullVault` (immutable, admin-free, ~1.5 KiB) is the single spender for
+all new creates:
+
+- Vault pins the clone implementation's EIP-1167 codehash and holds a
+  first-write-wins `owner → legacy` binding set by the router inside the
+  create tx; only the owner's own bound legacy can pull, only through
+  Permit2's per-owner signed envelope. Delete releases the binding;
+  a non-live binding (deleted/claimed) may be replaced by the next create.
+- Router: appended `pullVault` storage (slot-packed after `createPaused`,
+  layout verified append-only), `setPullVault` under the existing code-admin
+  role, `createLegacyV2` accepts vault-or-clone spender (pre-vault frontends
+  unchanged), create binds after clone init.
+- Clone impl: pins its vault in appended storage at `initialize` (new clones
+  only) and picks, per token, the most generous of three rails (direct
+  ERC-20 / Permit2-to-clone / Permit2-via-vault). All guarded reads; claims
+  never revert on missing vault/Permit2. Pinning means a `setPullVault`
+  rotation only affects future creates — it can never strand the
+  already-signed permits of an existing legacy.
+- One stable spender address unlocks the trust-registry track: Etherscan +
+  Sourcify verification, Blockaid/MetaMask registration, ERC-7730
+  clear-signing descriptor. Deployment + registry checklist in
+  `docs/plans/legacy-pull-vault.md`; deploy via `scripts/deploy-pull-vault.ts`
+  (vault rotates together with the clone implementation).
+- Hardening from the adversarial review round (details in the plan doc §7):
+  the admin-fee pull now rides the same guarded rails as beneficiary
+  transfers, so one non-pullable fee forfeits that fee instead of bricking
+  the whole claim batch (fee paths now tested with a **nonzero** fee); the
+  EOA router gains `ReentrancyGuardTransient` (EIP-1153, zero storage —
+  layout-safe on the live proxy) on all claim entrypoints, closing
+  ERC-777-style re-entry into distribution; vault-spender bundles are
+  rejected when the clone path is disabled.
+- Tests: `test/LegacyPullVault.spec.ts` (17 cases) covering bind/release/pull
+  gating, codehash pinning, back-compat rails, lockdown revocation, rebind
+  lifecycle, vault-rotation pinning, nonzero-fee rails + sabotaged-rail
+  resilience, a reentrancy probe (`MockReentrantERC20`), and the
+  signature-less `Permit2.approve` top-up path (`MockPermit2` gained
+  canonical `approve`). Full suite with both riders: 182 passing.
+
 ## v2026.07.27 — Create-flow v2 live on mainnet: one-confirmation creates, PII-free events, tx-based consent
 
 The create-flow v2 program: single-confirmation legacy creation and the
