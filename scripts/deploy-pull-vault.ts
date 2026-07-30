@@ -18,10 +18,10 @@
  *   npx hardhat run scripts/deploy-pull-vault.ts --network <net>
  *
  * Idempotent: re-running deploys a fresh vault for the current implementation
- * and re-points the router. Existing bindings on the old vault keep serving
- * their legacies (their clones discover the vault through the router — after
- * a rotation, old-vault permits stop being selected for NEW pulls, so plan
- * rotations together with a frontend migration prompt).
+ * and re-points the router. Existing legacies are unaffected by rotation:
+ * each clone PINS the vault it was created under (in its own storage, set at
+ * initialize), so pre-rotation permits keep working forever. Only NEW creates
+ * bind to — and should name as Permit2 spender — the new vault.
  *
  * AFTER deploying to a public network, do the trust-registry legwork that is
  * the entire point of the vault (docs/plans/legacy-pull-vault.md §5):

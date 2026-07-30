@@ -88,7 +88,7 @@ all new creates:
   lifecycle, vault-rotation pinning, nonzero-fee rails + sabotaged-rail
   resilience, a reentrancy probe (`MockReentrantERC20`), and the
   signature-less `Permit2.approve` top-up path (`MockPermit2` gained
-  canonical `approve`). Full suite 175 passing.
+  canonical `approve`). Full suite with both riders: 182 passing.
 
 ## v2026.07.27 — Create-flow v2 live on mainnet: one-confirmation creates, PII-free events, tx-based consent
 
