@@ -1,0 +1,257 @@
+# Disclosures
+
+Last updated: August 2, 2026
+
+Terms version: v2026-08
+
+Please read these Terms and Disclosures carefully before using 10102 applications. They include a binding arbitration clause, a class action waiver, a jury trial waiver, and broad limitations of liability.
+
+## Agreement to Terms
+
+By accessing or using 10102 Services (https://10102.io, app.10102.io, tokens.10102.io), you agree to these terms. If you do not agree, do not use our Services.
+
+## About These Terms
+
+10102 LLC ("10102", "we", "us", or "our") provides blockchain-based applications:
+
+- Computing Legacy (app.10102.io): Programmable asset transfers on Ethereum
+- Computing Tokens (tokens.10102.io): Token health analysis
+- Additional applications as announced
+
+These terms apply to all 10102 applications and services.
+
+In these terms, the "10102 Parties" means 10102 LLC and its members, managers, officers, founders, developers, employees, contractors, advisors, licensors, and affiliates. Every disclaimer, limitation of liability, release, and protection in these terms applies to each of the 10102 Parties, and each of them may enforce these terms directly.
+
+## Terms Versioning & On-Chain Consent
+
+Each version of these terms carries a version tag (currently v2026-08). When you create a legacy in Computing Legacy, the consent message you sign includes the terms version in force at that time, and our verifier contract stores a cryptographic hash (keccak256) of the exact terms text for that version. This creates a permanent, verifiable record of which terms you accepted. You agree that this on-chain record is conclusive evidence of your acceptance of the referenced version.
+
+## Important: Not Legal Advice
+
+10102 is not a law firm. We do not provide legal, tax, estate planning, or financial advice. Our applications are technological infrastructure only.
+
+THE SERVICES DO NOT CREATE LEGALLY BINDING WILLS. Smart contracts are not substitutes for proper legal documents. Consult qualified professionals for estate planning, legal, and tax matters.
+
+## Non-Custodial Infrastructure
+
+10102 operates as non-custodial software infrastructure. We never have access to:
+
+- Your private keys or seed phrases
+- Your wallet funds or assets
+- Your on-chain transactions (these are public by blockchain design)
+
+You maintain complete control and responsibility for your assets at all times.
+
+## Wallet Connection & Requirements
+
+To use our applications, you must:
+
+- Connect a compatible wallet (MetaMask, WalletConnect, Ledger, etc.)
+- Be at least 18 years of age
+- Secure your private keys (we cannot recover lost keys)
+- Understand that wallet connections do not create custody
+
+## Eligibility & Compliance
+
+By using the Services, you represent and warrant that you:
+
+- Are at least 18 years old and have the legal capacity to enter into these terms
+- Are not located in, a resident of, or accessing the Services from any jurisdiction subject to comprehensive sanctions, and are not on any sanctions or restricted-party list (including those maintained by the U.S. Office of Foreign Assets Control)
+- Will not use the Services to violate any applicable law, regulation, or sanctions program, or to conceal, launder, or finance unlawful activity
+- Are solely responsible for determining whether your use of the Services is lawful in your jurisdiction
+
+We may restrict or refuse access to anyone, in any jurisdiction, at our discretion.
+
+## Prohibited Uses
+
+You agree not to:
+
+- Use the Services for any unlawful purpose or in violation of these terms
+- Attack, exploit, probe, or attempt to manipulate the smart contracts, the Services, or their infrastructure, including through front-running, oracle manipulation, denial-of-service, or exploitation of bugs (report vulnerabilities to info@10102.io instead)
+- Interfere with or disrupt other users' use of the Services
+- Circumvent any access restriction, rate limit, or security measure
+- Misrepresent your identity, eligibility, or authority to act
+
+Any prohibited use is at your sole risk and voids any obligation the 10102 Parties might otherwise have to you.
+
+## Beta & Experimental Software
+
+The Services are experimental software offered during an ongoing beta. They may contain bugs, errors, or vulnerabilities, may change or be removed without notice, and may not operate as expected. Do not commit assets you cannot afford to lose. Test on a test network before using real assets.
+
+## Assumption of Risk
+
+You acknowledge that you understand the risks described in these terms and voluntarily assume all risk, known and unknown, arising from your use of blockchain networks, cryptocurrency, smart contracts, and the Services. You use the Services at your own sole risk. Your only remedy for dissatisfaction with the Services is to stop using them.
+
+## Smart Contracts & Execution
+
+IMPORTANT: Smart contract execution is:
+
+- Autonomous: Runs automatically when conditions are met
+- Irreversible: Cannot be undone once executed on-chain
+- Subject to Ethereum network: Gas fees, network congestion, and blockchain limitations apply
+
+You are solely responsible for:
+
+- Accuracy of beneficiary addresses
+- Correctness of asset allocations
+- Understanding smart contract logic
+- All gas costs and network fees
+
+Direct contract interaction. The deployed smart contracts are publicly accessible on Ethereum. If you interact with them directly or through third-party interfaces rather than through our applications, these terms still apply to that interaction, and you do so entirely at your own risk.
+
+## Blockchain and Cryptocurrency Risks
+
+By using our applications, you acknowledge these risks:
+
+### Technical Risks
+
+- Irreversible transactions: Cannot be undone or reversed
+- Smart contract bugs: Code vulnerabilities may result in loss of funds
+- Network issues: Ethereum network failures, congestion, or forks
+- Gas costs: Transaction fees can be unpredictable and expensive
+
+### Financial Risks
+
+- Market volatility: Cryptocurrency values fluctuate dramatically
+- No guarantees: Past performance does not indicate future results
+- Total loss possible: You may lose all invested funds
+- No FDIC insurance: Crypto assets are not protected like bank deposits
+
+### Legal & Regulatory Risks
+
+- Regulatory uncertainty: Laws vary by jurisdiction and change frequently
+- Tax obligations: You are responsible for all tax reporting and payments
+- Compliance: You must ensure your use complies with local laws
+
+### Key Management Risks
+
+- Lost keys = lost funds: We cannot recover lost private keys
+- Your responsibility: You alone secure your wallet
+- No recourse: No way to reverse transactions if keys are compromised
+
+## No Financial Advice
+
+Nothing provided by 10102 constitutes:
+
+- Financial, investment, tax, or legal advice
+- Recommendations to buy, sell, or hold any asset
+- Guarantees of future performance
+- Estate planning guidance
+
+Always consult qualified professionals before making financial or legal decisions.
+
+AI assistant. The in-app Guardian assistant provides general, informational responses only. It is not financial, legal, tax, or estate-planning advice, it may be inaccurate or incomplete, and you should verify anything important independently.
+
+## No Reliance
+
+The Services, our website, documentation, social media posts, and communications are provided for general information. They are not representations, warranties, or promises, and you agree that you have not relied on any statement outside these terms in deciding to use the Services.
+
+## Fees & Costs
+
+- Core features are free. The core functions of Computing Legacy (creating a legacy, setting beneficiaries, the inactivity trigger, deployment, and claiming) carry no 10102 fee.
+- Optional premium plans. Some features are available through paid subscription plans. Current plans, pricing, billing, and any renewal terms are shown in the app at the time of purchase, and subscription payments are made on-chain (for example in ETH, USDC, or USDT). All payments are final and non-refundable, except where a refund is required by applicable law.
+- Protocol fees. Certain on-chain operations may carry a protocol fee enforced by the smart contracts; any applicable fee is shown before you confirm a transaction.
+- You are responsible for all blockchain gas costs and network fees.
+- All tax obligations are your responsibility.
+
+## Third-Party Services
+
+The Services rely on third parties we do not control, including wallet providers, RPC and node providers, price-feed oracles (such as Chainlink), the Permit2 permission contract, liquid staking protocols (such as Lido), AI model providers (such as Venice AI), an off-chain reminder service, and IPFS and ENS gateways. We are not responsible for the availability, accuracy, security, or acts of any third party, and your use of them may be subject to their own terms.
+
+## No Fiduciary Relationship
+
+10102 is a software provider only. We are not your executor, administrator, trustee, fiduciary, broker, attorney, or agent, and nothing in these terms or the Services creates any such relationship. The Services do not constitute estate, legal, tax, or financial planning. No advisory, professional, or special relationship of any kind exists between you and any of the 10102 Parties.
+
+## Service Availability & Changes
+
+We may modify, suspend, or discontinue any part of the Services (including premium plans and any off-chain notification, reminder, or automation features) at any time, with or without notice. Off-chain features depend on infrastructure we operate and may stop. Your already-deployed on-chain contracts continue to operate autonomously according to their deployed code regardless of whether 10102 continues to operate.
+
+## Disclaimer of Warranties
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SERVICES AND THE SMART CONTRACTS ARE PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KIND, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, ACCURACY, AND UNINTERRUPTED OR ERROR-FREE OPERATION. THE 10102 PARTIES DO NOT WARRANT THAT THE SERVICES OR SMART CONTRACTS ARE SECURE, FREE OF BUGS OR VULNERABILITIES, OR WILL MEET YOUR REQUIREMENTS. NO ORAL OR WRITTEN INFORMATION OBTAINED FROM ANY 10102 PARTY CREATES ANY WARRANTY.
+
+## Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW:
+
+The 10102 Parties are not liable for:
+
+- Loss of funds due to smart contract issues
+- Blockchain network failures or delays
+- Incorrect beneficiary information you provide
+- Lost or compromised private keys
+- Acts or omissions of any third party or third-party service
+- Any indirect, incidental, special, consequential, exemplary, or punitive damages, or any loss of profits, revenue, data, or goodwill, even if advised of the possibility of such damages
+
+The total aggregate liability of all 10102 Parties combined, for all claims of any kind, is capped at the fees you paid to us in the preceding 3 months.
+
+No personal liability. You agree that any claim you may have arising out of the Services may be brought only against 10102 LLC as an entity. You waive, to the fullest extent permitted by law, any claim against any individual member, manager, officer, founder, developer, employee, contractor, or advisor of 10102 personally.
+
+These limitations are a fundamental basis of the bargain between you and 10102 and apply even if a remedy fails of its essential purpose.
+
+## Release
+
+To the fullest extent permitted by law, you release the 10102 Parties from all claims, demands, and damages of every kind, known or unknown, arising out of or relating to on-chain events, the conduct of other users or third parties, disputes between users or between users and beneficiaries, or your violation of these terms.
+
+## Indemnification
+
+You agree to defend, indemnify, and hold harmless the 10102 Parties from any claims, damages, losses, liabilities, and expenses (including reasonable attorneys' fees) arising from:
+
+- Your use of, or inability to use, our Services
+- Your transactions and smart contract deployments
+- Your violation of these Terms
+- Your violation of laws, sanctions programs, or third-party rights
+- Any information you provide, including beneficiary addresses and allocations
+- Your tax obligations
+
+We reserve the right to assume the exclusive defense of any matter subject to indemnification by you, in which case you agree to cooperate.
+
+## Dispute Resolution
+
+Binding Arbitration: Disputes shall be resolved through binding arbitration via JAMS in Florida, not through courts. Arbitration will be conducted on an individual basis only.
+
+Class Action Waiver: You waive the right to participate in class action lawsuits and class-wide arbitration.
+
+Jury Trial Waiver: To the extent any dispute proceeds in court, both parties waive the right to a trial by jury.
+
+Time Limit: Any claim arising out of the Services must be filed within one (1) year after the claim arose, or it is permanently barred.
+
+Opt-Out: You may opt out of arbitration within 30 days of first using our Services by emailing info@10102.io.
+
+## Governing Law
+
+These Terms are governed by the laws of Florida, United States, without regard to conflict-of-law rules.
+
+## Privacy Commitment
+
+We are committed to user privacy:
+
+- We do not track or profile users, and we do not sell user information.
+- We collect minimal data. If you enable email reminders, the email addresses you provide are stored encrypted off-chain by our reminder service and are not written to the public blockchain.
+- The in-app Guardian assistant sends the messages you type to a third-party AI model provider (Venice AI) to generate responses. Do not enter private keys, seed phrases, or sensitive personal information into the chat.
+- On-chain data (such as beneficiary addresses and allocations) is public by the nature of the blockchain.
+- See our Privacy Policy for details.
+
+## Force Majeure
+
+The 10102 Parties are not liable for any failure or delay caused by events beyond our reasonable control, including blockchain network failures, forks, congestion, or outages; failures of third-party infrastructure; cyberattacks; changes in law or regulation; or acts of God.
+
+## Severability & Entire Agreement
+
+If any provision of these Terms is held unenforceable, it will be enforced to the maximum extent permissible and the remaining provisions stay in full effect. Our failure to enforce any provision is not a waiver. You may not assign these Terms; we may assign them in connection with a reorganization or transfer of the Services. These Terms, together with the Privacy Policy, are the entire agreement between you and 10102 regarding the Services and supersede any prior agreements.
+
+Survival. All provisions that by their nature should survive (including assumption of risk, disclaimers, limitations of liability, release, indemnification, dispute resolution, and governing law) survive any termination of these Terms or your use of the Services.
+
+## Changes to Terms
+
+We may update these Terms at any time. Material updates receive a new version tag, and new consent signatures reference the version then in force. Continued use after changes means you accept the new terms.
+
+## Contact Us
+
+Questions about these Terms:
+
+- Email: info@10102.io
+- Website: https://10102.io
+
+(c) 2026 10102 LLC. All rights reserved.
+Source: https://10102.io/disclosures (snapshot taken 2026-08-02 for on-chain terms hash v2026-08)
