@@ -1,0 +1,87 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LedgerHQ/clear-signing-erc7730-registry/master/specs/erc7730-v1.schema.json",
+  "context": {
+    "$id": "10102-transfer-eoa-legacy-router",
+    "contract": {
+      "deployments": [
+        {
+          "chainId": 1,
+          "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b"
+        },
+        {
+          "chainId": 11155111,
+          "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7"
+        }
+      ],
+      "abi": "https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getabi&address=0x355BBf74B91e021f18Cee0de191b295B4159E4A1"
+    }
+  },
+  "metadata": {
+    "owner": "10102 Computing Legacy",
+    "info": {
+      "legalName": "10102",
+      "url": "https://app.10102.io",
+      "deploymentDate": "2026-07-30T00:00:00Z"
+    },
+    "constants": {
+      "vault": "0x95F0981026C7e804fD6ba8bE738cA7c380C7f978"
+    }
+  },
+  "display": {
+    "formats": {
+      "createLegacyV2((address,uint96)[],(uint128,uint128,uint128),(address,uint96),(address,uint96),(((address,uint160,uint48,uint48)[],address,uint256),bytes),uint256,bytes)": {
+        "intent": "Create an inactivity-triggered legacy: if you stop checking in, the listed beneficiaries can claim the tokens you authorized. Assets stay in your wallet until then.",
+        "fields": [
+          {
+            "path": "distributions_.[]",
+            "label": "Beneficiaries and shares",
+            "format": "raw"
+          },
+          {
+            "path": "extraConfig_.lackOfOutgoingTxRange",
+            "label": "Inactivity period before claim",
+            "format": "duration"
+          },
+          {
+            "path": "permit2_.permitBatch.spender",
+            "label": "Token permission granted to (10102 LegacyPullVault)",
+            "format": "addressName",
+            "params": {
+              "types": ["contract"],
+              "sources": ["local"]
+            }
+          },
+          {
+            "path": "permit2_.permitBatch.details.[].token",
+            "label": "Tokens covered",
+            "format": "addressName",
+            "params": {
+              "types": ["token"]
+            }
+          }
+        ],
+        "required": ["distributions_", "extraConfig_.lackOfOutgoingTxRange"],
+        "excluded": [
+          "layer2Distribution_",
+          "layer3Distribution_",
+          "permit2_.signature",
+          "signatureTimestamp"
+        ]
+      },
+      "activeAlive()": {
+        "intent": "Check in: reset your legacy's inactivity countdown. Nothing moves.",
+        "fields": []
+      },
+      "deleteLegacy(uint256)": {
+        "intent": "Delete your legacy contract and release its bindings. Your assets are untouched.",
+        "fields": [
+          {
+            "path": "legacyId_",
+            "label": "Legacy id",
+            "format": "raw"
+          }
+        ]
+      }
+    }
+  }
+}
