@@ -21,6 +21,39 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-08-06 — Proxy upgrades are now timelocked (48h public queue), live on mainnet
+
+**No contract implementation can change without first sitting in a public,
+on-chain queue for 48 hours.** `DefaultProxyAdmin` — the owner of every
+upgradeable proxy in the protocol — was transferred from the maintainer EOA
+to an `UpgradeTimelock` (`contracts/common/UpgradeTimelock.sol`, a thin
+subclass of OpenZeppelin `TimelockController`). This converts every
+"immutable / bounded" claim the protocol makes (the vault's immutability,
+the auto-renew attestor's on-chain bounds) into something a stranger can
+verify: any upgrade emits `CallScheduled` and waits 48 hours before it can
+execute, and execution is permissionless once ready. ROADMAP track 11 —
+"protects users from *us*, which is the point of non-custodial."
+
+| Network | UpgradeTimelock | minDelay |
+|---|---|---|
+| mainnet | `0xc0Fee69ffAA1d62D701Bb277031CEc0d98AFA4Ad` (verified) | 48h |
+| sepolia | `0xFE949165f70becE8EaeA9f39140F377aF47f0875` (verified) | 300s (QA) |
+
+Roles: proposer + canceller = maintainer key; executor = open; the timelock
+administers itself (delay/role changes are themselves queued + delayed).
+Deliberately NOT timelocked: the EOA router's `codeAdmin` levers — the
+create pause stays an instant emergency brake, and impl/vault rotation only
+affects new creates (existing clones pin their code forever). Full cycle
+rehearsed on Sepolia (schedule → wait → execute a no-op upgrade against the
+real ProxyAdmin) before the mainnet transfer.
+
+Ships with: `scripts/deploy-upgrade-timelock.ts`,
+`transfer-proxy-admin-to-timelock.ts`, and `timelock-op.ts` (the
+schedule/status/execute/cancel runbook tool for every future upgrade
+train); design record + runbook in `docs/plans/upgrade-timelock.md`; public
+policy page at docs.10102.io (Architecture → Upgrade Policy); queued-upgrade
+alerting in the `computing` repo's reminder-worker (`timelock-watch.ts`).
+
 ## v2026.07.30 — One permanent verified Permit2 spender + EOA activity auto-renew, live on mainnet
 
 **LegacyPullVault kills the red "deceptive request" wallet warning at the

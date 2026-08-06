@@ -203,6 +203,9 @@
     },
     "LegacyPullVault": {
       "address": "0x2FaB98a58211F7FF48F78E8880c0F0e6A5e6E5f3"
+    },
+    "UpgradeTimelock": {
+      "address": "0xFE949165f70becE8EaeA9f39140F377aF47f0875"
     }
   },
   "localhost": {
@@ -396,6 +399,9 @@
     },
     "LegacyPullVault": {
       "address": "0x95F0981026C7e804fD6ba8bE738cA7c380C7f978"
+    },
+    "UpgradeTimelock": {
+      "address": "0xc0Fee69ffAA1d62D701Bb277031CEc0d98AFA4Ad"
     }
   }
 }
