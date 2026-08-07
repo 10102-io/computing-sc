@@ -206,6 +206,9 @@
     },
     "UpgradeTimelock": {
       "address": "0xFE949165f70becE8EaeA9f39140F377aF47f0875"
+    },
+    "QuantumRecoveryRegistry": {
+      "address": "0xeed1e3614fb5F3Ed980fD120Bc7c68d144e84C59"
     }
   },
   "localhost": {
@@ -402,6 +405,9 @@
     },
     "UpgradeTimelock": {
       "address": "0xc0Fee69ffAA1d62D701Bb277031CEc0d98AFA4Ad"
+    },
+    "QuantumRecoveryRegistry": {
+      "address": "0xaB3C8C69fD17ba980b3D11064200c866904e360E"
     }
   }
 }

@@ -77,6 +77,7 @@ interface UIContractAddresses {
   usdcAddress: string | null;
   usdtAddress: string | null;
   tokenWhitelist: string | null;
+  quantumRegistry: string | null;
 }
 
 const CONTRACT_TO_UI_KEY: Record<string, keyof UIContractAddresses> = {
@@ -93,6 +94,7 @@ const CONTRACT_TO_UI_KEY: Record<string, keyof UIContractAddresses> = {
   ERC20Token_USDC: 'usdcAddress',
   ERC20Token_USDT: 'usdtAddress',
   TokenWhiteList: 'tokenWhitelist',
+  QuantumRecoveryRegistry: 'quantumRegistry',
 };
 
 function checksum(addr: string | undefined): string | null {
@@ -120,6 +122,7 @@ function buildUIContractAddresses(networkContracts: Record<string, ContractEntry
     usdcAddress: null,
     usdtAddress: null,
     tokenWhitelist: null,
+    quantumRegistry: null,
   };
   for (const [contractName, key] of Object.entries(CONTRACT_TO_UI_KEY)) {
     const entry = networkContracts[contractName];
@@ -178,6 +181,7 @@ function writeAddresses(): void {
     '  usdcAddress: string | null;',
     '  usdtAddress: string | null;',
     '  tokenWhitelist: string | null;',
+    '  quantumRegistry: string | null;',
     '}>;',
     '',
     'export const CONTRACT_ADDRESSES_BY_CHAIN_ID: ContractAddressesByChainId = {',

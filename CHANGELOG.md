@@ -21,6 +21,28 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-08-07 — QuantumRecoveryRegistry live on mainnet (post-quantum commitment registry)
+
+**Any account — EOA or Safe — can now register a post-quantum recovery
+commitment on-chain, and the timestamp is the asset.**
+`contracts/common/QuantumRecoveryRegistry.sol` is deliberately minimal:
+append-only history per account (later entries never erase the earliest
+pre-break timestamp a future verifier needs), no owner, no proxy, no pause
+switch — an upgradeable "quantum-safe" registry would undercut its own
+claim. `register(digest, scheme, recoveryContext)` stores the hash of a PQ
+credential or secret; registering reveals nothing quantum-vulnerable.
+Scheme labels cover SLH-DSA/ML-DSA/FN-DSA/WOTS+/hash-preimage without
+gating, so future schemes need no redeploy.
+
+- Mainnet: `0xaB3C8C69fD17ba980b3D11064200c866904e360E` (Etherscan-verified);
+  Sepolia: `0xeed1e3614fb5F3Ed980fD120Bc7c68d144e84C59`.
+- Deploy script `scripts/deploy-quantum-registry.ts`; address synced to the
+  frontend via `sync-ui` (`quantumRegistry` key).
+- This is a readiness step, not enforcement: nothing in it moves funds or
+  vetoes transactions. The enforcement layers (delay-veto vault, Safe
+  module) are tracked in `computing/docs/DEFERRED.md`
+  (`quantum-delay-vault`).
+
 ## 2026-08-06 — Proxy upgrades are now timelocked (48h public queue), live on mainnet
 
 **No contract implementation can change without first sitting in a public,
