@@ -2,6 +2,15 @@
 
 Smart contracts for the Computing project by 10102, implemented in Solidity and managed with Hardhat. This repo includes source code, deployment scripts, and tests.
 
+## Project history & audits
+
+Computing has been live on Ethereum mainnet since **October 2024** (first mainnet deployment: [`294765b`](https://github.com/10102-labs/computing-sc-og/commit/294765bcc373912ab0dbb2eb4308a488d0824b08), 2024-10-25). Development started in June 2024. The original contracts repository — including the full pre-2026 commit history — is preserved and public at [`10102-labs/computing-sc-og`](https://github.com/10102-labs/computing-sc-og), archived in January 2026 when the project moved to the `10102-io` organization. This repo continues that history (its git log reaches back to 2024, including the first audited commit [`c969eb2`](https://github.com/10102-io/computing-sc/commit/c969eb2556db4d69b37935fb695d02c55d80111d)); the GitHub "created" date reflects the org move, not the start of the project. Deployment commits here dated 2026 (for example the March 2026 "mainnet deployment" series) are upgrades and redeployments of the already-live protocol, not the initial launch.
+
+The protocol has been independently audited twice:
+
+- **RockSolid Security** — the original legacy (will) suite. Audited commit [`c969eb2`](https://github.com/10102-io/computing-sc/commit/c969eb2556db4d69b37935fb695d02c55d80111d) (October 2024); report delivered 7 January 2025 — [`Security_Review_Computing_Will.pdf`](Security_Review_Computing_Will.pdf) in this repo. (The PDF cover reads "7 January 2024" — a new-year typo: the report audits an October 2024 commit and was added to the repo on 7 January 2025.)
+- **CDSecurity** — the full suite including timelocks and premium. Report October 2025, published in [`CDSecurity/audits`](https://github.com/CDSecurity/audits) and mirrored in [`10102-labs/audits`](https://github.com/10102-labs/audits).
+
 ## Quick Start
 
 ```bash
