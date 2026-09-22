@@ -1,13 +1,13 @@
 # Changelog — 10102 Computing (contracts)
 
 This file is the canonical, human-readable narrative of what each release
-of the smart-contract repo actually **ships on-chain**. Commit messages on
-`main` are mechanical (squash-merges of `dev`); the prose here is where
+of the smart-contract repo actually **ships on-chain**. `main` is a
+fast-forward of `dev` marked by a CalVer tag; the prose here is where
 the headline story lives.
 
 ## How this file is maintained
 
-- One entry per squash-merge of `dev` into `main`, plus a separate entry
+- One entry per tagged release, plus a separate entry
   per **mainnet deploy/upgrade event** if the deploy happens ahead of the
   main-branch release (as with the EIP-1167 cutover below — mainnet was
   cut over from `dev`, the main-branch release follows).
@@ -20,6 +20,68 @@ the headline story lives.
 - Cross-repo: frontend-side changes get their own entries in
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
+
+## 2026-09-22 — Vaults under the timelock, router under the Safe, guardian brake queued; destination-wallet claims on Sepolia
+
+[Unreleased on main, already live on mainnet: the ownership transfers and
+the two queued batches below. The contract code is live on Sepolia and
+queued on mainnet.]
+
+**The three timelock vaults can no longer be reconfigured by a single key,
+and a hardware guardian that can only cancel is being added to the upgrade
+queue.** Track A of `docs/plans/round-2026-09.md`, live on mainnet today:
+
+- `TimelockERC20`, `TimelockERC721`, `TimelockERC1155` are owned by
+  `UpgradeTimelock`. Their setters (`setUniswapRouter`, the swap path an
+  ETH gift trusts at claim; `setRouterAddresses`) now sit in the same 48h
+  public queue as implementation swaps.
+- `TimeLockRouter` is owned by the governance Safe
+  (`0x60B3da49f05E21a1fcD7e210075A23b75939C3eA`, threshold 1 to start,
+  raised later). `setCreatePaused` and the other router setters run from
+  the Safe from now on.
+- Scheduled, executable from 2026-09-24 ~21:02 UTC, one batch: the Safe
+  becomes PROPOSER, the guardian hardware key
+  `0x7B61dD775422f465D6b9f28C8EFEE39263ef2579` becomes CANCELLER, and the
+  maintainer EOA loses CANCELLER. After it executes, the key that queues
+  upgrades and the key that can stop them are different devices. The EOA
+  keeps PROPOSER until the Safe is 2-of-3; the delay goes to 7 days after
+  the destination-wallet train (below) has executed.
+- Rehearsed end to end on Sepolia first, including scheduling from the
+  Safe. `scripts/verify-governance.ts` prints the pass/fail table for
+  either network; `scripts/harden-governance.ts` performs each step with a
+  dry run by default; `scripts/timelock-op.ts` gained batches
+  (`TL_BATCH`), a `print` mode for Safe{Wallet}'s Transaction Builder, and
+  `TL_VIA_SAFE` for driving a threshold-1 Safe from a script.
+
+**Destination wallet on gas-sponsored claims (Track B1), live on Sepolia,
+queued on mainnet for 2026-09-24 ~21:39 UTC** (operation
+`0x8cf4a20d…29c7`; implementations router `0x82f3148c…5005`, ERC20
+`0xC930fD64…AebA`, ERC721 `0x65658A83…3B7e`, ERC1155 `0x497DaDFf…0F5A`,
+all Etherscan-verified). A gift recipient's key signs once and
+names `payTo`, the wallet that receives the funds; the printed or emailed
+key never holds them. On chain: `WithdrawAuth` gains `payTo` and the
+EIP-712 domain version becomes "2" (old signatures fail loudly, clients
+read the version from `eip712Domain()`); the vaults gain router-only
+`withdrawTo`; the direct `withdraw` paths do not change by one byte; no
+storage variable is added anywhere (layouts diffed identical for all four
+proxies). New events, additive: `TimelockWithdrawnTo` on the router,
+`FundsRedirected` / `TokensRedirected` on the vaults; every existing event
+keeps its signature. Two bounds from the same-day adversarial review
+(no Critical or High findings): a sponsored authorization's deadline may
+not sit more than 7 days out at submission, so a signature phished long
+before an unlock is useless at the unlock; and an id that exists in no
+vault reverts before the nonce is consumed. Sepolia implementations
+(final source): router `0x3eE4633a131ABDFA2B982bde116E6Cb4De09fBcD`,
+ERC20 `0xaB3C8C69fD17ba980b3D11064200c866904e360E`, ERC721
+`0x3E2259af881aBe4682c519CCB91cf3f1765c80eB`, ERC1155
+`0x4ce7F4afF74613797c9176E653cC2aE8e25f1713`. Consumer changes are in
+`computing/CHANGELOG.md` (same day).
+
+Also: `sync-ui --check` now compares the frontend's ABI modules, not only
+addresses (a struct change would have slipped through before);
+`dump-storage-layouts.ts` covers the vaults and strips AST ids so diffs
+are exact; `refresh-impl-artifacts.ts` promotes `pendingImplementation`
+entries after an executed upgrade.
 
 ## 2026-08-07 — QuantumRecoveryRegistry live on mainnet (post-quantum commitment registry)
 

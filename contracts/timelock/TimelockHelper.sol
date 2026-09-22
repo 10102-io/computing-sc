@@ -30,6 +30,9 @@ library TimelockHelper {
   error InvalidSwapIntent();
   error EthSentWithoutSwap();
   error NoTokensReceived();
+  /// @dev A sponsored withdrawal named a payee that can never be right:
+  /// the zero address on the router-only path, the router, or a vault.
+  error InvalidPayee();
 
   // ───────────── Enums ─────────────
   enum LockType {

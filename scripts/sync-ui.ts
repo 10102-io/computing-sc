@@ -292,22 +292,30 @@ function writeAdminAddresses(): void {
 
 type AbiExportStyle = 'const_as_const' | 'default_export';
 
+/**
+ * `ui: false` mappings are generated into output/ for reference only: the
+ * frontend keeps hand-maintained modules for those contracts under other
+ * names (legacyVerifier.ts, multisigRouterAbi.ts, transferLegacyEOA.ts) and
+ * imports nothing at these paths. Repointing them is a frontend refactor
+ * (computing/docs/DEFERRED.md `abi-sync-legacy-modules`), not a sync step.
+ */
 const ABI_MAPPINGS: Array<{
   artifact: string;
   outPath: string;
   exportName: string;
   style: AbiExportStyle;
+  ui?: boolean;
 }> = [
     { artifact: 'TokenWhiteList.json', outPath: 'configs/abis/tokenWhitelist.ts', exportName: 'TokenWhitelistAbi', style: 'const_as_const' },
     { artifact: 'PremiumRegistry_Implementation.json', outPath: 'configs/abis/premiumRegistry.ts', exportName: 'PremiumRegistryABI', style: 'default_export' },
     { artifact: 'PremiumSetting_Implementation.json', outPath: 'configs/abis/premiumSetting.ts', exportName: 'PremiumSettingABI', style: 'default_export' },
     { artifact: 'TimeLockRouter_Implementation.json', outPath: 'configs/abis/timelockAbi.ts', exportName: 'TimelockABI', style: 'default_export' },
-    { artifact: 'EIP712LegacyVerifier_Implementation.json', outPath: 'configs/abis/legacyAgreement.ts', exportName: 'LegacyAgreementAbi', style: 'default_export' },
+    { artifact: 'EIP712LegacyVerifier_Implementation.json', outPath: 'configs/abis/legacyAgreement.ts', exportName: 'LegacyAgreementAbi', style: 'default_export', ui: false },
     { artifact: 'TimelockERC20_Implementation.json', outPath: 'constants/erc20TimelockAbi.ts', exportName: 'erc20TimelockAbi', style: 'const_as_const' },
     { artifact: 'TimelockERC721_Implementation.json', outPath: 'constants/erc721TimelockAbi.ts', exportName: 'erc721TimelockAbi', style: 'const_as_const' },
     { artifact: 'TimelockERC1155_Implementation.json', outPath: 'constants/erc1155TimelockAbi.ts', exportName: 'erc1155TimelockAbi', style: 'const_as_const' },
-    { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyAbi.ts', exportName: 'LegacyAbi', style: 'default_export' },
-    { artifact: 'TransferLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyRouterAbi.ts', exportName: 'LegacyRouterAbi', style: 'default_export' },
+    { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyAbi.ts', exportName: 'LegacyAbi', style: 'default_export', ui: false },
+    { artifact: 'TransferLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyRouterAbi.ts', exportName: 'LegacyRouterAbi', style: 'default_export', ui: false },
   ];
 
 function writeAbiFile(
@@ -551,6 +559,18 @@ function checkOrWriteSisters(): void {
   // UI / Admin: full file comparison
   checkOrWriteFile('UI contract-addresses.generated.ts', SISTER_TARGETS.ui, generatedUi);
   checkOrWriteFile('Admin contract-addresses.generated.ts', SISTER_TARGETS.admin, generatedAdmin);
+
+  // UI ABIs: the frontend's exported ABI modules must match the artifacts of
+  // whatever is deployed. Addresses alone were checked before 2026-09-22; a
+  // function or struct change (e.g. the sponsored WithdrawAuth gaining
+  // `payTo`) would have slipped through silently.
+  for (const m of ABI_MAPPINGS) {
+    if (m.ui === false) continue;
+    const generatedPath = path.join(OUTPUT_ROOT, m.outPath);
+    if (!fs.existsSync(generatedPath)) continue;
+    const target = path.join(SISTER_REPOS.ui, 'src', m.outPath);
+    checkOrWriteFile(`UI ${m.outPath}`, target, fs.readFileSync(generatedPath, 'utf-8'));
+  }
 
   // Subgraph networks.json: merge + semantic compare per (network, contract)
   if (!fs.existsSync(SISTER_TARGETS.subgraphNetworks)) {

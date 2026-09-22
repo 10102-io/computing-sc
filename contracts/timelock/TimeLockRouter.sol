@@ -115,10 +115,24 @@ contract TimeLockRouter is OwnableUpgradeable {
   // ───────────── Sponsored withdraw (create-flow-v2.md §12a) ─────────────
   // Mirrors the EOA legacy router's sponsored-intent machinery: the recipient
   // signs an EIP-712 `WithdrawAuth` off-chain, any relayer submits it and pays
-  // the gas. Identity is the recovered signer — the timelock contracts already
-  // enforce `caller == lock.recipient`, so a relayer can only ever trigger the
-  // signer's own withdrawal, to the signer's own entitlement. Key use case:
-  // gift recipients (often ETH-less wallets) claiming without funding gas.
+  // the gas. Identity is the recovered signer — the timelock contracts enforce
+  // `caller == lock.recipient`, so a relayer can only ever trigger the
+  // signer's own withdrawal. Since domain version "2" (round-2026-09.md) the
+  // signer may also name `payTo`, the wallet that receives the funds; it is
+  // bound in the signature and applied only through the vaults' router-only
+  // `withdrawTo`, so nobody but the recipient can ever move the destination.
+  // Key use cases: gift recipients (often ETH-less wallets) claiming without
+  // funding gas, and paper or email keys that sign exactly once so the funds
+  // do not rest in an address whose public key the claim just revealed
+  // (best effort: the open direct `withdraw` can still pay the recipient
+  // first; nothing is lost either way).
+  //
+  // Threat model change accepted with version "2": a WithdrawAuth signature
+  // is no longer harmless to sign, since it can name a destination. Two
+  // bounds keep a phished or leaked signature short-lived: the deadline may
+  // not exceed `MAX_SPONSOR_AUTH_TTL` from submission time (so a signature
+  // collected long before the unlock is useless at the unlock), and the
+  // sequential nonce lets the signer void anything outstanding.
 
   /// @dev Sequential per-signer nonce for sponsored intents. APPENDED at the
   /// end of router storage (transient/constant members above occupy no slots),
@@ -150,15 +164,28 @@ contract TimeLockRouter is OwnableUpgradeable {
   bytes32 private constant _EIP712_DOMAIN_TYPEHASH =
     keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
   bytes32 private constant _EIP712_NAME_HASH = keccak256(bytes("10102 Timelock Sponsored"));
-  bytes32 private constant _EIP712_VERSION_HASH = keccak256(bytes("1"));
+  /// @dev Version "2" adds `payTo` to the struct. Signatures over version "1"
+  /// fail `InvalidSponsorSignature` by construction: no silent replay of an
+  /// old authorization against the new payee semantics. Clients read the
+  /// version live via `eip712Domain()` and sign accordingly.
+  bytes32 private constant _EIP712_VERSION_HASH = keccak256(bytes("2"));
   bytes32 private constant WITHDRAW_AUTH_TYPEHASH =
-    keccak256("WithdrawAuth(address recipient,uint256 timelockId,bool skipSwap,uint256 nonce,uint256 deadline)");
+    keccak256(
+      "WithdrawAuth(address recipient,address payTo,uint256 timelockId,bool skipSwap,uint256 nonce,uint256 deadline)"
+    );
+  /// @dev Longest a sponsored authorization may remain valid after it is
+  /// submitted. Honest clients sign at claim time with a one-hour deadline;
+  /// the cap only bites on signatures collected ahead of time.
+  uint256 private constant MAX_SPONSOR_AUTH_TTL = 7 days;
 
   /// @notice Recipient's signed authorization for a gas-sponsored withdrawal.
-  /// `recipient` is the recovered EIP-712 signer; the underlying timelock
-  /// contracts pay out only to that recipient, so any relayer may submit it.
+  /// `recipient` is the recovered EIP-712 signer. `payTo` is the wallet paid
+  /// out; `address(0)` means the recipient itself (today's behaviour). The
+  /// vaults still authorise on `caller == lock.recipient`; `payTo` only moves
+  /// the transfer target, and only on this router-mediated path.
   struct WithdrawAuth {
     address recipient;
+    address payTo;
     uint256 nonce;
     uint256 deadline;
     bytes signature;
@@ -170,6 +197,16 @@ contract TimeLockRouter is OwnableUpgradeable {
   error CreationPaused();
 
   event TimelockWithdrawnFor(uint256 indexed id, address indexed recipient, address indexed relayer, uint256 timestamp);
+  /// @notice Where a sponsored withdrawal was paid. `payTo == recipient` when
+  /// the authorization named no destination. Emitted alongside
+  /// `TimelockWithdrawnFor`, which keeps its shape for existing consumers.
+  event TimelockWithdrawnTo(
+    uint256 indexed id,
+    address indexed recipient,
+    address indexed payTo,
+    address relayer,
+    uint256 timestamp
+  );
   event SponsorNonceInvalidated(address indexed signer, uint256 invalidated);
   /// @notice Creation circuit breaker toggled. Only the create paths are
   /// affected; withdrawals and unlocks stay live.
@@ -443,23 +480,41 @@ contract TimeLockRouter is OwnableUpgradeable {
 
   /**
    * @dev Gas-sponsored withdrawal. The recipient signs an EIP-712
-   * `WithdrawAuth` off-chain (binding timelockId + skipSwap + nonce +
+   * `WithdrawAuth` off-chain (binding payTo + timelockId + skipSwap + nonce +
    * deadline); any relayer (`msg.sender`) submits it and pays the gas. The
-   * recovered signer is passed as the withdrawing caller, so the timelock
-   * contracts' `caller == lock.recipient` checks apply exactly as in the
-   * direct `withdraw` path — the relayer never receives anything.
+   * recovered signer is passed as the withdrawing caller, so the vaults'
+   * `caller == lock.recipient` checks apply exactly as in the direct
+   * `withdraw` path — the relayer never receives anything, and the payee is
+   * the recipient unless the recipient's own signature named another wallet.
    * Permissionless + single-shot (sequential per-signer nonce + deadline).
    * ERC-1271 signatures accepted (Safe and other smart wallets).
+   *
+   * `payTo` may not be this router or any vault: funds sent there would be
+   * unrecoverable, and no honest authorization ever names them. An id that
+   * exists in no vault reverts before the nonce is consumed, so a mistaken
+   * signature neither burns a nonce nor emits a withdrawal event for
+   * nothing.
    */
   function withdrawFor(uint256 id, bool skipSwap, WithdrawAuth calldata auth_) external {
+    address payee = auth_.payTo == address(0) ? auth_.recipient : auth_.payTo;
+    if (
+      payee == address(this) ||
+      payee == address(timelockERC20Contract) ||
+      payee == address(timelockERC721Contract) ||
+      payee == address(timelockERC1155Contract)
+    ) revert TimelockHelper.InvalidPayee();
+    (TimelockHelper.LockStatus status, ) = getStatusOwner(id);
+    if (status == TimelockHelper.LockStatus.Null) revert TimelockHelper.TimelockNotLive();
+
     bytes32 structHash = keccak256(
-      abi.encode(WITHDRAW_AUTH_TYPEHASH, auth_.recipient, id, skipSwap, auth_.nonce, auth_.deadline)
+      abi.encode(WITHDRAW_AUTH_TYPEHASH, auth_.recipient, auth_.payTo, id, skipSwap, auth_.nonce, auth_.deadline)
     );
     _consumeSponsorAuth(auth_.recipient, auth_.nonce, auth_.deadline, structHash, auth_.signature);
-    timelockERC20Contract.withdraw(id, auth_.recipient, skipSwap);
-    timelockERC721Contract.withdraw(id, auth_.recipient);
-    timelockERC1155Contract.withdraw(id, auth_.recipient);
+    timelockERC20Contract.withdrawTo(id, auth_.recipient, payee, skipSwap);
+    timelockERC721Contract.withdrawTo(id, auth_.recipient, payee);
+    timelockERC1155Contract.withdrawTo(id, auth_.recipient, payee);
     emit TimelockWithdrawnFor(id, auth_.recipient, msg.sender, block.timestamp);
+    emit TimelockWithdrawnTo(id, auth_.recipient, payee, msg.sender, block.timestamp);
   }
 
   /// @notice EIP-712 domain separator for sponsored intents, scoped to this
@@ -486,7 +541,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       uint256[] memory extensions
     )
   {
-    return (hex"0f", "10102 Timelock Sponsored", "1", block.chainid, address(this), bytes32(0), new uint256[](0));
+    return (hex"0f", "10102 Timelock Sponsored", "2", block.chainid, address(this), bytes32(0), new uint256[](0));
   }
 
   /**
@@ -511,10 +566,13 @@ contract TimeLockRouter is OwnableUpgradeable {
 
   /**
    * @dev Validate + consume a single-shot sponsored authorization: deadline
-   * not passed, exact sequential nonce, and a signature valid for `signer_`
-   * (EOA ECDSA or ERC-1271). Consumes the nonce on success. Mirrors the EOA
-   * legacy router's `_consumeSponsorAuth` — see its NOTE on the inherent
-   * revocability of ERC-1271 contract signatures.
+   * not passed and not further than `MAX_SPONSOR_AUTH_TTL` away, exact
+   * sequential nonce, and a signature valid for `signer_` (EOA ECDSA or
+   * ERC-1271). Consumes the nonce on success. Mirrors the EOA legacy
+   * router's `_consumeSponsorAuth` — see its NOTE on the inherent
+   * revocability of ERC-1271 contract signatures; with a destination in the
+   * struct that note matters more, since a permissive `isValidSignature` on
+   * a contract recipient would let anyone claim its gift to any wallet.
    */
   function _consumeSponsorAuth(
     address signer_,
@@ -523,7 +581,9 @@ contract TimeLockRouter is OwnableUpgradeable {
     bytes32 structHash_,
     bytes calldata signature_
   ) internal {
-    if (block.timestamp > deadline_) revert SponsorshipExpired();
+    if (block.timestamp > deadline_ || deadline_ > block.timestamp + MAX_SPONSOR_AUTH_TTL) {
+      revert SponsorshipExpired();
+    }
     if (nonce_ != sponsorNonce[signer_]) revert InvalidSponsorNonce();
     bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash_));
     if (!SignatureChecker.isValidSignatureNow(signer_, digest, signature_)) {

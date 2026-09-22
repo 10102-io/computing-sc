@@ -1077,11 +1077,11 @@ becomes "Create-flow v2 for legacies + timelocks".
 > - Router 11.64 KiB (+1.17). Full suite 120/120.
 >
 > **Deliberately NOT landed**: the name/giftName → event-only strip. That
-> write happens inside `TimelockERC20/721/1155` — standalone fund-holding
-> contracts, not proxies. Redeploying them would strand existing locks behind
-> a router that can only point at one instance set (`setTimelock`). Not worth
-> it for a low-risk string; revisit only if those contracts are ever migrated
-> for a stronger reason.
+> write happens inside `TimelockERC20/721/1155`. (Correction 2026-09-22:
+> the vaults ARE transparent proxies behind `DefaultProxyAdmin`, so they can
+> be upgraded in place through the 48h queue; the reason not to touch them
+> for a string stands, and the first vault upgrade is the destination-wallet
+> train in `docs/plans/round-2026-09.md`.)
 
 > **STATUS (2026-07-24): Sponsored withdraw LANDED** on `feat/create-flow-v2`.
 > `withdrawFor(uint256 id, bool skipSwap, WithdrawAuth auth)` on

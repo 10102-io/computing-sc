@@ -255,17 +255,16 @@ Premium wiring (PremiumSetting ↔ PremiumRegistry ↔ legacy routers) is handle
 
 ## Release hygiene
 
-Releases on `main` are squash-merges of `dev` with a `release:` prefix.
-The commit message on `main` is mechanical; the **narrative lives in
-[`CHANGELOG.md`](CHANGELOG.md)**.
+Releases are fast-forwards of `dev` onto `main` marked by an annotated
+CalVer tag (see "Branches & releases" above). The **narrative lives in
+[`CHANGELOG.md`](CHANGELOG.md)**, not in commit messages.
 
 For every release:
 
 1. **Draft the `CHANGELOG.md` entry first** — headline the on-chain
    behavior or cost change that matters, not the file list.
-2. **Send the draft to the maintainer for sign-off** before
-   squash-merging. The commit on `main` and the `CHANGELOG.md` entry
-   should land together in the same squash.
+2. **Send the draft to the maintainer for sign-off** before tagging.
+   The tagged commit and the `CHANGELOG.md` entry land together.
 3. Mainnet deploys that ship from `dev` ahead of a main-branch release
    (as with the EIP-1167 cutover) get their own `[Unreleased on main —
    already live on mainnet]` entry in `CHANGELOG.md` so the on-chain

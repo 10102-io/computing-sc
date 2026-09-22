@@ -65,19 +65,19 @@
     },
     "TimeLockRouter": {
       "address": "0x04FB4160c519578E310ee9cC7b966B88291E5F20",
-      "implementation": "0xB4470229B79821Ed437eDCc750eF86a321E7c885"
+      "implementation": "0x3eE4633a131ABDFA2B982bde116E6Cb4De09fBcD"
     },
     "TimelockERC20": {
       "address": "0xB7860eA69109142Bcf7ff4BC0FE52460D96a29B8",
-      "implementation": "0xe64311c7F9e15C7fE3d99faa3b44FEf3801610Bc"
+      "implementation": "0xaB3C8C69fD17ba980b3D11064200c866904e360E"
     },
     "TimelockERC721": {
       "address": "0x01D55e60D5f64b9F720B31F5bd729d3c09ff965E",
-      "implementation": "0x4a7D78C83097aB0030EF9fA429Dc495d25bA39b4"
+      "implementation": "0x3E2259af881aBe4682c519CCB91cf3f1765c80eB"
     },
     "TimelockERC1155": {
       "address": "0x0B8B48b6be196F2C5e761C3b4fF508AD5b57f7b4",
-      "implementation": "0x2db53a8e8aF1456Dca01529C048F3063F93Ea553"
+      "implementation": "0x4ce7F4afF74613797c9176E653cC2aE8e25f1713"
     },
     "_deprecated": {
       "_note": "Previous deployments superseded by the current addresses above. Legacies or timelocks created on these contracts are NOT indexed by the current subgraph.",
@@ -209,6 +209,13 @@
     },
     "QuantumRecoveryRegistry": {
       "address": "0xeed1e3614fb5F3Ed980fD120Bc7c68d144e84C59"
+    },
+    "governance": {
+      "_note": "Same Safe (1.5.0, threshold 1, owners = guardian + maintainer EOA) and guardian as mainnet, deployed on Sepolia 2026-09-22 for rehearsals. See mainnet.governance._note and docs/plans/round-2026-09.md.",
+      "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
+      "guardians": [
+        "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
+      ]
     }
   },
   "localhost": {
@@ -362,19 +369,23 @@
     },
     "TimeLockRouter": {
       "address": "0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42",
-      "implementation": "0x9f44Af0D30fFee271131059CD067ea902850CFc1"
+      "implementation": "0x9f44Af0D30fFee271131059CD067ea902850CFc1",
+      "pendingImplementation": "0x82f3148cc4836f03110F9B7139588B0563AF5005"
     },
     "TimelockERC20": {
       "address": "0xe809Bbc14bCF4ADd37377547B652DaF70B5939BF",
-      "implementation": "0x6B8db3a60Eb9b6402F0AC34Db985923584dA1bD2"
+      "implementation": "0x6B8db3a60Eb9b6402F0AC34Db985923584dA1bD2",
+      "pendingImplementation": "0xC930fD647919eb19eDFE1c7Fd69F7bC594C2AebA"
     },
     "TimelockERC721": {
       "address": "0x10CcC41871F73da22f423a1eFbaA5044a8F03F29",
-      "implementation": "0xad1e0C875D76F20A6f4400F5E7Af5ea8FE0fe8e4"
+      "implementation": "0xad1e0C875D76F20A6f4400F5E7Af5ea8FE0fe8e4",
+      "pendingImplementation": "0x65658A83A5f051769C8e4f6740D73ED66e903B7e"
     },
     "TimelockERC1155": {
       "address": "0xa29Ac005e8Df0FFfB495c69f2C064c5a5F41261e",
-      "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4"
+      "implementation": "0x500Ca04920e459FDC724A0EC73f30156911766F4",
+      "pendingImplementation": "0x497DaDFf357fAA825ceE310E473f628Db03C0F5A"
     },
     "TransferEOALegacyImpl": {
       "address": "0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3"
@@ -408,6 +419,13 @@
     },
     "QuantumRecoveryRegistry": {
       "address": "0xaB3C8C69fD17ba980b3D11064200c866904e360E"
+    },
+    "governance": {
+      "_note": "docs/plans/round-2026-09.md. safe = PROPOSER and operational owner (Safe 1.5.0, threshold 1 to start, read live 2026-09-22: owners = the guardian hardware wallet and the maintainer EOA). guardians = CANCELLER keys. Founder decision 2026-09-22: the guardian is the actively used and monitored hardware wallet that is also a Safe owner; separation from the EOA holds now, separation from the Safe holds once the threshold is 2. Pending: a third Safe owner, a Sepolia deployment of the same Safe for rehearsals, a little Sepolia ETH on the guardian.",
+      "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
+      "guardians": [
+        "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
+      ]
     }
   }
 }

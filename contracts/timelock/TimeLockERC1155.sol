@@ -41,6 +41,10 @@ contract TimelockERC1155 is Initializable, OwnableUpgradeable, ReentrancyGuard, 
 
   event SoftTimelockUnlocked(uint256 indexed timelockId, uint256 newUnlockTime);
   event FundsWithdrawn(uint256 indexed timelockId, address indexed recipient);
+  /// @notice A router-mediated withdrawal delivered the tokens to `payTo`
+  /// instead of the recipient (who signed for it). In addition to
+  /// `FundsWithdrawn`, which does not change.
+  event FundsRedirected(uint256 indexed timelockId, address indexed recipient, address indexed payTo);
 
   event TimelockGiftName(uint256 indexed timelockId, string giftName, address indexed recipient);
 
@@ -200,7 +204,22 @@ contract TimelockERC1155 is Initializable, OwnableUpgradeable, ReentrancyGuard, 
   }
 
   // ──────────────── Withdraw ────────────────
+  /// @notice Direct withdrawal: the recipient is paid. Callable by anyone,
+  /// safe because the payee is fixed (see TimelockERC20.withdraw).
   function withdraw(uint256 timelockId, address caller) external nonReentrant {
+    _withdraw(timelockId, caller, address(0));
+  }
+
+  /// @notice Router-mediated withdrawal delivering to `payTo`, bound in the
+  /// recipient's signature inside the router's `withdrawFor`.
+  function withdrawTo(uint256 timelockId, address caller, address payTo) external nonReentrant {
+    onlyRouter();
+    if (payTo == address(0) || payTo == address(this)) revert TimelockHelper.InvalidPayee();
+    _withdraw(timelockId, caller, payTo);
+  }
+
+  /// @dev Shared body. `payTo == address(0)` means "deliver to the recipient".
+  function _withdraw(uint256 timelockId, address caller, address payTo) internal {
     TimelockInfo storage lock = timelocks[timelockId];
 
     if (lock.owner == address(0)) return;
@@ -222,11 +241,13 @@ contract TimelockERC1155 is Initializable, OwnableUpgradeable, ReentrancyGuard, 
     delete lock.tokenIds;
     delete lock.amounts;
 
+    address payee = payTo == address(0) ? caller : payTo;
     for (uint256 i = 0; i < tokens.length; i++) {
-      IERC1155(tokens[i]).safeTransferFrom(address(this), caller, ids[i], amounts[i], "");
+      IERC1155(tokens[i]).safeTransferFrom(address(this), payee, ids[i], amounts[i], "");
     }
 
     emit FundsWithdrawn(timelockId, caller);
+    if (payee != caller) emit FundsRedirected(timelockId, caller, payee);
   }
 
   // ──────────────── View ────────────────

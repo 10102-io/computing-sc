@@ -33,9 +33,12 @@ const PERMIT_BATCH_TYPES = {
   ],
 };
 
+// Domain version "2" struct (round-2026-09.md B1): `payTo` is bound in the
+// signature; address(0) pays the recipient. The version is read live below.
 const WITHDRAW_AUTH_TYPES = {
   WithdrawAuth: [
     { name: "recipient", type: "address" },
+    { name: "payTo", type: "address" },
     { name: "timelockId", type: "uint256" },
     { name: "skipSwap", type: "bool" },
     { name: "nonce", type: "uint256" },
@@ -189,14 +192,17 @@ async function main() {
 
   const deadline = Math.floor(Date.now() / 1000) + 3600;
   const sponsorNonce = await tlRouter.sponsorNonce(recipient.address);
+  const live = await tlRouter.eip712Domain();
+  if (live.version !== "2") throw new Error(`Router advertises EIP-712 version ${live.version}; this script signs the version-2 struct.`);
   const tlDomain = {
-    name: "10102 Timelock Sponsored",
-    version: "1",
+    name: live.name,
+    version: live.version,
     chainId,
     verifyingContract: tlRouter.address,
   };
   const authSig = await recipient._signTypedData(tlDomain, WITHDRAW_AUTH_TYPES, {
     recipient: recipient.address,
+    payTo: ethers.constants.AddressZero,
     timelockId,
     skipSwap: true,
     nonce: sponsorNonce,
@@ -205,6 +211,7 @@ async function main() {
 
   const txC = await tlRouter.withdrawFor(timelockId, true, {
     recipient: recipient.address,
+    payTo: ethers.constants.AddressZero,
     nonce: sponsorNonce,
     deadline,
     signature: authSig,

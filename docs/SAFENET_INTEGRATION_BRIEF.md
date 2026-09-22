@@ -20,7 +20,7 @@
 We support three legacy shapes:
 
 1. **EOA Transfer Legacy** — an on-chain router that pulls pre-approved ERC-20s from the owner's EOA to beneficiaries at trigger time. No Safe involvement.
-2. **Safe Transfer Legacy** — same pattern, but the owner is a Safe multisig. Assets approved from the Safe are pulled to beneficiaries.
+2. **Safe Transfer Legacy** (sunset 2026-05-18; kept here for the record, no longer offered in the app) — same pattern, but the owner is a Safe multisig. Assets approved from the Safe are pulled to beneficiaries.
 3. **Multisig Inheritance Legacy** — a Safe-native flow where the owner's Safe installs a Module and a Guard; on inactivity, the Module executes transfers from the Safe to beneficiaries.
 
 Plus a standalone **Timelock** product (time-locked release of ERC-20/721/1155 to owner or beneficiary), which does not touch Safe.

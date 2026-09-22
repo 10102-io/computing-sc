@@ -17,6 +17,11 @@ const PROXIED_CONTRACTS = [
   "TransferEOALegacyRouter",
   "MultisigLegacyContractRouter",
   "TimeLockRouter",
+  // The three timelock vaults are transparent proxies too (round-2026-09.md
+  // B1 is their first upgrade); their layouts must be diffed like the router's.
+  "TimelockERC20",
+  "TimelockERC721",
+  "TimelockERC1155",
   "PremiumRegistry",
   "PremiumSetting",
   "LegacyDeployer",
@@ -42,12 +47,16 @@ async function main() {
       const contractOutput = (buildInfo.output.contracts as any)[artifact.sourceName]?.[artifact.contractName];
       const layout = contractOutput?.storageLayout;
       out[name] = layout
-        ? // Keep only slot-relevant fields so the diff isn't noisy.
+        ? // Keep only slot-relevant fields so the diff isn't noisy. Type
+          // identifiers embed AST node ids (`t_struct(TimelockInfo)1234_storage`)
+          // that change with any edit anywhere in the file, so they are
+          // stripped: two dumps differ only when a slot, offset, label or
+          // the type's shape differs.
           (layout.storage as any[]).map((s) => ({
             label: s.label,
             slot: s.slot,
             offset: s.offset,
-            type: s.type,
+            type: String(s.type).replace(/\)\d+/g, ")").replace(/(\w)\d+_/g, "$1_"),
           }))
         : "NO STORAGE LAYOUT IN OUTPUT";
     } catch (e: any) {

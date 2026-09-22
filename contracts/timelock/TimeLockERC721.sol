@@ -41,6 +41,10 @@ contract TimelockERC721 is Initializable, OwnableUpgradeable, ReentrancyGuard, E
   event TimelockGiftName(uint256 indexed timelockId, string giftName, address indexed recipient);
   event SoftTimelockUnlocked(uint256 indexed timelockId, uint256 unlockTime);
   event TokensWithdrawn(uint256 indexed timelockId, address indexed recipient);
+  /// @notice A router-mediated withdrawal delivered the tokens to `payTo`
+  /// instead of the recipient (who signed for it). In addition to
+  /// `TokensWithdrawn`, which does not change.
+  event TokensRedirected(uint256 indexed timelockId, address indexed recipient, address indexed payTo);
 
   event ChangeStatus(uint256 indexed timelockId, TimelockHelper.LockStatus newStatus);
 
@@ -175,7 +179,22 @@ contract TimelockERC721 is Initializable, OwnableUpgradeable, ReentrancyGuard, E
   }
 
   // ───────────── Withdraw ─────────────
+  /// @notice Direct withdrawal: the recipient is paid. Callable by anyone,
+  /// safe because the payee is fixed (see TimelockERC20.withdraw).
   function withdraw(uint256 timelockId, address caller) external nonReentrant {
+    _withdraw(timelockId, caller, address(0));
+  }
+
+  /// @notice Router-mediated withdrawal delivering to `payTo`, bound in the
+  /// recipient's signature inside the router's `withdrawFor`.
+  function withdrawTo(uint256 timelockId, address caller, address payTo) external nonReentrant {
+    onlyRouter();
+    if (payTo == address(0) || payTo == address(this)) revert TimelockHelper.InvalidPayee();
+    _withdraw(timelockId, caller, payTo);
+  }
+
+  /// @dev Shared body. `payTo == address(0)` means "deliver to the recipient".
+  function _withdraw(uint256 timelockId, address caller, address payTo) internal {
     TimelockInfo storage lock = timelocks[timelockId];
 
     if (lock.owner == address(0)) return;
@@ -195,9 +214,11 @@ contract TimelockERC721 is Initializable, OwnableUpgradeable, ReentrancyGuard, E
     delete lock.tokenAddresses;
     delete lock.tokenIds;
 
-    _transferTokensOut(tokens, ids, caller);
+    address payee = payTo == address(0) ? caller : payTo;
+    _transferTokensOut(tokens, ids, payee);
 
     emit TokensWithdrawn(timelockId, caller);
+    if (payee != caller) emit TokensRedirected(timelockId, caller, payee);
   }
 
   // ───────────── View ─────────────

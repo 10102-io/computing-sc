@@ -50,6 +50,10 @@ contract TimelockERC20 is Initializable, ReentrancyGuard, OwnableUpgradeable {
 
   event SoftTimelockUnlocked(uint256 indexed timelockId, uint256 newUnlockTime);
   event FundsWithdrawn(uint256 indexed timelockId, address indexed recipient);
+  /// @notice A router-mediated withdrawal paid `payTo` instead of the lock's
+  /// recipient (the recipient signed for it). Emitted in addition to
+  /// `FundsWithdrawn`, whose shape and meaning do not change.
+  event FundsRedirected(uint256 indexed timelockId, address indexed recipient, address indexed payTo);
 
   event ChangeStatus(uint256 indexed timelockId, TimelockHelper.LockStatus newStatus);
 
@@ -191,7 +195,31 @@ contract TimelockERC20 is Initializable, ReentrancyGuard, OwnableUpgradeable {
   }
 
   // ───────────── Withdraw ─────────────
+
+  /// @notice Direct withdrawal: the recipient is paid. Deliberately callable
+  /// by anyone (not `onlyRouter`): a third party can only ever trigger a
+  /// payout to the recorded recipient, which is safe precisely because the
+  /// payee is fixed here.
   function withdraw(uint256 id, address caller, bool skipSwap) external nonReentrant {
+    _withdraw(id, caller, address(0), skipSwap);
+  }
+
+  /// @notice Router-mediated withdrawal paying `payTo`. Only the router may
+  /// call it, and the router only does so inside `withdrawFor`, where `payTo`
+  /// is bound in the recipient's EIP-712 signature. Authorisation is
+  /// unchanged (`caller == lock.recipient`); only the transfer target moves.
+  /// Motivation (round-2026-09.md): a claim signature reveals the recipient
+  /// key's public key; paying a wallet chosen at claim time means the funds
+  /// do not have to rest in the revealed address. Best effort by design:
+  /// the open `withdraw` above can still pay the recipient first, in which
+  /// case this call reverts `TimelockNotLive` and nothing is lost.
+  function withdrawTo(uint256 id, address caller, address payTo, bool skipSwap) external onlyRouter nonReentrant {
+    if (payTo == address(0) || payTo == address(this)) revert TimelockHelper.InvalidPayee();
+    _withdraw(id, caller, payTo, skipSwap);
+  }
+
+  /// @dev Shared body. `payTo == address(0)` means "pay the recipient".
+  function _withdraw(uint256 id, address caller, address payTo, bool skipSwap) internal {
     TimelockInfo storage lock = timelocks[id];
 
     if (lock.owner == address(0)) return;
@@ -208,13 +236,14 @@ contract TimelockERC20 is Initializable, ReentrancyGuard, OwnableUpgradeable {
     address[] memory tokens = lock.tokenAddresses;
     uint256[] memory amounts = lock.amounts;
     address recipient = lock.recipient;
+    address payee = payTo == address(0) ? recipient : payTo;
     bool withdrawLastAsEth = lock.withdrawLastAsEth;
 
     for (uint256 i = 0; i < tokens.length; i++) {
       if (i == tokens.length - 1 && withdrawLastAsEth && !skipSwap) {
-        _swapTokenToEthAndSend(tokens[i], amounts[i], recipient);
+        _swapTokenToEthAndSend(tokens[i], amounts[i], payee);
       } else {
-        IERC20(tokens[i]).safeTransfer(recipient, amounts[i]);
+        IERC20(tokens[i]).safeTransfer(payee, amounts[i]);
       }
     }
 
@@ -223,19 +252,22 @@ contract TimelockERC20 is Initializable, ReentrancyGuard, OwnableUpgradeable {
     lock.withdrawLastAsEth = false;
 
     emit FundsWithdrawn(id, recipient);
+    if (payee != recipient) emit FundsRedirected(id, recipient, payee);
   }
 
-  function _swapTokenToEthAndSend(address token, uint256 amount, address recipient) internal {
+  /// @dev `to` is the payee: the lock's recipient on the direct path, or the
+  /// signed `payTo` on the router path.
+  function _swapTokenToEthAndSend(address token, uint256 amount, address to) internal {
     address wethAddr = weth;
     if (token == wethAddr) {
       // WETH→ETH is 1:1 unwrap
       IWETH(token).withdraw(amount);
-      (bool ok,) = recipient.call{value: amount}("");
+      (bool ok,) = to.call{value: amount}("");
       if (!ok) revert TimelockHelper.NativeTokenTransferFailed();
       return;
     }
     if (address(uniswapRouter) == address(0) || wethAddr == address(0)) {
-      IERC20(token).safeTransfer(recipient, amount);
+      IERC20(token).safeTransfer(to, amount);
       return;
     }
     address[] memory path = new address[](2);
@@ -249,7 +281,7 @@ contract TimelockERC20 is Initializable, ReentrancyGuard, OwnableUpgradeable {
       amount,
       minAmountOut,
       path,
-      recipient,
+      to,
       block.timestamp + WITHDRAW_SWAP_DEADLINE_BUFFER
     );
   }
