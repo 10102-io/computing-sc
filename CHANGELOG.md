@@ -21,11 +21,41 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-09-24 — Destination-wallet claims and the split-key governance live on mainnet
+
+[Unreleased on main, already live on mainnet.]
+
+**Both operations queued on the 22nd executed today, in order.** The role
+batch at 21:03 UTC (tx `0x2db1e716…f63e`): the governance Safe is
+PROPOSER, the guardian hardware key `0x7B61…2579` is the only CANCELLER,
+the maintainer EOA can queue but no longer cancel. The four-proxy upgrade
+at 21:40 UTC (tx `0x07b67f6f…97fd`): `TimeLockRouter`
+`0x82f3148c…5005`, `TimelockERC20` `0xC930fD64…AebA`, `TimelockERC721`
+`0x65658A83…3B7e`, `TimelockERC1155` `0x497DaDFf…0F5A`, all
+Etherscan-verified with the proxy records already pointing at them.
+`verify-governance.ts` reads 24/24 in the interim phase; no operation is
+pending.
+
+Live proof, twice: `smoke-payto.ts` sealed a 0.001 ETH gift (id 11) to a
+never-funded key and claimed it to a second address with a version-2
+signature, the version-1 signature being rejected by the live router; then
+gift 12 was claimed from the production claim page itself, the recipient
+key signing on the page and the reminder-worker relaying, and
+`TimelockWithdrawnTo` named the chosen destination. The app and the worker
+switched to the new struct by reading `eip712Domain()`; nothing was
+redeployed for the flip.
+
+Also today: `smoke-payto.ts` gained an ETH-gift mode for networks without
+a test token; the public Upgrade Policy, Heirloom guide and architecture
+pages were published with the new facts; the contracts toolchain audit
+(Hardhat 3, hardhat-deploy 2, Chainlink 1.x) is recorded in
+`computing/docs/DEFERRED.md` with its trigger now met. Next on this track:
+the third Safe owner and threshold 2 (founder), then step 2c and the
+7-day delay.
+
 ## 2026-09-22 — Vaults under the timelock, router under the Safe, guardian brake queued; destination-wallet claims on Sepolia
 
-[Unreleased on main, already live on mainnet: the ownership transfers and
-the two queued batches below. The contract code is live on Sepolia and
-queued on mainnet.]
+[Executed on mainnet 2026-09-24, see above.]
 
 **The three timelock vaults can no longer be reconfigured by a single key,
 and a hardware guardian that can only cancel is being added to the upgrade

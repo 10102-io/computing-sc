@@ -3,12 +3,15 @@
  * B1) against the deployed TimeLockRouter on the current network.
  *
  *   npx hardhat run scripts/smoke-payto.ts --network sepolia
+ *   $env:PAYTO_ETH="1"; npx hardhat run scripts/smoke-payto.ts --network mainnet   # 0.001 ETH gift
  *
- * Seals a small R2USD gift to a fresh, never-funded recipient key, waits for
- * it to mature, then relays `withdrawFor` with `payTo` set to a second fresh
- * address. Asserts: the destination holds the tokens, the recipient and the
- * relayer hold none, `TimelockWithdrawnTo` and the vault's `FundsRedirected`
- * fire, and the router advertises EIP-712 domain version "2". Also proves a
+ * Seals a small gift (the public-mint R2USD token where it exists, else an
+ * ETH gift stored as WETH: PAYTO_ETH=1, amount PAYTO_ETH_WEI, default 0.001
+ * ETH) to a fresh, never-funded recipient key, waits for it to mature, then
+ * relays `withdrawFor` with `payTo` set to a second fresh address. Asserts:
+ * the destination holds the asset (ETH gifts are unwrapped), the recipient
+ * holds none, `TimelockWithdrawnTo` and the vault's `FundsRedirected` fire,
+ * and the router advertises EIP-712 domain version "2". Also proves a
  * signature over the version-1 struct is rejected by the live router.
  */
 import { ethers } from "hardhat";
@@ -48,19 +51,27 @@ async function main() {
   if (d.version !== "2") throw new Error(`Router advertises version ${d.version}; the payTo upgrade is not live here.`);
   const domain = { name: d.name, version: d.version, chainId: d.chainId.toNumber(), verifyingContract: router.address };
 
+  // Asset: the public-mint rehearsal token where it exists (Sepolia), else
+  // a small ETH gift stored as WETH (mainnet: PAYTO_ETH_WEI, default 0.001
+  // ETH), claimed with the unwrap so the destination receives ETH.
   const tokenAddr = contracts["ERC20Token_R2USD"]?.address;
-  if (!tokenAddr) throw new Error("ERC20Token_R2USD not recorded; run smoke-create-flow-v2.ts once first.");
-  const token = await ethers.getContractAt("LegacyToken", tokenAddr);
-  const decimals = await token.decimals();
-  const unit = ethers.BigNumber.from(10).pow(decimals);
-  const amount = unit.mul(3);
-  if ((await token.balanceOf(deployer.address)).lt(amount)) {
-    console.log("Minting R2USD…");
-    await (await token.mint(deployer.address, unit.mul(100))).wait();
-  }
-  if ((await token.allowance(deployer.address, router.address)).lt(amount)) {
-    console.log("approve(router)…");
-    await (await token.approve(router.address, ethers.constants.MaxUint256)).wait();
+  const useEth = !tokenAddr || process.env.PAYTO_ETH === "1";
+  let token: any = null;
+  let amount = ethers.BigNumber.from(process.env.PAYTO_ETH_WEI ?? ethers.utils.parseEther("0.001").toString());
+  let decimals = 18;
+  if (!useEth) {
+    token = await ethers.getContractAt("LegacyToken", tokenAddr);
+    decimals = await token.decimals();
+    const unit = ethers.BigNumber.from(10).pow(decimals);
+    amount = unit.mul(3);
+    if ((await token.balanceOf(deployer.address)).lt(amount)) {
+      console.log("Minting R2USD…");
+      await (await token.mint(deployer.address, unit.mul(100))).wait();
+    }
+    if ((await token.allowance(deployer.address, router.address)).lt(amount)) {
+      console.log("approve(router)…");
+      await (await token.approve(router.address, ethers.constants.MaxUint256)).wait();
+    }
   }
 
   const recipient = ethers.Wallet.createRandom().connect(ethers.provider);
@@ -69,16 +80,36 @@ async function main() {
   console.log(`Fresh destination:              ${destination.address}`);
 
   const NO_SWAP = { storageToken: ethers.constants.AddressZero, amountOutMin: 0, deadline: 0 };
-  const tx = await router.createTimelockedGift({
-    timelockETHSwap: NO_SWAP,
-    timelockERC20: [{ tokenAddress: token.address, amount }],
-    timelockERC721: [],
-    timelockERC1155: [],
-    duration: 60,
-    recipient: recipient.address,
-    name: "payTo rehearsal",
-    giftName: "to your own wallet",
-  });
+  let tx;
+  if (useEth) {
+    const uni = await ethers.getContractAt(["function WETH() view returns (address)"], await router.uniswapRouter());
+    const weth: string = await uni.WETH();
+    console.log(`ETH gift of ${ethers.utils.formatEther(amount)} ETH stored as WETH ${weth}`);
+    tx = await router.createTimelockedGift(
+      {
+        timelockETHSwap: { storageToken: weth, amountOutMin: 0, deadline: Math.floor(Date.now() / 1000) + 3600 },
+        timelockERC20: [],
+        timelockERC721: [],
+        timelockERC1155: [],
+        duration: 60,
+        recipient: recipient.address,
+        name: "payTo rehearsal",
+        giftName: "to your own wallet",
+      },
+      { value: amount }
+    );
+  } else {
+    tx = await router.createTimelockedGift({
+      timelockETHSwap: NO_SWAP,
+      timelockERC20: [{ tokenAddress: token.address, amount }],
+      timelockERC721: [],
+      timelockERC1155: [],
+      duration: 60,
+      recipient: recipient.address,
+      name: "payTo rehearsal",
+      giftName: "to your own wallet",
+    });
+  }
   console.log(`createTimelockedGift tx ${tx.hash}`);
   await tx.wait();
   const id = await router.timelockCounter();
@@ -101,21 +132,20 @@ async function main() {
   }
 
   // 2. The real claim: recipient signs once, funds land at the destination.
-  const value = { recipient: recipient.address, payTo: destination.address, timelockId: id, skipSwap: true, nonce, deadline };
+  // ETH gifts are claimed with the unwrap (skipSwap=false) so the
+  // destination receives ETH, not WETH.
+  const skipSwap = !useEth;
+  const value = { recipient: recipient.address, payTo: destination.address, timelockId: id, skipSwap, nonce, deadline };
   const signature = await recipient._signTypedData(domain, WITHDRAW_AUTH_TYPES, value);
-  const claim = await router.withdrawFor(id, true, { recipient: recipient.address, payTo: destination.address, nonce, deadline, signature });
+  const claim = await router.withdrawFor(id, skipSwap, { recipient: recipient.address, payTo: destination.address, nonce, deadline, signature });
   console.log(`withdrawFor tx ${claim.hash}`);
   const rc = await claim.wait();
 
-  const [destBal, recBal, relBal] = await Promise.all([
-    token.balanceOf(destination.address),
-    token.balanceOf(recipient.address),
-    token.balanceOf(deployer.address),
-  ]);
-  console.log(`destination R2USD ${ethers.utils.formatUnits(destBal, decimals)} | recipient ${ethers.utils.formatUnits(recBal, decimals)}`);
+  const balanceOf = (addr: string) => (useEth ? ethers.provider.getBalance(addr) : token.balanceOf(addr));
+  const [destBal, recBal] = await Promise.all([balanceOf(destination.address), balanceOf(recipient.address)]);
+  console.log(`destination ${ethers.utils.formatUnits(destBal, decimals)} | recipient ${ethers.utils.formatUnits(recBal, decimals)} (${useEth ? "ETH" : "R2USD"})`);
   if (!destBal.eq(amount)) throw new Error("destination did not receive the gift");
-  if (!recBal.isZero()) throw new Error("recipient unexpectedly holds tokens");
-  void relBal;
+  if (!recBal.isZero()) throw new Error("recipient unexpectedly holds the asset");
 
   const toTopic = router.interface.getEventTopic("TimelockWithdrawnTo");
   const toLog = rc.logs.find((l: any) => l.topics[0] === toTopic);
