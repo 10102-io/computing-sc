@@ -95,6 +95,17 @@ Email scheduling and delivery were moved **off-chain** to a reminder-worker (Mai
 
 ---
 
+## Governance and protection (standalone, not upgradeable)
+
+| Contract | Purpose |
+|----------|---------|
+| **UpgradeTimelock** | OpenZeppelin TimelockController (48h on mainnet, 300s on Sepolia). Owns `DefaultProxyAdmin` and the three timelock vaults, so every implementation swap and vault setting waits in public. The governance Safe is PROPOSER, the guardian hardware key the only CANCELLER. Runbook: `docs/plans/upgrade-timelock.md`. |
+| **QuantumRecoveryRegistry** | Append-only registry of post-quantum recovery commitments (hash digests with a scheme id and a context address), timestamped on chain. No admin. ShieldVault reads its scheme-5 commitments as veto digests. |
+| **LegacyPullVault** | The single, verified Permit2 spender for EOA transfer legacies: creators' permits name this vault, while the authority to pull stays bound to each owner's own legacy clone. Spec: `docs/plans/legacy-pull-vault.md`. |
+| **ShieldVault** | Protected holdings: a supported token behind a 7/30/90-day exit delay, an optional fallback to beneficiaries after a silence period, and a veto that moves everything to a pre-committed recovery wallet by revealing a hash secret. Owned by the governance Safe, whose only powers are token curation and pausing new deposits; exits are never pausable. Spec and threat model: `docs/plans/shield-vault.md`. |
+
+---
+
 ## Proxies & Deployment
 
 | Name | Purpose |

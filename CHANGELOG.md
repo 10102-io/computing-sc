@@ -21,6 +21,41 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-09-28 — ShieldVault live on mainnet
+
+[Unreleased on main, already live on mainnet.]
+
+**ShieldVault** (`contracts/shield/ShieldVault.sol`, spec and threat model
+`docs/plans/shield-vault.md`) is deployed on mainnet at
+`0x83074f8519F54AF05f7C48911E432e0C44dBEE69` (block 26077561) and on
+Sepolia at `0xC930fD64…AebA`, both Etherscan-verified, not upgradeable,
+owned by the governance Safe from the constructor. A position holds one
+supported token (mainnet: wstETH, USDC, USDT, WETH) behind a 7, 30 or 90
+day exit delay, optionally goes to up to 10 beneficiaries after 6 to 36
+months of silence, and can be vetoed by revealing a scheme-5
+`QuantumRecoveryRegistry` commitment, which moves everything to the
+recovery wallet bound into the digest. Withdrawals and changes wait the
+current delay and are vetoable until `readyAt`; after it anyone may
+execute. Failed payouts (blacklisted payee) become owed, never a frozen
+position. The Safe can only curate tokens and pause new deposits; exits
+are never pausable. Adversarially reviewed (no Critical or High), not
+independently audited; 26 specs including a random-sequence property
+test, full suite 239 passing. The app was walked end to end on Sepolia
+with a real wallet before the mainnet deploy, including a veto from the
+public page.
+
+Tooling: range-keyed npm overrides clear the dev-toolchain advisories (64
+findings to 26 lows, all `elliptic`, which has no fixed release), with
+bytecode byte-identical across all 142 artifacts. `sync-ui.ts` has one
+`UI_KEYS` list and generates the ShieldVault ABI from the compiled
+artifact; `dump-storage-layouts.ts` uses the current contract names;
+`verify-etherscan-status.ts` also checks the standalone contracts
+(ShieldVault, QuantumRecoveryRegistry, UpgradeTimelock), all verified on
+both chains. `docs/CONTRACTS_REFERENCE.md` gains the governance and
+protection contracts. Hardhat 3 stays deferred
+(`computing/docs/DEFERRED.md` `sc-toolchain-audit`: it changes the
+metadata hash of every deployable contract).
+
 ## 2026-09-24 — Destination-wallet claims and the split-key governance live on mainnet
 
 [Unreleased on main, already live on mainnet.]

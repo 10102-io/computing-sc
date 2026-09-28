@@ -33,8 +33,8 @@ installed but not wired.
 - Mainnet since Oct 2024. Audited twice: RockSolid Security (legacy suite,
   Jan 2025 report, `Security_Review_Computing_Will.pdf`) and CDSecurity
   (full suite incl. timelocks and premium, Oct 2025). Later riders
-  (LegacyPullVault, auto-renew, QuantumRecoveryRegistry, UpgradeTimelock)
-  had adversarial review, not a third firm audit. Say so plainly when a
+ (LegacyPullVault, auto-renew, QuantumRecoveryRegistry, UpgradeTimelock,
+ ShieldVault) had adversarial review, not a third firm audit. Say so plainly when a
   change lands on those.
 - Proxies are hardhat-deploy `OptimizedTransparentProxy` behind
  `DefaultProxyAdmin`, whose owner is `UpgradeTimelock` (OpenZeppelin
@@ -112,6 +112,7 @@ installed but not wired.
 - `docs/plans/upgrade-timelock.md`: how upgrades and role changes run.
 - `docs/plans/deployment-procedure.md`: fresh deploys and init scripts.
 - `docs/plans/create-flow-v2.md`: the legacy v2 architecture record.
+- `docs/plans/shield-vault.md`: ShieldVault spec, threat model, review.
 - `docs/CONTRACTS_REFERENCE.md`: what each contract is for.
 - `docs/plans/round-2026-09.md`: the current round (governance, destination
  wallet, the trains behind them) with its execution log at the top.

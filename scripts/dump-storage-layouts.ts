@@ -15,7 +15,7 @@ import { artifacts } from "hardhat";
 
 const PROXIED_CONTRACTS = [
   "TransferEOALegacyRouter",
-  "MultisigLegacyContractRouter",
+  "MultisigLegacyRouter",
   "TimeLockRouter",
   // The three timelock vaults are transparent proxies too (round-2026-09.md
   // B1 is their first upgrade); their layouts must be diffed like the router's.
@@ -25,7 +25,7 @@ const PROXIED_CONTRACTS = [
   "PremiumRegistry",
   "PremiumSetting",
   "LegacyDeployer",
-  "VerifierTerm",
+  "EIP712LegacyVerifier",
   // Clone implementations — not proxies, but their storage must stay aligned
   // with pre-v2 clones for reads through GenericLegacy getters.
   "TransferEOALegacy",

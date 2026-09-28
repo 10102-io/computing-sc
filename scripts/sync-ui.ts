@@ -62,25 +62,35 @@ type ContractAddressesJson = Record<string, Record<string, ContractEntry>>;
 /** Subgraph networks.json fragment: network -> dataSourceName -> { address, startBlock? }. */
 type SubgraphNetworksOutput = Record<string, Record<string, { address: string; startBlock?: number }>>;
 
-interface UIContractAddresses {
-  inheritance: string | null;
-  forwarding: string | null;
-  forwardingEOA: string | null;
-  legacyAgreement: string | null;
-  premiumSetting: string | null;
-  premiumRegistry: string | null;
-  timeLockERC20: string | null;
-  timeLockERC721: string | null;
-  timeLockERC1155: string | null;
-  timeLock: string | null;
-  timelockRouter: string | null;
-  usdcAddress: string | null;
-  usdtAddress: string | null;
-  tokenWhitelist: string | null;
-  quantumRegistry: string | null;
-}
+/**
+ * The frontend's address keys, in emission order. This list is the only
+ * place a key is declared: the TypeScript shape, the empty default and the
+ * generated type all derive from it, so adding a contract is one line here
+ * plus its CONTRACT_TO_UI_KEY entry.
+ */
+const UI_KEYS = [
+  'inheritance',
+  'forwarding',
+  'forwardingEOA',
+  'legacyAgreement',
+  'premiumSetting',
+  'premiumRegistry',
+  'timeLockERC20',
+  'timeLockERC721',
+  'timeLockERC1155',
+  'timeLock',
+  'timelockRouter',
+  'usdcAddress',
+  'usdtAddress',
+  'tokenWhitelist',
+  'quantumRegistry',
+  'shieldVault',
+] as const;
+
+type UIContractAddresses = Record<(typeof UI_KEYS)[number], string | null>;
 
 const CONTRACT_TO_UI_KEY: Record<string, keyof UIContractAddresses> = {
+  ShieldVault: 'shieldVault',
   MultisigLegacyRouter: 'inheritance',
   TransferLegacyRouter: 'forwarding',
   TransferEOALegacyRouter: 'forwardingEOA',
@@ -107,23 +117,7 @@ function checksum(addr: string | undefined): string | null {
 }
 
 function buildUIContractAddresses(networkContracts: Record<string, ContractEntry>): UIContractAddresses {
-  const out: UIContractAddresses = {
-    inheritance: null,
-    forwarding: null,
-    forwardingEOA: null,
-    legacyAgreement: null,
-    premiumSetting: null,
-    premiumRegistry: null,
-    timeLockERC20: null,
-    timeLockERC721: null,
-    timeLockERC1155: null,
-    timeLock: null,
-    timelockRouter: null,
-    usdcAddress: null,
-    usdtAddress: null,
-    tokenWhitelist: null,
-    quantumRegistry: null,
-  };
+  const out = Object.fromEntries(UI_KEYS.map((k) => [k, null])) as UIContractAddresses;
   for (const [contractName, key] of Object.entries(CONTRACT_TO_UI_KEY)) {
     const entry = networkContracts[contractName];
     if (entry?.address) {
@@ -167,21 +161,7 @@ function writeAddresses(): void {
     '// Copy this file (and sibling dirs) into the UI repo src/ after running npm run sync-ui.',
     '',
     'export type ContractAddressesByChainId = Record<number, {',
-    '  inheritance: string | null;',
-    '  forwarding: string | null;',
-    '  forwardingEOA: string | null;',
-    '  legacyAgreement: string | null;',
-    '  premiumSetting: string | null;',
-    '  premiumRegistry: string | null;',
-    '  timeLockERC20: string | null;',
-    '  timeLockERC721: string | null;',
-    '  timeLockERC1155: string | null;',
-    '  timeLock: string | null;',
-    '  timelockRouter: string | null;',
-    '  usdcAddress: string | null;',
-    '  usdtAddress: string | null;',
-    '  tokenWhitelist: string | null;',
-    '  quantumRegistry: string | null;',
+    ...UI_KEYS.map((k) => `  ${k}: string | null;`),
     '}>;',
     '',
     'export const CONTRACT_ADDRESSES_BY_CHAIN_ID: ContractAddressesByChainId = {',
@@ -292,6 +272,9 @@ function writeAdminAddresses(): void {
 
 type AbiExportStyle = 'const_as_const' | 'default_export';
 
+/** Artifact names with this prefix resolve under artifacts/contracts/. */
+const COMPILED_PREFIX = 'compiled:';
+
 /**
  * `ui: false` mappings are generated into output/ for reference only: the
  * frontend keeps hand-maintained modules for those contracts under other
@@ -316,6 +299,9 @@ const ABI_MAPPINGS: Array<{
     { artifact: 'TimelockERC1155_Implementation.json', outPath: 'constants/erc1155TimelockAbi.ts', exportName: 'erc1155TimelockAbi', style: 'const_as_const' },
     { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyAbi.ts', exportName: 'LegacyAbi', style: 'default_export', ui: false },
     { artifact: 'TransferLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyRouterAbi.ts', exportName: 'LegacyRouterAbi', style: 'default_export', ui: false },
+    // Non-upgradeable, script-deployed contracts have no deployments/
+    // artifact; their ABI is the compiled one (same code on every network).
+    { artifact: `${COMPILED_PREFIX}shield/ShieldVault.sol/ShieldVault.json`, outPath: 'configs/abis/shieldVault.ts', exportName: 'ShieldVaultAbi', style: 'const_as_const' },
   ];
 
 function writeAbiFile(
@@ -325,8 +311,9 @@ function writeAbiFile(
   exportName: string,
   style: AbiExportStyle
 ): void {
-  const deploymentsNetwork = path.join(DEPLOYMENTS_DIR, network);
-  const artifactPath = path.join(deploymentsNetwork, artifactName);
+  const artifactPath = artifactName.startsWith(COMPILED_PREFIX)
+    ? path.join(CONTRACTS_ROOT, 'artifacts', 'contracts', artifactName.slice(COMPILED_PREFIX.length))
+    : path.join(DEPLOYMENTS_DIR, network, artifactName);
   if (!fs.existsSync(artifactPath)) {
     console.warn('Missing artifact, skipping:', artifactName);
     return;

@@ -216,6 +216,9 @@
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
       ]
+    },
+    "ShieldVault": {
+      "address": "0xC930fD647919eb19eDFE1c7Fd69F7bC594C2AebA"
     }
   },
   "localhost": {
@@ -422,6 +425,9 @@
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
       ]
+    },
+    "ShieldVault": {
+      "address": "0x83074f8519F54AF05f7C48911E432e0C44dBEE69"
     }
   }
 }
