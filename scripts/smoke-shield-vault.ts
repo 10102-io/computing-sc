@@ -1,6 +1,8 @@
 /**
- * Live rehearsal of ShieldVault on the current network (Sepolia):
- *   register a veto commitment -> open a position with a fallback ->
+ * Live rehearsal of ShieldVault v2 on the current network (Sepolia):
+ *   register an owner-bound veto commitment -> open a position with a
+ *   fallback (bounded fee) -> signed check-in and signed cancel, submitted
+ *   as a relayer would (checks the EIP-712 domain on a real chain) ->
  *   request a withdrawal (the "thief" move) -> veto to the committed
  *   recovery wallet -> assert the position closed and the funds moved.
  * Timed exits (withdraw after the delay, fallback after silence) need days
@@ -36,8 +38,8 @@ async function main() {
   const recoveryTo = ethers.Wallet.createRandom().address;
   const digest = ethers.utils.keccak256(
     ethers.utils.defaultAbiCoder.encode(
-      ["bytes32", "uint256", "address", "bytes32", "address"],
-      [ethers.utils.id("10102.ShieldVault.veto.v1"), chainId, vault.address, secret, recoveryTo]
+      ["bytes32", "uint256", "address", "address", "bytes32", "address"],
+      [ethers.utils.id("10102.ShieldVault.veto.v2"), chainId, vault.address, deployer.address, secret, recoveryTo]
     )
   );
   const index = await registry.commitmentCount(deployer.address);
@@ -45,11 +47,49 @@ async function main() {
   console.log(`commitment #${index} registered for recovery wallet ${recoveryTo}`);
 
   const heir = ethers.Wallet.createRandom().address;
-  const config = { exitDelay: 7 * 86400, silencePeriod: 180 * 86400, beneficiaries: [heir], sharesBps: [10000] };
-  const openTx = await vault.open(token.address, amount, config, index, await withMargin(vault.estimateGas.open(token.address, amount, config, index)));
+  const config = { exitDelay: 7 * 86400, silencePeriod: 180 * 86400, beneficiaries: [heir], sharesBps: [10000], holdMask: 0 };
+  const maxFee = await vault.feeBps();
+  const openTx = await vault.open(
+    token.address,
+    amount,
+    config,
+    index,
+    maxFee,
+    await withMargin(vault.estimateGas.open(token.address, amount, config, index, maxFee))
+  );
   await openTx.wait();
   const id = await vault.positionCount();
-  console.log(`position ${id} opened, tx ${openTx.hash}`);
+  console.log(`position ${id} opened at fee ${maxFee} bps, tx ${openTx.hash}`);
+
+  // Signed actions, as the relay submits them.
+  const domain = { name: "10102 ShieldVault", version: "2", chainId, verifyingContract: vault.address };
+  const deadline = (await ethers.provider.getBlock("latest")).timestamp + 1800;
+  const checkInSig = await (deployer as any)._signTypedData(
+    domain,
+    { CheckIn: [{ name: "id", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+    { id, nonce: await vault.nonces(deployer.address, 0), deadline }
+  );
+  await (await vault.checkInWithSig(id, deadline, checkInSig, await withMargin(vault.estimateGas.checkInWithSig(id, deadline, checkInSig)))).wait();
+  console.log("signed check-in accepted");
+
+  await (await vault.requestWithdraw(id, amount, deployer.address, await withMargin(vault.estimateGas.requestWithdraw(id, amount, deployer.address)))).wait();
+  const cancelSig = await (deployer as any)._signTypedData(
+    domain,
+    {
+      CancelPending: [
+        { name: "id", type: "uint256" },
+        { name: "readyAt", type: "uint64" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    },
+    { id, readyAt: (await vault.positionOf(id)).pending.readyAt, nonce: await vault.nonces(deployer.address, 1), deadline }
+  );
+  await (
+    await vault.cancelPendingWithSig(id, deadline, cancelSig, await withMargin(vault.estimateGas.cancelPendingWithSig(id, deadline, cancelSig)))
+  ).wait();
+  if ((await vault.positionOf(id)).pending.kind !== 0) throw new Error("signed cancel did not clear the pending withdrawal");
+  console.log("signed cancel accepted");
 
   const req = await vault.requestWithdraw(id, amount, deployer.address, await withMargin(vault.estimateGas.requestWithdraw(id, amount, deployer.address)));
   await req.wait();

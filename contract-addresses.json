@@ -218,6 +218,9 @@
       ]
     },
     "ShieldVault": {
+      "address": "0xa88f4c2D15e0917652fBad2cFce73cD65CAc2407"
+    },
+    "ShieldVaultV1": {
       "address": "0xC930fD647919eb19eDFE1c7Fd69F7bC594C2AebA"
     }
   },
@@ -427,6 +430,9 @@
       ]
     },
     "ShieldVault": {
+      "address": "0xA1EA2F8C0518458975E09ED63bf5D48980f76C38"
+    },
+    "ShieldVaultV1": {
       "address": "0x83074f8519F54AF05f7C48911E432e0C44dBEE69"
     }
   }

@@ -18,7 +18,7 @@ dotenv.config();
 const API = "https://api.etherscan.io/v2/api";
 const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 const PROXIES = ["TimeLockRouter", "TimelockERC20", "TimelockERC721", "TimelockERC1155", "TransferEOALegacyRouter", "MultisigLegacyRouter", "PremiumRegistry", "PremiumSetting", "EIP712LegacyVerifier"];
-const STANDALONE = ["ShieldVault", "QuantumRecoveryRegistry", "UpgradeTimelock"];
+const STANDALONE = ["ShieldVault", "ShieldVaultV1", "QuantumRecoveryRegistry", "UpgradeTimelock"];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

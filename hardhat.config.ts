@@ -133,7 +133,7 @@ const config: HardhatUserConfig = {
     apiKey: process.env.API_KEY_ETHERSCAN as string, //Single key
   },
   sourcify: {
-    enabled: true,
+    enabled: false,
   },
   // watcher: {
   //   compilation: {

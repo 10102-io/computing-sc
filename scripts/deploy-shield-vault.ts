@@ -1,9 +1,13 @@
 /**
  * Deploys ShieldVault (docs/plans/shield-vault.md): non-upgradeable, owned
  * from the first block by the governance Safe (contract-addresses.json
- * `governance.safe`), whose only powers are token curation and pausing new
- * deposits. Wired to the network's QuantumRecoveryRegistry.
+ * `governance.safe`), whose only powers are token curation, pausing new
+ * deposits, and the fee for positions opened later (capped in the
+ * contract). Fees accrue to the Safe. Wired to the network's
+ * QuantumRecoveryRegistry. The address replaces `ShieldVault` in the book;
+ * the previous one is kept under `ShieldVaultV1` (exits keep working there).
  *
+ *   $env:SV_FEE_BPS="25"   # required: the launch fee in basis points (max 50)
  *   npx hardhat run scripts/deploy-shield-vault.ts --network sepolia
  */
 import { ethers, network, run } from "hardhat";
@@ -42,28 +46,37 @@ async function main() {
   const tokenList = Object.values(tokens);
   if (tokenList.length === 0) throw new Error(`No token set for ${network.name}`);
 
+  const feeRaw = process.env.SV_FEE_BPS;
+  if (feeRaw == null || !/^\d+$/.test(feeRaw)) throw new Error("SV_FEE_BPS required (basis points, 0 to 50)");
+  const feeBps = Number(feeRaw);
+
   console.log(`Network ${network.name}, deployer ${deployer.address}`);
-  console.log(`Registry ${registry}, owner (Safe) ${safe}`);
+  console.log(`Registry ${registry}, owner and fee recipient (Safe) ${safe}, fee ${feeBps} bps`);
   console.log(`Tokens: ${Object.entries(tokens).map(([k, v]) => `${k} ${v}`).join(", ")}`);
 
   const Factory = await ethers.getContractFactory("ShieldVault", deployer as any);
-  const vault = await Factory.deploy(registry, safe, tokenList);
+  const vault = await Factory.deploy(registry, safe, tokenList, safe, feeBps);
   await vault.deployed();
   console.log(`ShieldVault ${vault.address}, tx ${vault.deployTransaction.hash}`);
 
   if ((await vault.owner()).toLowerCase() !== safe.toLowerCase()) throw new Error("owner is not the Safe");
   if ((await vault.registry()).toLowerCase() !== registry.toLowerCase()) throw new Error("registry mismatch");
+  if ((await vault.feeRecipient()).toLowerCase() !== safe.toLowerCase()) throw new Error("fee recipient is not the Safe");
+  if ((await vault.feeBps()) !== feeBps) throw new Error("fee mismatch");
   for (const t of tokenList) if (!(await vault.tokenSupported(t))) throw new Error(`token ${t} not supported`);
-  console.log("  OK  owner, registry and token set as intended");
+  console.log("  OK  owner, registry, fee and token set as intended");
 
+  const previous = book.ShieldVault?.address;
+  if (previous && previous.toLowerCase() !== vault.address.toLowerCase()) saveContract(network.name, "ShieldVaultV1", previous);
   saveContract(network.name, "ShieldVault", vault.address);
 
   if (shouldVerify(network.name)) {
+    await vault.deployTransaction.wait(5);
     await sleep(15_000);
     try {
       await run("verify:verify", {
         address: vault.address,
-        constructorArguments: [registry, safe, tokenList],
+        constructorArguments: [registry, safe, tokenList, safe, feeBps],
         contract: "contracts/shield/ShieldVault.sol:ShieldVault",
       });
       console.log("  Etherscan verification: OK");

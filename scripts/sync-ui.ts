@@ -198,21 +198,25 @@ function writeAddresses(): void {
 }
 
 /** Admin UI only needs a subset of contracts per chain (computing-admin). */
-const ADMIN_CONTRACT_MAP: Record<string, 'premiumRegistry' | 'payment' | 'configBanner' | 'tokenWhiteList'> = {
+type AdminContractKey = 'premiumRegistry' | 'payment' | 'configBanner' | 'tokenWhiteList' | 'shieldVault';
+
+const ADMIN_CONTRACT_MAP: Record<string, AdminContractKey> = {
   PremiumRegistry: 'premiumRegistry',
   Payment: 'payment',
   Banner: 'configBanner',
   TokenWhiteList: 'tokenWhiteList',
+  ShieldVault: 'shieldVault',
 };
 
 function buildAdminContractAddresses(
   networkContracts: Record<string, ContractEntry>
-): Record<'premiumRegistry' | 'payment' | 'configBanner' | 'tokenWhiteList', string | null> {
-  const out: Record<'premiumRegistry' | 'payment' | 'configBanner' | 'tokenWhiteList', string | null> = {
+): Record<AdminContractKey, string | null> {
+  const out: Record<AdminContractKey, string | null> = {
     premiumRegistry: null,
     payment: null,
     configBanner: null,
     tokenWhiteList: null,
+    shieldVault: null,
   };
   for (const [contractName, key] of Object.entries(ADMIN_CONTRACT_MAP)) {
     const entry = networkContracts[contractName];
@@ -238,6 +242,7 @@ function writeAdminAddresses(): void {
     '  payment: string | null;',
     '  configBanner: string | null;',
     '  tokenWhiteList: string | null;',
+    '  shieldVault: string | null;',
     '}>;',
     '',
     'export const ADMIN_CONTRACT_ADDRESSES_BY_CHAIN_ID: AdminContractAddressesByChainId = {',

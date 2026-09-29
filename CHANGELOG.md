@@ -21,9 +21,56 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-09-29 — ShieldVault v2
+
+[Released in `v2026.09.29`; live on mainnet since the date above.]
+
+**ShieldVault v2** is live on mainnet at
+`0xA1EA2F8C0518458975E09ED63bf5D48980f76C38` (block 26084130) and on
+Sepolia at `0xa88f4c2D…2407`, both Etherscan-verified and owned by the
+governance Safe. v1 is paused for new deposits (it held nothing); its
+exits keep working. What v2 changes:
+
+- The veto commitment binds the owner and is pinned per owner, so nobody
+  can burn or shadow a freshly registered sheet.
+- A veto can no longer fail: an unpayable recovery wallet is owed.
+- Signed check-in, signed cancel and signed claims (EIP-712 domain
+  "10102 ShieldVault" v2, EOA and ERC-1271, one nonce per action type),
+  so a relayer can submit them without being trusted.
+- Paper-key heirs: a held share waits in the vault until the heir signs
+  where it should go, from any device, gas-free.
+- A fee on withdrawals and inheritance releases, never on a veto:
+  snapshotted per position at open, bounded by the opener's `maxFeeBps`
+  and a hard 0.5% cap, launched at 0.25%, collected to the Safe.
+
+**Payment governed by the Safe.** The legacy claim fee is on at 0.25%
+for EOA legacies created from now on (each keeps the rate active at its
+creation). `scripts/handover-payment-roles.ts` moved DEFAULT_ADMIN,
+OPERATOR and WITHDRAWER on `Payment` (mainnet `0x4807C7B2…7de4`, the fee
+setter and the treasury for fees and Premium) from the deployer to the
+governance Safe, and the deployer renounced all three; rehearsed on
+Sepolia first, where the Safe then set the same 0.25%. `Payment` itself
+still accepts up to 99.99%: the Safe's signatures and the admin panel's
+0.5% limit are the guard until a capped implementation rides a later
+train (`legacy-claim-fee-cap` in `computing/docs/DEFERRED.md`).
+
+**The Safe can take back the operational contracts.**
+`scripts/add-safe-admin.ts` granted the Safe DEFAULT_ADMIN on
+`PremiumRegistry`, `Banner` and `TokenWhiteList` (the deployer keeps its
+roles for plan prices, Premium grants, banner text and the token list) and
+moved `PremiumSetting` ownership to the Safe. Premium is $99 a year and
+$399 for lifetime (plans 1 and 2 on mainnet).
+
+Adversarially reviewed twice (40 specs, including a randomized
+accounting property with the fee on); not independently audited.
+Tooling: `shield-vault-admin.ts` (pause, token curation through the
+Safe), the smoke covers the signed paths, `adm-zip` override keyed so
+npm 10 and 11 resolve the same patched version (`npm ci` works again),
+Sourcify off so verification reports only Etherscan.
+
 ## 2026-09-28 — ShieldVault live on mainnet
 
-[Unreleased on main, already live on mainnet.]
+[Released in `v2026.09.29`; live on mainnet since the date above.]
 
 **ShieldVault** (`contracts/shield/ShieldVault.sol`, spec and threat model
 `docs/plans/shield-vault.md`) is deployed on mainnet at
@@ -58,7 +105,7 @@ metadata hash of every deployable contract).
 
 ## 2026-09-24 — Destination-wallet claims and the split-key governance live on mainnet
 
-[Unreleased on main, already live on mainnet.]
+[Released in `v2026.09.29`; live on mainnet since the date above.]
 
 **Both operations queued on the 22nd executed today, in order.** The role
 batch at 21:03 UTC (tx `0x2db1e716…f63e`): the governance Safe is

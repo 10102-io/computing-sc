@@ -4,11 +4,56 @@ Track D2 of `round-2026-09.md`. Resolves `stake-shield-v2` and
 `quantum-delay-vault` in `computing/docs/DEFERRED.md`. Standalone, opt-in,
 not upgradeable. Written 2026-09-28, before any code.
 
-**Status: live.** Mainnet `0x83074f8519F54AF05f7C48911E432e0C44dBEE69`
-(block 26077561, tx `0xea97204d…a810`), Sepolia
-`0xC930fD647919eb19eDFE1c7Fd69F7bC594C2AebA`; both Etherscan-verified and
-owned by the governance Safe. Adversarially reviewed, not independently
-audited (see Review).
+**Status: v2 replaces v1 (see "v2" below).** v1 went live on 2026-09-28
+(mainnet `0x83074f8519F54AF05f7C48911E432e0C44dBEE69`, Sepolia
+`0xC930fD64…AebA`) and was paused for new deposits the same evening, with
+zero mainnet holdings, once the audit preparation found two issues worth a
+new deployment. v2 went live on 2026-09-29: mainnet
+`0xA1EA2F8C0518458975E09ED63bf5D48980f76C38` (block 26084130), Sepolia
+`0xa88f4c2D…2407`, both Etherscan-verified, launch fee 25 bps
+(`contract-addresses.json` `ShieldVault`; v1 kept as `ShieldVaultV1`). Adversarially reviewed twice,
+not independently audited (package: `shield-vault-audit.md`).
+
+## v2 (2026-09-28)
+
+What changed, and why, in one place (tests: `test/ShieldVault.spec.ts`):
+
+- **The veto commitment binds the owner.** Digest =
+  `keccak256(abi.encode(keccak256("10102.ShieldVault.veto.v2"), chainId,
+  vault, owner, secret, recoveryTo))`, and pinning is per owner. v1's global
+  pin let anyone burn a freshly registered sheet by pinning its public digest
+  first; a per-owner pin alone would have let a decoy absorb the veto in a
+  client that looks positions up by digest. Clients now find a sheet's
+  holding through `positionsOf(owner)`; the sheet prints the owner.
+- **A veto never fails.** An unpayable recovery wallet (paused token,
+  blacklist) is recorded as owed to it; the pending theft is cleared.
+- **Paper-key heirs (`Config.holdMask`).** Bit `i` holds beneficiary `i`'s
+  release share in `owed` (event `ShareHeld`); only that beneficiary moves
+  it, by its own call or by `claimOwedWithSig(id, beneficiary, to, deadline,
+  sig)` to a wallet it chooses, so a printed key needs no ETH (the relay
+  submits). `claimOwed` by anyone else reverts `ShareIsHeld` for such a share.
+- **Signed owner actions** (EIP-712 domain "10102 ShieldVault" version "2",
+  ERC-1271 via SignatureChecker): `checkInWithSig` (the Premium relay perk)
+  and `cancelPendingWithSig`, bound to the pending operation's `readyAt`, so
+  an owner whose wallet a thief emptied of ETH can still stop a withdrawal.
+  Each purpose has its own nonce counter (`nonces[signer][purpose]`), so a
+  thief with the key cannot void a signed cancel by burning check-in nonces.
+  There is deliberately no signed `requestWithdraw` or `requestChange`: a
+  phished typed-data signature must never be able to start a theft.
+- **Fee.** `feeBps` for new positions (Safe-settable, hard cap
+  `MAX_FEE_BPS` = 50, i.e. 0.5%), fixed into each position at `open`, and
+  `open` takes the caller's `maxFeeBps` so a raise between signing and
+  inclusion reverts instead of binding. Charged on withdrawals and releases
+  (events report net amounts; `FeeCharged` carries the fee), never on a veto
+  or an owed claim. Fees accrue in the vault (`feesAccrued`) and anyone sends
+  them to `feeRecipient` with `collectFees`, so a fee problem can never block
+  an exit. Launch rate: 25 bps (0.25%); recipient: the governance Safe.
+  Accepted business fact: an owner who commits the sheet to their own
+  address can leave at once and fee-free through the veto; a stop is free by
+  design.
+- **`fallbackAvailableAt`** follows a pending change's silence period and
+  returns 0 for closed or unknown positions. `PositionOpened` carries the
+  pinned `vetoDigest` and the `feeBps`.
 
 ## What it is, in one paragraph
 
@@ -70,16 +115,18 @@ may hold several (one wstETH, one USDC). A position is:
 
 | Call | Who | Effect |
 |---|---|---|
-| `open(token, amount, config, vetoIndex)` | anyone (becomes owner) | New position; pulls tokens, credits the received delta |
+| `open(token, amount, config, vetoIndex, maxFeeBps)` | anyone (becomes owner) | New position; pulls tokens, credits the received delta, snapshots `feeBps` (reverts `FeeTooHigh` above `maxFeeBps`) |
 | `deposit(id, amount)` | anyone | Tops up; the owner counts as active if they are the caller |
-| `checkIn(id)` | owner | Refreshes `lastActivity` |
+| `checkIn(id)` / `checkInWithSig(id, deadline, sig)` | owner, or anyone with the owner's signature | Refreshes `lastActivity` |
 | `requestWithdraw(id, amount, to)` | owner | Starts the delay; `to` fixed now |
 | `requestChange(id, config, vetoIndex)` | owner | Starts the delay for a new config |
-| `cancelPending(id)` | owner | Clears the pending slot |
+| `cancelPending(id)` / `cancelPendingWithSig(id, deadline, sig)` | owner, or anyone with the owner's signature (binds `readyAt`) | Clears the pending slot |
 | `executePending(id)` | anyone, after `readyAt` | Pays `to` or applies the config; relay-friendly |
-| `veto(id, secret)` | anyone | Pays the whole balance to the committed recovery wallet, closes the position |
+| `veto(id, secret, recoveryTo)` | anyone | Pays the whole balance to the committed recovery wallet (or records it as owed there), closes the position |
 | `executeFallback(id)` | anyone, after `lastActivity + silencePeriod` | Pays each beneficiary its share; a failed transfer becomes owed |
-| `claimOwed(id, beneficiary)` | anyone | Retries an owed transfer to that beneficiary |
+| `claimOwed(id, beneficiary)` | anyone; only the beneficiary itself for a held share of an EOA (`ShareIsHeld`) | Pays an owed amount to that beneficiary |
+| `claimOwedWithSig(id, beneficiary, to, deadline, sig)` | anyone with the beneficiary's signature | Pays the owed amount to `to` (a printed-card heir's own wallet) |
+| `collectFees(token)` | anyone | Sends `feesAccrued[token]` to `feeRecipient` |
 
 `executePending`, `veto`, `executeFallback` and `claimOwed` pay addresses
 that were fixed earlier by the owner or the commitment, so anyone may call
@@ -97,9 +144,10 @@ position is closed and cannot be reopened.
 
 ```
 digest = keccak256(abi.encode(
-  keccak256("10102.ShieldVault.veto.v1"),
+  keccak256("10102.ShieldVault.veto.v2"),
   block.chainid,
   address(shieldVault),
+  owner,         // the position's owner (v2): a copied digest verifies nowhere else
   secret,        // 32 random bytes printed on the recovery sheet
   recoveryTo     // the recovery wallet, printed on the same sheet
 ))
@@ -113,8 +161,9 @@ veto call carries `secret` and `recoveryTo`; the vault recomputes the
 digest and compares. Binding chain and vault address means a sheet made
 for one vault can never be replayed against another.
 
-One sheet protects one position: the vault records every digest it has
-pinned and refuses to pin it for a second position (a veto publishes the
+One sheet protects one position: the vault records, per owner
+(`digestPinned[owner][digest]`), every digest it has pinned and refuses
+to pin it for a second position of that owner (a veto publishes the
 secret, which must not also unlock a sibling). A config change may keep
 the position's current digest. The client refuses a `recoveryTo` equal to
 the vault, and the vault refuses it as a beneficiary.
@@ -141,25 +190,48 @@ upgradeable; if either ever changes that behaviour, the Safe delists it
 ## Admin surface
 
 `Ownable2Step`, owner the governance Safe. `setTokenSupported(token, bool)`
-and `setDepositsPaused(bool)`. Nothing else. No upgrade path: a bug fix is
+and `setDepositsPaused(bool)`, `setFee(uint16)` (at most `MAX_FEE_BPS` = 50,
+for positions opened later only) and `setFeeRecipient(address)` (which
+also receives fees accrued but not yet collected). Nothing else. No
+upgrade path: a bug fix is
 a new deployment and every position can leave through its own delay.
 
-## Out of scope for v1
+## Out of scope
 
-Gasless check-ins (owners fund their own; a signed check-in via the relay
-can follow), Safe-module mode (phase 3 of the plan), multiple tokens per
-position, partial fallback schedules.
+Safe-module mode (phase 3 of the plan), multiple tokens per position,
+partial fallback schedules. (Signed check-ins, out of scope in v1, are in
+v2.)
 
 ## Events
 
 `PositionOpened`, `Deposited`, `CheckedIn`, `WithdrawRequested`,
 `ChangeRequested`, `PendingCancelled`, `Withdrawn`, `ChangeApplied`,
-`Vetoed`, `FallbackExecuted`, `OwedRecorded`, `OwedClaimed`,
-`TokenSupportSet`, `DepositsPausedSet`. The worker alerts the owner on
+`Vetoed`, `FallbackExecuted`, `FeeCharged`, `OwedRecorded`, `ShareHeld`,
+`OwedClaimed` (v2 adds the destination `to`), `TokenSupportSet`,
+`DepositsPausedSet`, `FeeSet`, `FeeRecipientSet`, `FeesCollected`. The worker alerts the owner on
 `WithdrawRequested` and `ChangeRequested` (which carries the new digest and
 a hash of the new beneficiary list, so the alert can say "your recovery
 sheet is being replaced" even when nothing else changes), and again before
 `readyAt`: the delay only protects an owner who notices.
+
+## Known limitations (v2, accepted)
+
+None of these lets anyone move funds away from their rightful recipient;
+they are recorded for the audit (`shield-vault-audit.md` Q15 and Q16).
+
+- **Nonces are per signer and purpose, not per position.** Check-ins
+  signed ahead for several holdings void each other after the first is
+  used. The app signs each action just before sending it.
+- **A signed cancel binds the id and `readyAt`, not the operation.** A
+  direct `cancelPending` does not consume the cancel nonce, so an unused
+  signed cancel could cancel a later operation with the same `readyAt`:
+  only one requested in the same block, under the same delay, after a
+  cancel. The worst case is the owner's own withdrawal being cancelled.
+- **EIP-7702 accounts count as contracts** (`code.length`) for both the
+  held-share guard and `SignatureChecker`: anyone can push such a
+  beneficiary's held share to that same address, and its signatures go
+  the ERC-1271 path (refused if the delegate lacks it; the direct call
+  still works).
 
 ## Review
 

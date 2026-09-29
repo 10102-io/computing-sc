@@ -50,7 +50,12 @@ installed but not wired.
 - Since 2026-09-22 the timelock vaults are owned by `UpgradeTimelock` and
  `TimeLockRouter` by the governance Safe (`contract-addresses.json`
  `governance` key). The Safe is PROPOSER, the guardian hardware key is the
- only CANCELLER (mainnet batch executes 2026-09-24). Scripts drive the
+ only CANCELLER (mainnet batch executes 2026-09-24). Since 2026-09-29
+ every `Payment` role (claim fee, fee and Premium treasury) is on the
+ Safe too, and the deployer holds none (`scripts/handover-payment-roles.ts`).
+ The deployer keeps day-to-day ops (plan prices, Premium grants, banners,
+ token list); the Safe is co-admin there and owns PremiumSetting
+ (`scripts/add-safe-admin.ts`), so it can revoke a leaked deployer key. Scripts drive the
  threshold-1 Safe with `TL_VIA_SAFE=1`; once it is 2-of-3, use
  `TL_ACTION=print` and Safe{Wallet}.
 - Storage: append only, never reorder or retype. The timelock vaults and
