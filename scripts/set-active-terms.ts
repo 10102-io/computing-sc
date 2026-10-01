@@ -21,6 +21,11 @@
  *   npx hardhat run scripts/set-active-terms.ts --network sepolia
  *
  * Requires DEPLOYER_PRIVATE_KEY (verifier owner) in .env.
+ *
+ * Same release: set `TERMS_VERSION` in computing/src/constants/common.ts to
+ * the new tag. The in-app checkbox stores the version it accepted, and the
+ * routers record that consent against the ACTIVE hash, so a stale constant
+ * would record users as accepting terms they were never shown.
  */
 import * as fs from "fs";
 import { ethers } from "hardhat";
