@@ -21,6 +21,24 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-10-11 — Terms v2026-10 published
+
+[On-chain configuration only; no contract or bytecode change.]
+
+The EIP712LegacyVerifier's active terms move from `v2026-08` to
+**`v2026-10`** on mainnet and Sepolia (`setActiveTerms`, keccak256
+`0xf1a7940ed37bb232ca7d1457df0c72fb8b15c4c7fb0a3d5b36557055e89e5a5d` of
+`docs/tos/v2026-10.txt`, 18,031 characters). The new text states the 0.25%
+delivery fee charged by `Payment` on claims from legacies created since
+2026-09-29 and by `ShieldVault` on withdrawals and releases (setting up
+stays free; timelocks, gifts and recovery-sheet stops carry none), adds
+Shield Vault risks, names Turnkey for email gifts, and covers sponsored
+transactions. The snapshot is generated from the web repo's
+`content/pages/disclosures.md` by the same rule as `v2026-08` (bold
+markers stripped, blank lines around lists, plain footer with the source
+line), verified by regenerating `v2026-08.txt` byte for byte. The app's
+`TERMS_VERSION` moves in the same release.
+
 ## 2026-09-29 — ShieldVault v2
 
 [Released in `v2026.09.29`; live on mainnet since the date above.]
