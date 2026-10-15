@@ -1,0 +1,326 @@
+{
+  "Create a legacy for two beneficiaries with a backup, covering USDC and WETH": {
+    "intent": "Create legacy",
+    "fields": [
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      },
+      {
+        "label": "Share",
+        "value": "60%"
+      },
+      {
+        "label": "Share",
+        "value": "40%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "4320:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup delay",
+        "value": "2160:00:00"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Amount covered",
+        "value": "Unlimited USDC"
+      },
+      {
+        "label": "Amount covered",
+        "value": "2 WETH"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission held by",
+        "value": "10102 LegacyPullVault"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Check in on legacy 12": {
+    "intent": "Check in",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      }
+    ],
+    "interpolatedIntent": "Check in on legacy 12",
+    "owner": "10102"
+  },
+  "Set legacy 12 to one year of inactivity": {
+    "intent": "Change inactivity period",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "8640:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Split legacy 12 evenly between two beneficiaries": {
+    "intent": "Change beneficiaries",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      },
+      {
+        "label": "Share",
+        "value": "50%"
+      },
+      {
+        "label": "Share",
+        "value": "50%"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Set the first backup of legacy 12": {
+    "intent": "Change backup beneficiary",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Backup",
+        "value": "First backup"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Set both backups of legacy 12": {
+    "intent": "Change backup beneficiaries",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Second backup",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Update beneficiaries, period and backup of legacy 12": {
+    "intent": "Update legacy",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "100%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "8640:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup delay",
+        "value": "720:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Turn on automatic renewal for legacy 12": {
+    "intent": "Set automatic renewal",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Automatic renewal on",
+        "value": "true"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Turn off gas-free claims for legacy 12": {
+    "intent": "Set gas-free claims",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Gas-free claims",
+        "value": "false"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Convert 0.5 ETH to WETH for legacy 12": {
+    "intent": "Convert ETH to a token",
+    "fields": [
+      {
+        "label": "ETH to convert",
+        "value": "0.5 ETH"
+      },
+      {
+        "label": "Token received",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Minimum received",
+        "value": "0.5 WETH"
+      },
+      {
+        "label": "Deadline",
+        "value": "2027-01-15 08:00:00Z"
+      },
+      {
+        "label": "Legacy",
+        "value": "12"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Convert 0.5 WETH back to ETH for legacy 12": {
+    "intent": "Convert back to ETH",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Amount (base units)",
+        "value": "500000000000000000"
+      },
+      {
+        "label": "Minimum ETH received",
+        "value": "0.495 ETH"
+      },
+      {
+        "label": "Deadline",
+        "value": "2027-01-15 08:00:00Z"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Withdraw 0.1 ETH from legacy 12": {
+    "intent": "Withdraw ETH from legacy",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Amount",
+        "value": "0.1 ETH"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Delete legacy 12": {
+    "intent": "Delete legacy",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      }
+    ],
+    "interpolatedIntent": "Delete legacy 12",
+    "owner": "10102"
+  },
+  "Claim USDC, WETH and ETH from legacy 12": {
+    "intent": "Claim legacy",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Token claimed",
+        "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      {
+        "label": "Token claimed",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Include ETH",
+        "value": "true"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Claim legacy 12 and convert its WETH to ETH": {
+    "intent": "Claim legacy as ETH",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Token claimed",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Minimum ETH",
+        "value": "0.99 ETH"
+      },
+      {
+        "label": "Deadline",
+        "value": "2027-01-15 08:00:00Z"
+      }
+    ],
+    "owner": "10102"
+  }
+}

@@ -21,6 +21,28 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-10-15 — Clear-signing descriptors for the registry's v2 schema
+
+[No contract or on-chain change.]
+
+`erc7730/registry/10102/` is the folder for the ERC-7730 registry, which
+moved from LedgerHQ to `ethereum/clear-signing-erc7730-registry` and now
+requires the v2 schema plus a test case per described function. Three
+descriptors replace the August v1 draft: `TransferEOALegacyRouter` (create
+v2, check-in, the distribution and backup edits, `setLegacyConfig`,
+auto-renew, the gas-free claims switch, `autoSwap`/`unswap`, `withdraw`,
+`deleteLegacy`, both claims), `TimeLockRouter` (the three creates, soft
+unlock, both `withdraw` overloads) and `ShieldVault` (open, deposit,
+check-in, withdrawal request, cancel, execute, fallback release, change,
+veto, held-share claim). Owner, upgrade and relayer-only functions are
+left undescribed on purpose. Format keys are generated from the Sourcify
+ABIs of the live implementations (`erc7730/tooling/`), which corrected the
+draft's `activeAlive()` to the deployed `avtiveAlive(uint256)` and its
+distribution type (`uint96` to `uint256`). Validated with the registry's
+pinned CI tools: `erc7730 lint` (only the expected "missing format"
+warnings for admin functions), the Sourcify test runner (35/35), selector
+coverage and JSON schema. Submission waits on a GitHub session.
+
 ## 2026-10-11 — Terms v2026-10 published
 
 [On-chain configuration only; no contract or bytecode change.]

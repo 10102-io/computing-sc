@@ -1,0 +1,185 @@
+{
+  "Open a 10 wstETH holding for two beneficiaries": {
+    "intent": "Open Shield Vault holding",
+    "fields": [
+      {
+        "label": "Amount",
+        "value": "10 wstETH"
+      },
+      {
+        "label": "Withdrawals wait",
+        "value": "168:00:00"
+      },
+      {
+        "label": "Silence period",
+        "value": "8760:00:00"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      },
+      {
+        "label": "Share",
+        "value": "70%"
+      },
+      {
+        "label": "Share",
+        "value": "30%"
+      },
+      {
+        "label": "Maximum exit fee",
+        "value": "0.25%"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Add to holding 3": {
+    "intent": "Add to Shield Vault holding",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      },
+      {
+        "label": "Amount (base units)",
+        "value": "1000000000000000000"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Check in on holding 3": {
+    "intent": "Check in",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      }
+    ],
+    "interpolatedIntent": "Check in on holding 3",
+    "owner": "10102"
+  },
+  "Request a withdrawal of everything from holding 3": {
+    "intent": "Request withdrawal",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      },
+      {
+        "label": "Amount (max = all)",
+        "value": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      },
+      {
+        "label": "To",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Request a partial withdrawal from holding 3": {
+    "intent": "Request withdrawal",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      },
+      {
+        "label": "Amount (max = all)",
+        "value": "2000000000000000000"
+      },
+      {
+        "label": "To",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Cancel the pending request on holding 3": {
+    "intent": "Cancel pending request",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Complete the pending request on holding 3": {
+    "intent": "Complete pending request",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Release holding 3 to its beneficiaries": {
+    "intent": "Release to beneficiaries",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Change holding 3 to one beneficiary": {
+    "intent": "Request settings change",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      },
+      {
+        "label": "Withdrawals wait",
+        "value": "336:00:00"
+      },
+      {
+        "label": "Silence period",
+        "value": "17520:00:00"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Share",
+        "value": "100%"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Stop holding 3 and move it to the recovery wallet": {
+    "intent": "Send to recovery wallet",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      },
+      {
+        "label": "Recovery wallet",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Pay the held share of holding 3": {
+    "intent": "Claim held share",
+    "fields": [
+      {
+        "label": "Holding",
+        "value": "3"
+      },
+      {
+        "label": "Paid to",
+        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      }
+    ],
+    "owner": "10102"
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "Create timelock with 250 USDC": {
+    "intent": "Create timelock",
+    "fields": [
+      {
+        "label": "Token locked",
+        "value": "250 USDC"
+      },
+      {
+        "label": "Locked for",
+        "value": "8760:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create timelock with 0.3 ETH held as WETH": {
+    "intent": "Create timelock",
+    "fields": [
+      {
+        "label": "ETH locked",
+        "value": "0.3 ETH"
+      },
+      {
+        "label": "ETH held as",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Minimum held",
+        "value": "0.3 WETH"
+      },
+      {
+        "label": "Locked for",
+        "value": "8760:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create soft timelock with 250 USDC": {
+    "intent": "Create soft timelock",
+    "fields": [
+      {
+        "label": "Token locked",
+        "value": "250 USDC"
+      },
+      {
+        "label": "Unlock delay",
+        "value": "168:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create soft timelock with 0.3 ETH held as WETH": {
+    "intent": "Create soft timelock",
+    "fields": [
+      {
+        "label": "ETH locked",
+        "value": "0.3 ETH"
+      },
+      {
+        "label": "ETH held as",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Minimum held",
+        "value": "0.3 WETH"
+      },
+      {
+        "label": "Unlock delay",
+        "value": "168:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Seal gift with 250 USDC": {
+    "intent": "Seal gift",
+    "fields": [
+      {
+        "label": "Token locked",
+        "value": "250 USDC"
+      },
+      {
+        "label": "Opens after",
+        "value": "43800:00:00"
+      },
+      {
+        "label": "Recipient",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Seal gift with 0.3 ETH held as WETH": {
+    "intent": "Seal gift",
+    "fields": [
+      {
+        "label": "ETH locked",
+        "value": "0.3 ETH"
+      },
+      {
+        "label": "ETH held as",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Minimum held",
+        "value": "0.3 WETH"
+      },
+      {
+        "label": "Opens after",
+        "value": "43800:00:00"
+      },
+      {
+        "label": "Recipient",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Start the countdown on timelock 7": {
+    "intent": "Start soft timelock countdown",
+    "fields": [
+      {
+        "label": "Timelock",
+        "value": "7"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Withdraw timelock 7": {
+    "intent": "Withdraw from timelock",
+    "fields": [
+      {
+        "label": "Timelock",
+        "value": "7"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Withdraw timelock 7 and keep the token": {
+    "intent": "Withdraw from timelock",
+    "fields": [
+      {
+        "label": "Timelock",
+        "value": "7"
+      },
+      {
+        "label": "Keep as token",
+        "value": "true"
+      }
+    ],
+    "owner": "10102"
+  }
+}
