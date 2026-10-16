@@ -2,6 +2,7 @@
 
 `registry/10102/` is the exact folder submitted to the
 [ERC-7730 registry](https://github.com/ethereum/clear-signing-erc7730-registry)
+in [PR #3110](https://github.com/ethereum/clear-signing-erc7730-registry/pull/3110)
 (moved from LedgerHQ to the `ethereum` org in 2026; consumed by Ledger,
 MetaMask, Trezor and other wallets). With it, a signer sees "Create legacy",
 "Check in", "Seal gift" and the beneficiaries, shares, durations and amounts

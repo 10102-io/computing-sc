@@ -41,7 +41,11 @@ draft's `activeAlive()` to the deployed `avtiveAlive(uint256)` and its
 distribution type (`uint96` to `uint256`). Validated with the registry's
 pinned CI tools: `erc7730 lint` (only the expected "missing format"
 warnings for admin functions), the Sourcify test runner (35/35), selector
-coverage and JSON schema. Submission waits on a GitHub session.
+coverage and JSON schema. Submitted the same day as
+[ethereum/clear-signing-erc7730-registry#3110](https://github.com/ethereum/clear-signing-erc7730-registry/pull/3110);
+the registry's CI passes all 35 cases on both reference implementations
+(Sourcify and Rust). Its bot suggests an `interpolatedIntent` for each
+format, which is optional and can follow a reviewer's first pass.
 
 ## 2026-10-11 — Terms v2026-10 published
 
