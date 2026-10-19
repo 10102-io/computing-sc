@@ -158,6 +158,15 @@ Direct hardhat-deploy proxy upgrades from the deployer key **revert** now
    `hardhat-deploy execute.init sweep`) — with the timelock in place the
    upgrade calldata is plain `upgrade(proxy, impl)`, so `upgradeAndCall`
    re-inits are opt-in, never accidental.
+8. **TimeLockRouter or TimelockERC20 swapped?** Save on autopilot pauses
+   itself the moment the live implementation differs from its pins (by
+   design: it never feeds code nobody reviewed). After the review, update
+   `AUTOPILOT_CHAINS` in `computing/services/reminder-worker/src/autopilot-chain.ts`
+   with the new implementation (and vault address, if repointed) and
+   redeploy the worker; the admin Ops Status row "Save on autopilot"
+   turns green again. If the router's `createTimelock` ABI changed, the
+   canonical encoding in `autopilot-policy.ts` must change with it, and
+   every saver re-runs setup.
 
 Role and delay changes: `scripts/harden-governance.ts` (`GOV_STEP`, dry run
 unless `GOV_EXECUTE=1`) encodes the steps of round-2026-09 and writes the
