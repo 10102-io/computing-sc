@@ -21,6 +21,26 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-10-20 — Terms v2026-11 published
+
+[On-chain configuration only; no contract or bytecode change.]
+
+The EIP712LegacyVerifier's active terms move from `v2026-10` to
+**`v2026-11`** on mainnet and Sepolia (`setActiveTerms`, keccak256
+`0x59a7bd30f20d02f1cb3aba88452bed01b371885c61a7184b2387f01f3d999a2c` of
+`docs/tos/v2026-11.txt`, 24,037 characters): mainnet tx `0x4135c9b4...7616`
+in block 26233334, Sepolia tx `0xa71cdac8...d039` in block 11954778, both
+read back from the chain. The new text adds Email Wallets & Network Fees
+(Turnkey self-custodial wallets, courtesy fees, final user-signed
+transfers) and Save on Autopilot (the limited Turnkey signing permission
+that can only create USDC timelocks owned by the same wallet through the
+`TimeLockRouter`, the published locking rule and caps, the Upgrade Policy
+link). The snapshot is generated from the web repo's
+`content/pages/disclosures.md` (commit `089c589`) by the same rule as
+`v2026-08` and `v2026-10`, verified by regenerating both byte for byte;
+markdown links render as `text (url)`. The app's `TERMS_VERSION` moves in
+the same release.
+
 ## 2026-10-15 — Clear-signing descriptors for the registry's v2 schema
 
 [No contract or on-chain change.]
