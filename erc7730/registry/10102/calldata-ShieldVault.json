@@ -13,18 +13,23 @@
         "fields": [
           { "path": "amount", "label": "Amount", "format": "tokenAmount", "params": { "tokenPath": "token" } },
           { "path": "config.exitDelay", "label": "Withdrawals wait", "format": "duration" },
-          { "path": "config.silencePeriod", "label": "Silence period", "format": "duration" },
+          { "path": "config.silencePeriod", "label": "Silence (0=off)", "format": "duration" },
           {
-            "path": "config.beneficiaries.[]",
-            "label": "Beneficiary",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "iteration": "bundled",
+            "fields": [
+              {
+                "path": "config.beneficiaries.[]",
+                "label": "Beneficiary",
+                "format": "addressName",
+                "params": { "sources": ["local", "ens"] }
+              },
+              { "path": "config.sharesBps.[]", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 2 } }
+            ]
           },
-          { "path": "config.sharesBps.[]", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 2 } },
           { "path": "maxFeeBps", "label": "Maximum exit fee", "format": "unit", "params": { "base": "%", "decimals": 2 } },
+          { "path": "vetoIndex", "label": "Recovery (max=off)", "format": "raw" },
           { "path": "token", "label": "Token", "visible": "never" },
-          { "path": "config.holdMask", "label": "Held shares", "visible": "never" },
-          { "path": "vetoIndex", "label": "Recovery sheet", "visible": "never" }
+          { "path": "config.holdMask", "label": "Held shares", "visible": "never" }
         ]
       },
       "deposit(uint256 id, uint256 amount)": {
@@ -40,16 +45,11 @@
       },
       "requestWithdraw(uint256 id, uint256 amount, address to)": {
         "$id": "requestWithdraw",
-        "intent": "Request withdrawal",
+        "intent": "Request withdrawal (exit fee)",
         "fields": [
           { "path": "id", "label": "Holding", "format": "raw" },
-          { "path": "amount", "label": "Amount (max = all)", "format": "raw" },
-          {
-            "path": "to",
-            "label": "To",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
-          }
+          { "path": "amount", "label": "Base units (max=all)", "format": "raw" },
+          { "path": "to", "label": "To", "format": "addressName", "params": { "sources": ["local", "ens"] } }
         ]
       },
       "cancelPending(uint256 id)": {
@@ -59,12 +59,12 @@
       },
       "executePending(uint256 id)": {
         "$id": "executePending",
-        "intent": "Complete pending request",
+        "intent": "Complete request (fee on exit)",
         "fields": [{ "path": "id", "label": "Holding", "format": "raw" }]
       },
       "executeFallback(uint256 id)": {
         "$id": "executeFallback",
-        "intent": "Release to beneficiaries",
+        "intent": "Release to beneficiaries (fee)",
         "fields": [{ "path": "id", "label": "Holding", "format": "raw" }]
       },
       "requestChange(uint256 id, (uint32 exitDelay, uint32 silencePeriod, address[] beneficiaries, uint16[] sharesBps, uint16 holdMask) config, uint256 vetoIndex)": {
@@ -73,29 +73,29 @@
         "fields": [
           { "path": "id", "label": "Holding", "format": "raw" },
           { "path": "config.exitDelay", "label": "Withdrawals wait", "format": "duration" },
-          { "path": "config.silencePeriod", "label": "Silence period", "format": "duration" },
+          { "path": "config.silencePeriod", "label": "Silence (0=off)", "format": "duration" },
           {
-            "path": "config.beneficiaries.[]",
-            "label": "Beneficiary",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "iteration": "bundled",
+            "fields": [
+              {
+                "path": "config.beneficiaries.[]",
+                "label": "Beneficiary",
+                "format": "addressName",
+                "params": { "sources": ["local", "ens"] }
+              },
+              { "path": "config.sharesBps.[]", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 2 } }
+            ]
           },
-          { "path": "config.sharesBps.[]", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 2 } },
-          { "path": "config.holdMask", "label": "Held shares", "visible": "never" },
-          { "path": "vetoIndex", "label": "Recovery sheet", "visible": "never" }
+          { "path": "vetoIndex", "label": "Recovery (max=off)", "format": "raw" },
+          { "path": "config.holdMask", "label": "Held shares", "visible": "never" }
         ]
       },
       "veto(uint256 id, bytes32 secret, address recoveryTo)": {
         "$id": "veto",
-        "intent": "Send to recovery wallet",
+        "intent": "Send all to recovery wallet",
         "fields": [
           { "path": "id", "label": "Holding", "format": "raw" },
-          {
-            "path": "recoveryTo",
-            "label": "Recovery wallet",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
-          },
+          { "path": "recoveryTo", "label": "Recovery wallet", "format": "addressName", "params": { "sources": ["local", "ens"] } },
           { "path": "secret", "label": "Recovery secret", "visible": "never" }
         ]
       },
@@ -104,12 +104,7 @@
         "intent": "Claim held share",
         "fields": [
           { "path": "id", "label": "Holding", "format": "raw" },
-          {
-            "path": "beneficiary",
-            "label": "Paid to",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
-          }
+          { "path": "beneficiary", "label": "Paid to", "format": "addressName", "params": { "sources": ["local", "ens"] } }
         ]
       }
     }

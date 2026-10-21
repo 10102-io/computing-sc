@@ -1,18 +1,18 @@
 {
   "Create a legacy for two beneficiaries with a backup, covering USDC and WETH": {
-    "intent": "Create legacy",
+    "intent": "Create legacy, approve tokens",
     "fields": [
       {
         "label": "Beneficiary",
         "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
       },
       {
-        "label": "Beneficiary",
-        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
-      },
-      {
         "label": "Share",
         "value": "60%"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
       },
       {
         "label": "Share",
@@ -27,20 +27,32 @@
         "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
       },
       {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
         "label": "Backup delay",
         "value": "2160:00:00"
+      },
+      {
+        "label": "Second backup share",
+        "value": "None"
       },
       {
         "label": "Token covered",
         "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
       },
       {
-        "label": "Token covered",
-        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-      },
-      {
         "label": "Amount covered",
         "value": "Unlimited USDC"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
       },
       {
         "label": "Amount covered",
@@ -49,6 +61,106 @@
       {
         "label": "Permission expires",
         "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission held by",
+        "value": "10102 LegacyPullVault"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create a legacy with two backups, covering wstETH": {
+    "intent": "Create legacy, approve tokens",
+    "fields": [
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "100%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "8760:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Backup delay",
+        "value": "1440:00:00"
+      },
+      {
+        "label": "Second backup",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      },
+      {
+        "label": "Second backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Second backup delay",
+        "value": "720:00:00"
+      },
+      {
+        "label": "Token covered",
+        "value": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+      },
+      {
+        "label": "Amount covered",
+        "value": "5 wstETH"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission held by",
+        "value": "10102 LegacyPullVault"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create a legacy that names a backup with no share": {
+    "intent": "Create legacy, approve tokens",
+    "fields": [
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "100%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "4320:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "None"
+      },
+      {
+        "label": "Second backup share",
+        "value": "None"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      {
+        "label": "Amount covered",
+        "value": "1000 USDC"
       },
       {
         "label": "Permission expires",
@@ -81,7 +193,7 @@
       },
       {
         "label": "Inactivity period",
-        "value": "8640:00:00"
+        "value": "8760:00:00"
       }
     ],
     "owner": "10102"
@@ -98,12 +210,12 @@
         "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
       },
       {
-        "label": "Beneficiary",
-        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
-      },
-      {
         "label": "Share",
         "value": "50%"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
       },
       {
         "label": "Share",
@@ -126,6 +238,32 @@
       {
         "label": "Backup beneficiary",
         "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "100%"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Set the second backup of legacy 12": {
+    "intent": "Change backup beneficiary",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Backup",
+        "value": "Second backup"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      },
+      {
+        "label": "Backup share",
+        "value": "100%"
       }
     ],
     "owner": "10102"
@@ -142,8 +280,16 @@
         "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
       },
       {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
         "label": "Second backup",
         "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      },
+      {
+        "label": "Second backup share",
+        "value": "100%"
       }
     ],
     "owner": "10102"
@@ -172,7 +318,69 @@
         "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
       },
       {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
         "label": "Backup delay",
+        "value": "720:00:00"
+      },
+      {
+        "label": "Second backup share",
+        "value": "None"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Update legacy 12 with two beneficiaries and two backups": {
+    "intent": "Update legacy",
+    "fields": [
+      {
+        "label": "Legacy",
+        "value": "12"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "70%"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      },
+      {
+        "label": "Share",
+        "value": "30%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "8760:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Backup delay",
+        "value": "1440:00:00"
+      },
+      {
+        "label": "Second backup",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      },
+      {
+        "label": "Second backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Second backup delay",
         "value": "720:00:00"
       }
     ],
@@ -218,7 +426,7 @@
         "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
       },
       {
-        "label": "Minimum received",
+        "label": "Swap min (not WETH)",
         "value": "0.5 WETH"
       },
       {
@@ -232,7 +440,7 @@
     ],
     "owner": "10102"
   },
-  "Convert 0.5 WETH back to ETH for legacy 12": {
+  "Convert 0.5 wstETH back to ETH for legacy 12": {
     "intent": "Convert back to ETH",
     "fields": [
       {
@@ -240,12 +448,12 @@
         "value": "12"
       },
       {
-        "label": "Amount (base units)",
+        "label": "Token (base units)",
         "value": "500000000000000000"
       },
       {
         "label": "Minimum ETH received",
-        "value": "0.495 ETH"
+        "value": "0.59 ETH"
       },
       {
         "label": "Deadline",
@@ -313,7 +521,7 @@
         "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
       },
       {
-        "label": "Minimum ETH",
+        "label": "Swap min (not WETH)",
         "value": "0.99 ETH"
       },
       {

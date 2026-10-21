@@ -3,7 +3,7 @@
     "intent": "Create timelock",
     "fields": [
       {
-        "label": "Token locked",
+        "label": "Token sent to lock",
         "value": "250 USDC"
       },
       {
@@ -17,7 +17,7 @@
     "intent": "Create timelock",
     "fields": [
       {
-        "label": "ETH locked",
+        "label": "ETH sent to lock",
         "value": "0.3 ETH"
       },
       {
@@ -25,8 +25,54 @@
         "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
       },
       {
-        "label": "Minimum held",
+        "label": "Swap min (not WETH)",
         "value": "0.3 WETH"
+      },
+      {
+        "label": "Swap deadline",
+        "value": "2027-01-15 08:00:00Z"
+      },
+      {
+        "label": "Locked for",
+        "value": "8760:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create timelock with an NFT and two items": {
+    "intent": "Create timelock",
+    "fields": [
+      {
+        "label": "NFT collection",
+        "value": "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"
+      },
+      {
+        "label": "NFT locked",
+        "value": "Bored Ape Yacht Club #8817"
+      },
+      {
+        "label": "Item collection",
+        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
+      },
+      {
+        "label": "Item locked",
+        "value": "Parallel Alpha #10144"
+      },
+      {
+        "label": "Item quantity",
+        "value": "3"
+      },
+      {
+        "label": "Item collection",
+        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
+      },
+      {
+        "label": "Item locked",
+        "value": "Parallel Alpha #10251"
+      },
+      {
+        "label": "Item quantity",
+        "value": "1"
       },
       {
         "label": "Locked for",
@@ -39,7 +85,7 @@
     "intent": "Create soft timelock",
     "fields": [
       {
-        "label": "Token locked",
+        "label": "Token sent to lock",
         "value": "250 USDC"
       },
       {
@@ -53,7 +99,7 @@
     "intent": "Create soft timelock",
     "fields": [
       {
-        "label": "ETH locked",
+        "label": "ETH sent to lock",
         "value": "0.3 ETH"
       },
       {
@@ -61,8 +107,54 @@
         "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
       },
       {
-        "label": "Minimum held",
+        "label": "Swap min (not WETH)",
         "value": "0.3 WETH"
+      },
+      {
+        "label": "Swap deadline",
+        "value": "2027-01-15 08:00:00Z"
+      },
+      {
+        "label": "Unlock delay",
+        "value": "168:00:00"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create soft timelock with an NFT and two items": {
+    "intent": "Create soft timelock",
+    "fields": [
+      {
+        "label": "NFT collection",
+        "value": "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"
+      },
+      {
+        "label": "NFT locked",
+        "value": "Bored Ape Yacht Club #8817"
+      },
+      {
+        "label": "Item collection",
+        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
+      },
+      {
+        "label": "Item locked",
+        "value": "Parallel Alpha #10144"
+      },
+      {
+        "label": "Item quantity",
+        "value": "3"
+      },
+      {
+        "label": "Item collection",
+        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
+      },
+      {
+        "label": "Item locked",
+        "value": "Parallel Alpha #10251"
+      },
+      {
+        "label": "Item quantity",
+        "value": "1"
       },
       {
         "label": "Unlock delay",
@@ -72,10 +164,10 @@
     "owner": "10102"
   },
   "Seal gift with 250 USDC": {
-    "intent": "Seal gift",
+    "intent": "Seal gift and accept terms",
     "fields": [
       {
-        "label": "Token locked",
+        "label": "Token sent to lock",
         "value": "250 USDC"
       },
       {
@@ -90,10 +182,10 @@
     "owner": "10102"
   },
   "Seal gift with 0.3 ETH held as WETH": {
-    "intent": "Seal gift",
+    "intent": "Seal gift and accept terms",
     "fields": [
       {
-        "label": "ETH locked",
+        "label": "ETH sent to lock",
         "value": "0.3 ETH"
       },
       {
@@ -101,8 +193,58 @@
         "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
       },
       {
-        "label": "Minimum held",
+        "label": "Swap min (not WETH)",
         "value": "0.3 WETH"
+      },
+      {
+        "label": "Swap deadline",
+        "value": "2027-01-15 08:00:00Z"
+      },
+      {
+        "label": "Opens after",
+        "value": "43800:00:00"
+      },
+      {
+        "label": "Recipient",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Seal gift with an NFT and two items": {
+    "intent": "Seal gift and accept terms",
+    "fields": [
+      {
+        "label": "NFT collection",
+        "value": "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"
+      },
+      {
+        "label": "NFT locked",
+        "value": "Bored Ape Yacht Club #8817"
+      },
+      {
+        "label": "Item collection",
+        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
+      },
+      {
+        "label": "Item locked",
+        "value": "Parallel Alpha #10144"
+      },
+      {
+        "label": "Item quantity",
+        "value": "3"
+      },
+      {
+        "label": "Item collection",
+        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
+      },
+      {
+        "label": "Item locked",
+        "value": "Parallel Alpha #10251"
+      },
+      {
+        "label": "Item quantity",
+        "value": "1"
       },
       {
         "label": "Opens after",
@@ -143,8 +285,22 @@
         "value": "7"
       },
       {
-        "label": "Keep as token",
+        "label": "Skip ETH conversion",
         "value": "true"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Withdraw timelock 7 converted back to ETH": {
+    "intent": "Withdraw from timelock",
+    "fields": [
+      {
+        "label": "Timelock",
+        "value": "7"
+      },
+      {
+        "label": "Skip ETH conversion",
+        "value": "false"
       }
     ],
     "owner": "10102"

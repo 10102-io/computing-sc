@@ -63,6 +63,11 @@ async function main() {
       if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error("TERMS_HASH must be a 32-byte hex string");
     } else if (process.env.TERMS_FILE) {
       const text = fs.readFileSync(process.env.TERMS_FILE, "utf8");
+      // The published hash is of the LF text (as committed). A Windows checkout
+      // with core.autocrlf rewrites it to CRLF, which hashes differently.
+      if (text.includes("\r")) {
+        throw new Error(`${process.env.TERMS_FILE} has CR characters; hash the LF text as committed`);
+      }
       hash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(text));
       console.log(`Hashed ${process.env.TERMS_FILE} (${text.length} chars)`);
     } else {

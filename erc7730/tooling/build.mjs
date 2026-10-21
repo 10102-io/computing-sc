@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   encodeFunctionData,
+  getAddress,
   maxUint160,
   maxUint256,
   parseEther,
@@ -28,7 +29,10 @@ const ALICE = '0x8ba1f109551bD432803012645Ac136ddd64DBA72';
 const BOB = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B';
 const CAROL = '0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db';
 const DAVE = '0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB';
+const BAYC = getAddress('0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d');
+const PARALLEL = getAddress('0x76be3b62873462d2142405439777e971754e8e77');
 const DAY = 86_400n;
+const NO_VETO = maxUint256;
 
 const dataProvider = {
   tokens: {
@@ -36,13 +40,22 @@ const dataProvider = {
     [WETH.toLowerCase()]: { symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
     [WSTETH.toLowerCase()]: { symbol: 'wstETH', decimals: 18, name: 'Wrapped liquid staked Ether 2.0' }
   },
-  addressNames: { [PULL_VAULT.toLowerCase()]: '10102 LegacyPullVault' }
+  addressNames: { [PULL_VAULT.toLowerCase()]: '10102 LegacyPullVault' },
+  nftCollectionNames: { [BAYC.toLowerCase()]: 'Bored Ape Yacht Club', [PARALLEL.toLowerCase()]: 'Parallel Alpha' }
 };
 
+// Ledger screen limits; the build fails instead of shipping a truncated line.
+const MAX_LABEL = 20;
+const MAX_INTENT = 30;
+
 // ── field helpers ────────────────────────────────────────────────────────
-const person = (path, label) => ({ path, label, format: 'addressName', params: { types: ['eoa', 'wallet'], sources: ['local', 'ens'] } });
+// Beneficiaries and recipients may be contracts (a Safe), and are not the
+// signer's own accounts, so person fields carry no address `types`.
+const person = (path, label) => ({ path, label, format: 'addressName', params: { sources: ['local', 'ens'] } });
 const tokenAddr = (path, label) => ({ path, label, format: 'addressName', params: { types: ['token'], sources: ['local'] } });
 const contractAddr = (path, label) => ({ path, label, format: 'addressName', params: { types: ['contract'], sources: ['local'] } });
+const collectionAddr = (path, label) => ({ path, label, format: 'addressName', params: { types: ['collection'], sources: ['local'] } });
+const bundled = (...fields) => ({ iteration: 'bundled', fields });
 const never = (path, label) => ({ path, label, visible: 'never' });
 const dur = (path, label) => ({ path, label, format: 'duration' });
 const pct1e6 = (path, label) => ({ path, label, format: 'unit', params: { base: '%', decimals: 4 } });
@@ -59,10 +72,14 @@ const hex = (n) => `0x${n.toString(16)}`;
 // ── descriptor specs ─────────────────────────────────────────────────────
 const legacyId = raw('legacyId_', 'Legacy');
 const beneficiaries = (base) => [
-  person(`${base}.[].user`, 'Beneficiary'),
-  pct1e6(`${base}.[].percent`, 'Share'),
+  bundled(person(`${base}.[].user`, 'Beneficiary'), pct1e6(`${base}.[].percent`, 'Share')),
   never(`${base}.[]`, 'Beneficiaries')
 ];
+// The legacy treats a backup's percent as a switch: 0 removes the backup even
+// when an address is given, any other value stores 100% of its layer. So it
+// is always shown, and a value other than the two the app sends renders raw.
+const backupShare = (path, label) => ({ path, label, format: 'enum', params: { $ref: '$.metadata.enums.backupShare' } });
+const shieldBeneficiaries = bundled(person('config.beneficiaries.[]', 'Beneficiary'), pctBps('config.sharesBps.[]', 'Share'));
 
 const SPECS = [
   {
@@ -74,23 +91,25 @@ const SPECS = [
       'setBothLayer23Distributions(uint256,string,(address,uint256),string,(address,uint256))': ['legacyId_', 'layer2Nickname_', 'layer2Distribution_', 'layer3Nickname_', 'layer3Distribution_'],
       'setLegacyConfig(uint256,(string,string,string[],(address,uint256)[]),(uint256,uint256,uint256),(address,uint256),(address,uint256),string,string)': ['legacyId_', 'mainConfig_', 'extraConfig_', 'layer2Distribution_', 'layer3Distribution_', 'layer2Nickname_', 'layer3Nickname_']
     },
-    enums: { layer: { 2: 'First backup', 3: 'Second backup' } },
+    enums: { layer: { 2: 'First backup', 3: 'Second backup' }, backupShare: { 0: 'None', 1000000: '100%' } },
     formats: {
       createLegacyV2: {
-        intent: 'Create legacy',
+        intent: 'Create legacy, approve tokens',
         fields: [
           ...beneficiaries('distributions_'),
           dur('extraConfig_.lackOfOutgoingTxRange', 'Inactivity period'),
           unlessNoAddress(person('layer2Distribution_.user', 'Backup beneficiary')),
+          backupShare('layer2Distribution_.percent', 'Backup share'),
           unlessZero(dur('extraConfig_.delayLayer2', 'Backup delay')),
           unlessNoAddress(person('layer3Distribution_.user', 'Second backup')),
+          backupShare('layer3Distribution_.percent', 'Second backup share'),
           unlessZero(dur('extraConfig_.delayLayer3', 'Second backup delay')),
-          tokenAddr('permit2_.permitBatch.details.[].token', 'Token covered'),
-          tokAmt('permit2_.permitBatch.details.[].amount', 'Amount covered', 'permit2_.permitBatch.details.[].token', { threshold: hex(maxUint160), message: 'Unlimited' }),
-          date('permit2_.permitBatch.details.[].expiration', 'Permission expires'),
+          bundled(
+            tokenAddr('permit2_.permitBatch.details.[].token', 'Token covered'),
+            tokAmt('permit2_.permitBatch.details.[].amount', 'Amount covered', 'permit2_.permitBatch.details.[].token', { threshold: hex(maxUint160), message: 'Unlimited' }),
+            date('permit2_.permitBatch.details.[].expiration', 'Permission expires')
+          ),
           contractAddr('permit2_.permitBatch.spender', 'Permission held by'),
-          never('layer2Distribution_.percent', 'Backup share'),
-          never('layer3Distribution_.percent', 'Second backup share'),
           never('permit2_.permitBatch.details.[].nonce', 'Permit nonce'),
           never('permit2_.permitBatch.details.[]', 'Permit details'),
           never('permit2_.permitBatch.sigDeadline', 'Permit deadline'),
@@ -120,6 +139,44 @@ const SPECS = [
               1799990000n,
               '0x' + 'cd'.repeat(65)
             ]
+          },
+          {
+            description: 'Create a legacy with two backups, covering wstETH',
+            args: [
+              [{ user: ALICE, percent: 1000000n }],
+              { lackOfOutgoingTxRange: 365n * DAY, delayLayer2: 60n * DAY, delayLayer3: 30n * DAY },
+              { user: CAROL, percent: 1000000n },
+              { user: DAVE, percent: 1000000n },
+              {
+                permitBatch: {
+                  details: [{ token: WSTETH, amount: parseEther('5'), expiration: 1924991999, nonce: 0 }],
+                  spender: PULL_VAULT,
+                  sigDeadline: 1800000000n
+                },
+                signature: '0x' + 'ab'.repeat(65)
+              },
+              0n,
+              '0x'
+            ]
+          },
+          {
+            description: 'Create a legacy that names a backup with no share',
+            args: [
+              [{ user: ALICE, percent: 1000000n }],
+              { lackOfOutgoingTxRange: 180n * DAY, delayLayer2: 0n, delayLayer3: 0n },
+              { user: CAROL, percent: 0n },
+              { user: ZERO, percent: 0n },
+              {
+                permitBatch: {
+                  details: [{ token: USDC, amount: parseUnits('1000', 6), expiration: 1924991999, nonce: 1 }],
+                  spender: PULL_VAULT,
+                  sigDeadline: 1800000000n
+                },
+                signature: '0x' + 'ab'.repeat(65)
+              },
+              0n,
+              '0x'
+            ]
           }
         ]
       },
@@ -132,7 +189,7 @@ const SPECS = [
       setActivationTrigger: {
         intent: 'Change inactivity period',
         fields: [legacyId, dur('lackOfOutgoingTxRange_', 'Inactivity period')],
-        tests: [{ description: 'Set legacy 12 to one year of inactivity', args: [12n, 360n * DAY] }]
+        tests: [{ description: 'Set legacy 12 to one year of inactivity', args: [12n, 365n * DAY] }]
       },
       setLegacyDistributions: {
         intent: 'Change beneficiaries',
@@ -150,19 +207,22 @@ const SPECS = [
           legacyId,
           { path: 'layer_', label: 'Backup', format: 'enum', params: { $ref: '$.metadata.enums.layer' } },
           person('distribution_.user', 'Backup beneficiary'),
-          never('distribution_.percent', 'Share'),
+          backupShare('distribution_.percent', 'Backup share'),
           never('nickname_', 'Nickname (ignored)')
         ],
-        tests: [{ description: 'Set the first backup of legacy 12', args: [12n, 2, '', { user: CAROL, percent: 1000000n }] }]
+        tests: [
+          { description: 'Set the first backup of legacy 12', args: [12n, 2, '', { user: CAROL, percent: 1000000n }] },
+          { description: 'Set the second backup of legacy 12', args: [12n, 3, '', { user: DAVE, percent: 1000000n }] }
+        ]
       },
       setBothLayer23Distributions: {
         intent: 'Change backup beneficiaries',
         fields: [
           legacyId,
           person('layer2Distribution_.user', 'Backup beneficiary'),
+          backupShare('layer2Distribution_.percent', 'Backup share'),
           person('layer3Distribution_.user', 'Second backup'),
-          never('layer2Distribution_.percent', 'Backup share'),
-          never('layer3Distribution_.percent', 'Second backup share'),
+          backupShare('layer3Distribution_.percent', 'Second backup share'),
           never('layer2Nickname_', 'Nickname 2'),
           never('layer3Nickname_', 'Nickname 3')
         ],
@@ -180,14 +240,14 @@ const SPECS = [
           ...beneficiaries('mainConfig_.distributions'),
           dur('extraConfig_.lackOfOutgoingTxRange', 'Inactivity period'),
           person('layer2Distribution_.user', 'Backup beneficiary'),
+          backupShare('layer2Distribution_.percent', 'Backup share'),
           unlessZero(dur('extraConfig_.delayLayer2', 'Backup delay')),
           unlessNoAddress(person('layer3Distribution_.user', 'Second backup')),
+          backupShare('layer3Distribution_.percent', 'Second backup share'),
           unlessZero(dur('extraConfig_.delayLayer3', 'Second backup delay')),
           never('mainConfig_.name', 'Name'),
           never('mainConfig_.note', 'Note'),
           never('mainConfig_.nickNames', 'Nicknames'),
-          never('layer2Distribution_.percent', 'Backup share'),
-          never('layer3Distribution_.percent', 'Second backup share'),
           never('layer2Nickname_', 'Nickname 2'),
           never('layer3Nickname_', 'Nickname 3')
         ],
@@ -200,6 +260,18 @@ const SPECS = [
               { lackOfOutgoingTxRange: 360n * DAY, delayLayer2: 30n * DAY, delayLayer3: 0n },
               { user: CAROL, percent: 1000000n },
               { user: ZERO, percent: 0n },
+              '',
+              ''
+            ]
+          },
+          {
+            description: 'Update legacy 12 with two beneficiaries and two backups',
+            args: [
+              12n,
+              { name: '', note: '', nickNames: ['', ''], distributions: [{ user: ALICE, percent: 700000n }, { user: BOB, percent: 300000n }] },
+              { lackOfOutgoingTxRange: 365n * DAY, delayLayer2: 60n * DAY, delayLayer3: 30n * DAY },
+              { user: CAROL, percent: 1000000n },
+              { user: DAVE, percent: 1000000n },
               '',
               ''
             ]
@@ -221,7 +293,7 @@ const SPECS = [
         fields: [
           eth('@.value', 'ETH to convert'),
           tokenAddr('swap_.storageToken', 'Token received'),
-          tokAmt('swap_.amountOutMin', 'Minimum received', 'swap_.storageToken'),
+          tokAmt('swap_.amountOutMin', 'Swap min (not WETH)', 'swap_.storageToken'),
           date('swap_.deadline', 'Deadline'),
           legacyId
         ],
@@ -237,11 +309,11 @@ const SPECS = [
         intent: 'Convert back to ETH',
         fields: [
           legacyId,
-          raw('amountIn_', 'Amount (base units)'),
+          raw('amountIn_', 'Token (base units)'),
           eth('amountOutMin_', 'Minimum ETH received'),
           date('deadline_', 'Deadline')
         ],
-        tests: [{ description: 'Convert 0.5 WETH back to ETH for legacy 12', args: [12n, parseEther('0.5'), parseEther('0.495'), 1800000000n] }]
+        tests: [{ description: 'Convert 0.5 wstETH back to ETH for legacy 12', args: [12n, parseEther('0.5'), parseEther('0.59'), 1800000000n] }]
       },
       withdraw: {
         intent: 'Withdraw ETH from legacy',
@@ -264,7 +336,7 @@ const SPECS = [
         fields: [
           legacyId,
           tokenAddr('assets_.[]', 'Token claimed'),
-          eth('amountOutMin_', 'Minimum ETH'),
+          eth('amountOutMin_', 'Swap min (not WETH)'),
           date('deadline_', 'Deadline')
         ],
         tests: [{ description: 'Claim legacy 12 and convert its WETH to ETH', args: [12n, [WETH], parseEther('0.99'), 1800000000n] }]
@@ -278,7 +350,7 @@ const SPECS = [
     formats: {
       createTimelock: timelockCreate('timelockRegular', 'Create timelock', 'duration', 'Locked for'),
       createSoftTimelock: timelockCreate('timelockSoft', 'Create soft timelock', 'bufferTime', 'Unlock delay'),
-      createTimelockedGift: timelockCreate('timelockGift', 'Seal gift', 'duration', 'Opens after'),
+      createTimelockedGift: timelockCreate('timelockGift', 'Seal gift and accept terms', 'duration', 'Opens after', 'Seal gift'),
       unlockSoftTimelock: {
         intent: 'Start soft timelock countdown',
         fields: [raw('id', 'Timelock')],
@@ -291,8 +363,11 @@ const SPECS = [
       },
       'withdraw(uint256,bool)': {
         intent: 'Withdraw from timelock',
-        fields: [raw('id', 'Timelock'), raw('skipSwap', 'Keep as token')],
-        tests: [{ description: 'Withdraw timelock 7 and keep the token', args: [7n, true] }]
+        fields: [raw('id', 'Timelock'), raw('skipSwap', 'Skip ETH conversion')],
+        tests: [
+          { description: 'Withdraw timelock 7 and keep the token', args: [7n, true] },
+          { description: 'Withdraw timelock 7 converted back to ETH', args: [7n, false] }
+        ]
       }
     }
   },
@@ -306,18 +381,21 @@ const SPECS = [
         fields: [
           tokAmt('amount', 'Amount', 'token'),
           dur('config.exitDelay', 'Withdrawals wait'),
-          dur('config.silencePeriod', 'Silence period'),
-          person('config.beneficiaries.[]', 'Beneficiary'),
-          pctBps('config.sharesBps.[]', 'Share'),
+          dur('config.silencePeriod', 'Silence (0=off)'),
+          shieldBeneficiaries,
           pctBps('maxFeeBps', 'Maximum exit fee'),
+          raw('vetoIndex', 'Recovery (max=off)'),
           never('token', 'Token'),
-          never('config.holdMask', 'Held shares'),
-          never('vetoIndex', 'Recovery sheet')
+          never('config.holdMask', 'Held shares')
         ],
         tests: [
           {
             description: 'Open a 10 wstETH holding for two beneficiaries',
             args: [WSTETH, parseEther('10'), { exitDelay: 7 * 86400, silencePeriod: 365 * 86400, beneficiaries: [ALICE, BOB], sharesBps: [7000, 3000], holdMask: 2 }, 0n, 25]
+          },
+          {
+            description: 'Open a 5 wstETH holding with no fallback and no recovery sheet',
+            args: [WSTETH, parseEther('5'), { exitDelay: 30 * 86400, silencePeriod: 0, beneficiaries: [], sharesBps: [], holdMask: 0 }, NO_VETO, 25]
           }
         ]
       },
@@ -333,10 +411,10 @@ const SPECS = [
         tests: [{ description: 'Check in on holding 3', args: [3n] }]
       },
       requestWithdraw: {
-        intent: 'Request withdrawal',
+        intent: 'Request withdrawal (exit fee)',
         fields: [
           raw('id', 'Holding'),
-          raw('amount', 'Amount (max = all)'),
+          raw('amount', 'Base units (max=all)'),
           person('to', 'To')
         ],
         tests: [
@@ -350,12 +428,12 @@ const SPECS = [
         tests: [{ description: 'Cancel the pending request on holding 3', args: [3n] }]
       },
       executePending: {
-        intent: 'Complete pending request',
+        intent: 'Complete request (fee on exit)',
         fields: [raw('id', 'Holding')],
         tests: [{ description: 'Complete the pending request on holding 3', args: [3n] }]
       },
       executeFallback: {
-        intent: 'Release to beneficiaries',
+        intent: 'Release to beneficiaries (fee)',
         fields: [raw('id', 'Holding')],
         tests: [{ description: 'Release holding 3 to its beneficiaries', args: [3n] }]
       },
@@ -364,21 +442,24 @@ const SPECS = [
         fields: [
           raw('id', 'Holding'),
           dur('config.exitDelay', 'Withdrawals wait'),
-          dur('config.silencePeriod', 'Silence period'),
-          person('config.beneficiaries.[]', 'Beneficiary'),
-          pctBps('config.sharesBps.[]', 'Share'),
-          never('config.holdMask', 'Held shares'),
-          never('vetoIndex', 'Recovery sheet')
+          dur('config.silencePeriod', 'Silence (0=off)'),
+          shieldBeneficiaries,
+          raw('vetoIndex', 'Recovery (max=off)'),
+          never('config.holdMask', 'Held shares')
         ],
         tests: [
           {
             description: 'Change holding 3 to one beneficiary',
-            args: [3n, { exitDelay: 14 * 86400, silencePeriod: 730 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 0 }, 1n]
+            args: [3n, { exitDelay: 30 * 86400, silencePeriod: 730 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 0 }, 1n]
+          },
+          {
+            description: 'Split holding 3 in two and remove its recovery sheet',
+            args: [3n, { exitDelay: 7 * 86400, silencePeriod: 365 * 86400, beneficiaries: [ALICE, BOB], sharesBps: [5000, 5000], holdMask: 0 }, NO_VETO]
           }
         ]
       },
       veto: {
-        intent: 'Send to recovery wallet',
+        intent: 'Send all to recovery wallet',
         fields: [raw('id', 'Holding'), person('recoveryTo', 'Recovery wallet'), never('secret', 'Recovery secret')],
         tests: [{ description: 'Stop holding 3 and move it to the recovery wallet', args: [3n, '0x' + '11'.repeat(32), CAROL] }]
       },
@@ -391,23 +472,27 @@ const SPECS = [
   }
 ];
 
-function timelockCreate(arg, intent, durationField, durationLabel) {
+function timelockCreate(arg, intent, durationField, durationLabel, subject = intent) {
   const b = arg;
   const isGift = arg === 'timelockGift';
   const fields = [
-    unlessZero(eth('@.value', 'ETH locked')),
+    unlessZero(eth('@.value', 'ETH sent to lock')),
     unlessNoAddress(tokenAddr(`${b}.timelockETHSwap.storageToken`, 'ETH held as')),
-    unlessZero(tokAmt(`${b}.timelockETHSwap.amountOutMin`, 'Minimum held', `${b}.timelockETHSwap.storageToken`)),
-    tokAmt(`${b}.timelockERC20.[].amount`, 'Token locked', `${b}.timelockERC20.[].tokenAddress`),
-    { path: `${b}.timelockERC721.[].id`, label: 'NFT locked', format: 'nftName', params: { collectionPath: `${b}.timelockERC721.[].tokenAddress` } },
-    { path: `${b}.timelockERC1155.[].id`, label: 'Item locked', format: 'nftName', params: { collectionPath: `${b}.timelockERC1155.[].tokenAddress` } },
-    raw(`${b}.timelockERC1155.[].amount`, 'Item quantity'),
+    unlessZero(tokAmt(`${b}.timelockETHSwap.amountOutMin`, 'Swap min (not WETH)', `${b}.timelockETHSwap.storageToken`)),
+    unlessZero(date(`${b}.timelockETHSwap.deadline`, 'Swap deadline')),
+    tokAmt(`${b}.timelockERC20.[].amount`, 'Token sent to lock', `${b}.timelockERC20.[].tokenAddress`),
+    bundled(
+      collectionAddr(`${b}.timelockERC721.[].tokenAddress`, 'NFT collection'),
+      { path: `${b}.timelockERC721.[].id`, label: 'NFT locked', format: 'nftName', params: { collectionPath: `${b}.timelockERC721.[].tokenAddress` } }
+    ),
+    bundled(
+      collectionAddr(`${b}.timelockERC1155.[].tokenAddress`, 'Item collection'),
+      { path: `${b}.timelockERC1155.[].id`, label: 'Item locked', format: 'nftName', params: { collectionPath: `${b}.timelockERC1155.[].tokenAddress` } },
+      raw(`${b}.timelockERC1155.[].amount`, 'Item quantity')
+    ),
     dur(`${b}.${durationField}`, durationLabel),
     ...(isGift ? [person(`${b}.recipient`, 'Recipient')] : []),
-    never(`${b}.timelockETHSwap.deadline`, 'Conversion deadline'),
     never(`${b}.timelockERC20.[].tokenAddress`, 'Token address'),
-    never(`${b}.timelockERC721.[].tokenAddress`, 'NFT collection'),
-    never(`${b}.timelockERC1155.[].tokenAddress`, 'Item collection'),
     never(`${b}.timelockERC20.[]`, 'Tokens'),
     never(`${b}.timelockERC721.[]`, 'NFTs'),
     never(`${b}.timelockERC1155.[]`, 'Items'),
@@ -426,6 +511,15 @@ function timelockCreate(arg, intent, durationField, durationLabel) {
     timelockETHSwap: { storageToken: WETH, amountOutMin: parseEther('0.3'), deadline: 1800000000n },
     timelockERC20: []
   };
+  const withNfts = {
+    ...base,
+    timelockERC20: [],
+    timelockERC721: [{ tokenAddress: BAYC, id: 8817n }],
+    timelockERC1155: [
+      { tokenAddress: PARALLEL, id: 10144n, amount: 3n },
+      { tokenAddress: PARALLEL, id: 10251n, amount: 1n }
+    ]
+  };
   const extra = (o) =>
     isGift
       ? { ...o, duration: 1825n * DAY, recipient: ALICE, giftName: '' }
@@ -434,8 +528,9 @@ function timelockCreate(arg, intent, durationField, durationLabel) {
     intent,
     fields,
     tests: [
-      { description: `${intent} with 250 USDC`, args: [extra(base)] },
-      { description: `${intent} with 0.3 ETH held as WETH`, args: [extra(withEth)], value: parseEther('0.3') }
+      { description: `${subject} with 250 USDC`, args: [extra(base)] },
+      { description: `${subject} with 0.3 ETH held as WETH`, args: [extra(withEth)], value: parseEther('0.3') },
+      { description: `${subject} with an NFT and two items`, args: [extra(withNfts)] }
     ]
   };
 }
@@ -476,6 +571,10 @@ for (const spec of SPECS) {
       if (!n) throw new Error(`${canonical}: parameter ${i} has no name; add it to paramNames`);
     });
     const key = `${entry.name}(${entry.inputs.map((p, i) => named(p, names[i])).join(', ')})`;
+    if (fmt.intent.length > MAX_INTENT) throw new Error(`${canonical}: intent "${fmt.intent}" exceeds ${MAX_INTENT} characters`);
+    for (const f of fmt.fields.flatMap((f) => f.fields ?? [f])) {
+      if (f.visible !== 'never' && f.label.length > MAX_LABEL) throw new Error(`${canonical}: label "${f.label}" exceeds ${MAX_LABEL} characters`);
+    }
     formats[key] = {
       $id: entry.name,
       intent: fmt.intent,

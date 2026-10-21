@@ -35,9 +35,10 @@ Then, in a checkout of the registry, replace `registry/10102` with
 `out/registry/10102` and run what CI runs:
 
 ```bash
-pip install -r .github/requirements.txt          # erc7730 linter, Python 3.12+
+pip install -r .github/requirements.txt -r .github/requirements-schema.txt   # erc7730 linter, check-jsonschema; Python 3.12+
+npm ci                                           # the coverage script needs viem
 erc7730 format registry/10102                    # registry formatting (LF line endings)
-erc7730 lint registry/10102/calldata-*.json      # only "Missing display format" for admin functions is expected
+erc7730 lint --require-verified registry/10102/calldata-*.json   # only "Missing display format" for admin functions is expected
 node .github/scripts/check-selector-coverage.js registry/10102
 .github/scripts/validate-json-schemas.sh registry/10102/*.json registry/10102/testsv2/*.json
 # Sourcify runner, pinned in .github/actions/run-sourcify-tests/action.yml
@@ -47,15 +48,39 @@ node <clear-signing-test-runner>/dist/cli.js registry/10102/testsv2/calldata-<Na
 A new or changed case has no expectation yet: review the runner's rendering,
 copy `results/*.json` into `tooling/results/`, run `node accept.mjs` to record
 it in `tooling/expected/`, rebuild, and copy the formatted folder back here.
+`build.mjs` fails on a label over 20 or an intent over 30 characters.
+
+On Windows: `erc7730 format` writes CRLF, so convert to LF when copying back;
+the schema script needs Git Bash with `jq`, and a `python3` that prints `/`
+paths (Windows Python prints `\`, which the script reports as a bad
+`$schema`).
 
 ## Notes on the rendering
 
 - Durations use the spec's `duration` format (HH:MM:ss, so 180 days shows
   as `4320:00:00`); wallets may render it more readably.
-- Empty backups, zero delays and unused ETH fields are hidden with
-  `visible: { ifNotIn: [...] }` on creates. On the backup-only edits a zero
-  address stays visible, because there it means "remove this backup".
+- Lists whose entries belong together (beneficiary and share, permitted token,
+  amount and expiry, NFT collection, id and quantity) are `iteration:
+  "bundled"` groups, so each entry is shown as one block.
+- A backup's `percent` is a switch in the legacy: 0 removes the backup even
+  when an address is given, any other value gives it 100% of its layer. So
+  "Backup share" is always shown, as an enum of the two values the app sends
+  ("None", "100%"); any other value renders raw. Empty backup addresses, zero
+  delays and unused ETH fields stay hidden with `visible: { ifNotIn: [...] }`
+  on creates; on `setLegacyConfig` the first backup address stays visible.
+  The single-backup setters reject a zero address.
+- Beneficiaries and recipients have no address `types`: they may be
+  contracts (a Safe), and `wallet` would mean the signer's own account.
+- WETH is wrapped 1:1 and ignores the swap minimum (and, on the legacy, the
+  deadline), hence "Swap min (not WETH)".
+- Timelock ERC-20 amounts are what leaves the wallet; the lock records what
+  arrives, which is less for a fee-on-transfer token ("Token sent to lock").
 - Shield Vault withdrawals and deposits do not carry the token, so the amount
-  is shown in base units; `type(uint256).max` means "everything".
+  is shown in base units; `type(uint256).max` means "everything". The recovery
+  sheet index is shown raw, and its maximum (`NO_VETO`) means no recovery; a
+  zero silence period means no fallback. Withdrawal, completion and fallback
+  intents say a fee is taken without stating the rate, which is fixed per
+  holding when it opens (bounded by "Maximum exit fee"). A completed settings
+  change pays no fee.
 - Labels stay within 20 characters and intents within 30 so Ledger screens
   do not truncate them.

@@ -8,60 +8,82 @@
     "owner": "10102",
     "info": { "url": "https://10102.io" },
     "contractName": "TransferEOALegacyRouter",
-    "enums": { "layer": { "2": "First backup", "3": "Second backup" } }
+    "enums": { "layer": { "2": "First backup", "3": "Second backup" }, "backupShare": { "0": "None", "1000000": "100%" } }
   },
   "display": {
     "formats": {
       "createLegacyV2((address user, uint256 percent)[] distributions_, (uint256 lackOfOutgoingTxRange, uint256 delayLayer2, uint256 delayLayer3) extraConfig_, (address user, uint256 percent) layer2Distribution_, (address user, uint256 percent) layer3Distribution_, (((address token, uint160 amount, uint48 expiration, uint48 nonce)[] details, address spender, uint256 sigDeadline) permitBatch, bytes signature) permit2_, uint256 signatureTimestamp, bytes agreementSignature)": {
         "$id": "createLegacyV2",
-        "intent": "Create legacy",
+        "intent": "Create legacy, approve tokens",
         "fields": [
           {
-            "path": "distributions_.[].user",
-            "label": "Beneficiary",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "iteration": "bundled",
+            "fields": [
+              {
+                "path": "distributions_.[].user",
+                "label": "Beneficiary",
+                "format": "addressName",
+                "params": { "sources": ["local", "ens"] }
+              },
+              { "path": "distributions_.[].percent", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 4 } }
+            ]
           },
-          { "path": "distributions_.[].percent", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 4 } },
           { "path": "distributions_.[]", "label": "Beneficiaries", "visible": "never" },
           { "path": "extraConfig_.lackOfOutgoingTxRange", "label": "Inactivity period", "format": "duration" },
           {
             "path": "layer2Distribution_.user",
             "label": "Backup beneficiary",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] },
+            "params": { "sources": ["local", "ens"] },
             "visible": { "ifNotIn": ["0x0000000000000000000000000000000000000000"] }
+          },
+          {
+            "path": "layer2Distribution_.percent",
+            "label": "Backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
           },
           { "path": "extraConfig_.delayLayer2", "label": "Backup delay", "format": "duration", "visible": { "ifNotIn": [0] } },
           {
             "path": "layer3Distribution_.user",
             "label": "Second backup",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] },
+            "params": { "sources": ["local", "ens"] },
             "visible": { "ifNotIn": ["0x0000000000000000000000000000000000000000"] }
+          },
+          {
+            "path": "layer3Distribution_.percent",
+            "label": "Second backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
           },
           { "path": "extraConfig_.delayLayer3", "label": "Second backup delay", "format": "duration", "visible": { "ifNotIn": [0] } },
           {
-            "path": "permit2_.permitBatch.details.[].token",
-            "label": "Token covered",
-            "format": "addressName",
-            "params": { "types": ["token"], "sources": ["local"] }
-          },
-          {
-            "path": "permit2_.permitBatch.details.[].amount",
-            "label": "Amount covered",
-            "format": "tokenAmount",
-            "params": {
-              "tokenPath": "permit2_.permitBatch.details.[].token",
-              "threshold": "0xffffffffffffffffffffffffffffffffffffffff",
-              "message": "Unlimited"
-            }
-          },
-          {
-            "path": "permit2_.permitBatch.details.[].expiration",
-            "label": "Permission expires",
-            "format": "date",
-            "params": { "encoding": "timestamp" }
+            "iteration": "bundled",
+            "fields": [
+              {
+                "path": "permit2_.permitBatch.details.[].token",
+                "label": "Token covered",
+                "format": "addressName",
+                "params": { "types": ["token"], "sources": ["local"] }
+              },
+              {
+                "path": "permit2_.permitBatch.details.[].amount",
+                "label": "Amount covered",
+                "format": "tokenAmount",
+                "params": {
+                  "tokenPath": "permit2_.permitBatch.details.[].token",
+                  "threshold": "0xffffffffffffffffffffffffffffffffffffffff",
+                  "message": "Unlimited"
+                }
+              },
+              {
+                "path": "permit2_.permitBatch.details.[].expiration",
+                "label": "Permission expires",
+                "format": "date",
+                "params": { "encoding": "timestamp" }
+              }
+            ]
           },
           {
             "path": "permit2_.permitBatch.spender",
@@ -69,8 +91,6 @@
             "format": "addressName",
             "params": { "types": ["contract"], "sources": ["local"] }
           },
-          { "path": "layer2Distribution_.percent", "label": "Backup share", "visible": "never" },
-          { "path": "layer3Distribution_.percent", "label": "Second backup share", "visible": "never" },
           { "path": "permit2_.permitBatch.details.[].nonce", "label": "Permit nonce", "visible": "never" },
           { "path": "permit2_.permitBatch.details.[]", "label": "Permit details", "visible": "never" },
           { "path": "permit2_.permitBatch.sigDeadline", "label": "Permit deadline", "visible": "never" },
@@ -99,12 +119,17 @@
         "fields": [
           { "path": "legacyId_", "label": "Legacy", "format": "raw" },
           {
-            "path": "distributions_.[].user",
-            "label": "Beneficiary",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "iteration": "bundled",
+            "fields": [
+              {
+                "path": "distributions_.[].user",
+                "label": "Beneficiary",
+                "format": "addressName",
+                "params": { "sources": ["local", "ens"] }
+              },
+              { "path": "distributions_.[].percent", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 4 } }
+            ]
           },
-          { "path": "distributions_.[].percent", "label": "Share", "format": "unit", "params": { "base": "%", "decimals": 4 } },
           { "path": "distributions_.[]", "label": "Beneficiaries", "visible": "never" },
           { "path": "nickNames_", "label": "Nicknames (ignored)", "visible": "never" }
         ]
@@ -119,9 +144,14 @@
             "path": "distribution_.user",
             "label": "Backup beneficiary",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "params": { "sources": ["local", "ens"] }
           },
-          { "path": "distribution_.percent", "label": "Share", "visible": "never" },
+          {
+            "path": "distribution_.percent",
+            "label": "Backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
+          },
           { "path": "nickname_", "label": "Nickname (ignored)", "visible": "never" }
         ]
       },
@@ -134,16 +164,26 @@
             "path": "layer2Distribution_.user",
             "label": "Backup beneficiary",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "params": { "sources": ["local", "ens"] }
+          },
+          {
+            "path": "layer2Distribution_.percent",
+            "label": "Backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
           },
           {
             "path": "layer3Distribution_.user",
             "label": "Second backup",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "params": { "sources": ["local", "ens"] }
           },
-          { "path": "layer2Distribution_.percent", "label": "Backup share", "visible": "never" },
-          { "path": "layer3Distribution_.percent", "label": "Second backup share", "visible": "never" },
+          {
+            "path": "layer3Distribution_.percent",
+            "label": "Second backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
+          },
           { "path": "layer2Nickname_", "label": "Nickname 2", "visible": "never" },
           { "path": "layer3Nickname_", "label": "Nickname 3", "visible": "never" }
         ]
@@ -154,16 +194,21 @@
         "fields": [
           { "path": "legacyId_", "label": "Legacy", "format": "raw" },
           {
-            "path": "mainConfig_.distributions.[].user",
-            "label": "Beneficiary",
-            "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
-          },
-          {
-            "path": "mainConfig_.distributions.[].percent",
-            "label": "Share",
-            "format": "unit",
-            "params": { "base": "%", "decimals": 4 }
+            "iteration": "bundled",
+            "fields": [
+              {
+                "path": "mainConfig_.distributions.[].user",
+                "label": "Beneficiary",
+                "format": "addressName",
+                "params": { "sources": ["local", "ens"] }
+              },
+              {
+                "path": "mainConfig_.distributions.[].percent",
+                "label": "Share",
+                "format": "unit",
+                "params": { "base": "%", "decimals": 4 }
+              }
+            ]
           },
           { "path": "mainConfig_.distributions.[]", "label": "Beneficiaries", "visible": "never" },
           { "path": "extraConfig_.lackOfOutgoingTxRange", "label": "Inactivity period", "format": "duration" },
@@ -171,22 +216,32 @@
             "path": "layer2Distribution_.user",
             "label": "Backup beneficiary",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] }
+            "params": { "sources": ["local", "ens"] }
+          },
+          {
+            "path": "layer2Distribution_.percent",
+            "label": "Backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
           },
           { "path": "extraConfig_.delayLayer2", "label": "Backup delay", "format": "duration", "visible": { "ifNotIn": [0] } },
           {
             "path": "layer3Distribution_.user",
             "label": "Second backup",
             "format": "addressName",
-            "params": { "types": ["eoa", "wallet"], "sources": ["local", "ens"] },
+            "params": { "sources": ["local", "ens"] },
             "visible": { "ifNotIn": ["0x0000000000000000000000000000000000000000"] }
+          },
+          {
+            "path": "layer3Distribution_.percent",
+            "label": "Second backup share",
+            "format": "enum",
+            "params": { "$ref": "$.metadata.enums.backupShare" }
           },
           { "path": "extraConfig_.delayLayer3", "label": "Second backup delay", "format": "duration", "visible": { "ifNotIn": [0] } },
           { "path": "mainConfig_.name", "label": "Name", "visible": "never" },
           { "path": "mainConfig_.note", "label": "Note", "visible": "never" },
           { "path": "mainConfig_.nickNames", "label": "Nicknames", "visible": "never" },
-          { "path": "layer2Distribution_.percent", "label": "Backup share", "visible": "never" },
-          { "path": "layer3Distribution_.percent", "label": "Second backup share", "visible": "never" },
           { "path": "layer2Nickname_", "label": "Nickname 2", "visible": "never" },
           { "path": "layer3Nickname_", "label": "Nickname 3", "visible": "never" }
         ]
@@ -220,7 +275,7 @@
           },
           {
             "path": "swap_.amountOutMin",
-            "label": "Minimum received",
+            "label": "Swap min (not WETH)",
             "format": "tokenAmount",
             "params": { "tokenPath": "swap_.storageToken" }
           },
@@ -233,7 +288,7 @@
         "intent": "Convert back to ETH",
         "fields": [
           { "path": "legacyId_", "label": "Legacy", "format": "raw" },
-          { "path": "amountIn_", "label": "Amount (base units)", "format": "raw" },
+          { "path": "amountIn_", "label": "Token (base units)", "format": "raw" },
           { "path": "amountOutMin_", "label": "Minimum ETH received", "format": "amount" },
           { "path": "deadline_", "label": "Deadline", "format": "date", "params": { "encoding": "timestamp" } }
         ]
@@ -274,7 +329,7 @@
             "format": "addressName",
             "params": { "types": ["token"], "sources": ["local"] }
           },
-          { "path": "amountOutMin_", "label": "Minimum ETH", "format": "amount" },
+          { "path": "amountOutMin_", "label": "Swap min (not WETH)", "format": "amount" },
           { "path": "deadline_", "label": "Deadline", "format": "date", "params": { "encoding": "timestamp" } }
         ]
       }

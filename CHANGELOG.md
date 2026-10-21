@@ -21,6 +21,35 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-10-21 — Clear-signing descriptors answer the registry review
+
+[No contract or on-chain change.]
+
+The registry's two advisory AI reviews of
+[PR #3110](https://github.com/ethereum/clear-signing-erc7730-registry/pull/3110)
+were checked note by note against the contract source, and the accepted
+ones are built into `erc7730/` (45 test cases, up from 35; format, lint,
+selector coverage, schemas and the Sourcify runner all pass). What a
+signer now sees that it did not: the Shield Vault exit fee on withdrawal,
+completion and release; the recovery-sheet choice, including its removal;
+backup beneficiaries' shares (shown as None or 100%, which is what the
+legacy stores); NFT and ERC-1155 collections; the ETH conversion
+deadline; each beneficiary next to its share; and "Seal gift and accept
+terms", since gift creation records consent. Beneficiary fields accept
+contracts such as a Safe. The registry asks authors to wait for a human
+reviewer's verdict on the AI notes, so the update is pushed to the PR
+once that verdict is in.
+
+Found while verifying: the legacy clone's owner-side `unswap` reverts for
+a WETH storage token (Uniswap V2 `IDENTICAL_ADDRESSES` on the path
+`[WETH, WETH]`, confirmed on mainnet). No funds are at risk and the app
+never calls it; the fix rides the next implementation train
+(`computing/docs/DEFERRED.md`, `eoa-unswap-weth`).
+
+Also: `.gitattributes` keeps the terms snapshots and the registry folder
+LF on every checkout, and `set-active-terms.ts` refuses a CRLF snapshot,
+which would hash differently from the published terms.
+
 ## 2026-10-20 — Terms v2026-11 published
 
 [On-chain configuration only; no contract or bytecode change.]
