@@ -92,9 +92,11 @@ installed but not wired.
 - **Amounts and durations are `uint256`/`uint128` with explicit casts**;
   the frontend passes `bigint`. Percentages are basis points scaled by
   10,000.
-- **Never commit `.env`, keys, or signed payloads.** Deployer and
-  maintainer keys live in the founder's password manager and on Railway
-  only.
+- **Never commit `.env`, keys, or signed payloads.** The deployer
+  (maintainer) key lives in the founder's password manager only, never in
+  Railway. Railway holds the worker's hot keys (attestor and fee relayer,
+  autopilot, Turnkey API), which Railway's 2026-10-21 security incident
+  showed can leak: keep anything with on-chain power out of it.
 
 ## Git and releases
 
