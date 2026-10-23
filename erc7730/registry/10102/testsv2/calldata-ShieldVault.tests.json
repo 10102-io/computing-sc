@@ -75,7 +75,7 @@
         "fields": [
           { "label": "Holding", "value": "3" },
           {
-            "label": "Base units (max=all)",
+            "label": "Before fee (max=all)",
             "value": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
           },
           { "label": "To", "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB" }
@@ -90,7 +90,7 @@
         "intent": "Request withdrawal (exit fee)",
         "fields": [
           { "label": "Holding", "value": "3" },
-          { "label": "Base units (max=all)", "value": "2000000000000000000" },
+          { "label": "Before fee (max=all)", "value": "2000000000000000000" },
           { "label": "To", "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB" }
         ],
         "owner": "10102"

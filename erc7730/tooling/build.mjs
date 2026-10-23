@@ -414,7 +414,7 @@ const SPECS = [
         intent: 'Request withdrawal (exit fee)',
         fields: [
           raw('id', 'Holding'),
-          raw('amount', 'Base units (max=all)'),
+          raw('amount', 'Before fee (max=all)'),
           person('to', 'To')
         ],
         tests: [
