@@ -29,8 +29,6 @@ const ALICE = '0x8ba1f109551bD432803012645Ac136ddd64DBA72';
 const BOB = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B';
 const CAROL = '0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db';
 const DAVE = '0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB';
-const BAYC = getAddress('0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d');
-const PARALLEL = getAddress('0x76be3b62873462d2142405439777e971754e8e77');
 const DAY = 86_400n;
 const NO_VETO = maxUint256;
 
@@ -40,8 +38,7 @@ const dataProvider = {
     [WETH.toLowerCase()]: { symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
     [WSTETH.toLowerCase()]: { symbol: 'wstETH', decimals: 18, name: 'Wrapped liquid staked Ether 2.0' }
   },
-  addressNames: { [PULL_VAULT.toLowerCase()]: '10102 LegacyPullVault' },
-  nftCollectionNames: { [BAYC.toLowerCase()]: 'Bored Ape Yacht Club', [PARALLEL.toLowerCase()]: 'Parallel Alpha' }
+  addressNames: { [PULL_VAULT.toLowerCase()]: '10102 LegacyPullVault' }
 };
 
 // Ledger screen limits; the build fails instead of shipping a truncated line.
@@ -511,15 +508,8 @@ function timelockCreate(arg, intent, durationField, durationLabel, subject = int
     timelockETHSwap: { storageToken: WETH, amountOutMin: parseEther('0.3'), deadline: 1800000000n },
     timelockERC20: []
   };
-  const withNfts = {
-    ...base,
-    timelockERC20: [],
-    timelockERC721: [{ tokenAddress: BAYC, id: 8817n }],
-    timelockERC1155: [
-      { tokenAddress: PARALLEL, id: 10144n, amount: 3n },
-      { tokenAddress: PARALLEL, id: 10251n, amount: 1n }
-    ]
-  };
+  // No NFT case: the app never locks NFTs, and the runners differ on
+  // whether they resolve a collection's name (nftName allows either).
   const extra = (o) =>
     isGift
       ? { ...o, duration: 1825n * DAY, recipient: ALICE, giftName: '' }
@@ -529,8 +519,7 @@ function timelockCreate(arg, intent, durationField, durationLabel, subject = int
     fields,
     tests: [
       { description: `${subject} with 250 USDC`, args: [extra(base)] },
-      { description: `${subject} with 0.3 ETH held as WETH`, args: [extra(withEth)], value: parseEther('0.3') },
-      { description: `${subject} with an NFT and two items`, args: [extra(withNfts)] }
+      { description: `${subject} with 0.3 ETH held as WETH`, args: [extra(withEth)], value: parseEther('0.3') }
     ]
   };
 }

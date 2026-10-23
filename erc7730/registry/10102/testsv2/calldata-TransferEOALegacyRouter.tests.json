@@ -7,11 +7,7 @@
       "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": { "symbol": "WETH", "decimals": 18, "name": "Wrapped Ether" },
       "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0": { "symbol": "wstETH", "decimals": 18, "name": "Wrapped liquid staked Ether 2.0" }
     },
-    "addressNames": { "0x95f0981026c7e804fd6ba8be738ca7c380c7f978": "10102 LegacyPullVault" },
-    "nftCollectionNames": {
-      "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d": "Bored Ape Yacht Club",
-      "0x76be3b62873462d2142405439777e971754e8e77": "Parallel Alpha"
-    }
+    "addressNames": { "0x95f0981026c7e804fd6ba8be738ca7c380c7f978": "10102 LegacyPullVault" }
   },
   "tests": [
     {
