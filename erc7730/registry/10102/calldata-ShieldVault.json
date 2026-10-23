@@ -48,7 +48,7 @@
         "intent": "Request withdrawal (exit fee)",
         "fields": [
           { "path": "id", "label": "Holding", "format": "raw" },
-          { "path": "amount", "label": "Base units (max=all)", "format": "raw" },
+          { "path": "amount", "label": "Before fee (max=all)", "format": "raw" },
           { "path": "to", "label": "To", "format": "addressName", "params": { "sources": ["local", "ens"] } }
         ]
       },

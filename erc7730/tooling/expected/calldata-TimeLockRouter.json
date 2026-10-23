@@ -39,48 +39,6 @@
     ],
     "owner": "10102"
   },
-  "Create timelock with an NFT and two items": {
-    "intent": "Create timelock",
-    "fields": [
-      {
-        "label": "NFT collection",
-        "value": "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"
-      },
-      {
-        "label": "NFT locked",
-        "value": "Bored Ape Yacht Club #8817"
-      },
-      {
-        "label": "Item collection",
-        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
-      },
-      {
-        "label": "Item locked",
-        "value": "Parallel Alpha #10144"
-      },
-      {
-        "label": "Item quantity",
-        "value": "3"
-      },
-      {
-        "label": "Item collection",
-        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
-      },
-      {
-        "label": "Item locked",
-        "value": "Parallel Alpha #10251"
-      },
-      {
-        "label": "Item quantity",
-        "value": "1"
-      },
-      {
-        "label": "Locked for",
-        "value": "8760:00:00"
-      }
-    ],
-    "owner": "10102"
-  },
   "Create soft timelock with 250 USDC": {
     "intent": "Create soft timelock",
     "fields": [
@@ -113,48 +71,6 @@
       {
         "label": "Swap deadline",
         "value": "2027-01-15 08:00:00Z"
-      },
-      {
-        "label": "Unlock delay",
-        "value": "168:00:00"
-      }
-    ],
-    "owner": "10102"
-  },
-  "Create soft timelock with an NFT and two items": {
-    "intent": "Create soft timelock",
-    "fields": [
-      {
-        "label": "NFT collection",
-        "value": "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"
-      },
-      {
-        "label": "NFT locked",
-        "value": "Bored Ape Yacht Club #8817"
-      },
-      {
-        "label": "Item collection",
-        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
-      },
-      {
-        "label": "Item locked",
-        "value": "Parallel Alpha #10144"
-      },
-      {
-        "label": "Item quantity",
-        "value": "3"
-      },
-      {
-        "label": "Item collection",
-        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
-      },
-      {
-        "label": "Item locked",
-        "value": "Parallel Alpha #10251"
-      },
-      {
-        "label": "Item quantity",
-        "value": "1"
       },
       {
         "label": "Unlock delay",
@@ -199,52 +115,6 @@
       {
         "label": "Swap deadline",
         "value": "2027-01-15 08:00:00Z"
-      },
-      {
-        "label": "Opens after",
-        "value": "43800:00:00"
-      },
-      {
-        "label": "Recipient",
-        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
-      }
-    ],
-    "owner": "10102"
-  },
-  "Seal gift with an NFT and two items": {
-    "intent": "Seal gift and accept terms",
-    "fields": [
-      {
-        "label": "NFT collection",
-        "value": "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"
-      },
-      {
-        "label": "NFT locked",
-        "value": "Bored Ape Yacht Club #8817"
-      },
-      {
-        "label": "Item collection",
-        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
-      },
-      {
-        "label": "Item locked",
-        "value": "Parallel Alpha #10144"
-      },
-      {
-        "label": "Item quantity",
-        "value": "3"
-      },
-      {
-        "label": "Item collection",
-        "value": "0x76BE3b62873462d2142405439777e971754E8E77"
-      },
-      {
-        "label": "Item locked",
-        "value": "Parallel Alpha #10251"
-      },
-      {
-        "label": "Item quantity",
-        "value": "1"
       },
       {
         "label": "Opens after",

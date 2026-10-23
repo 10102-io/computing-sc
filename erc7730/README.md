@@ -76,7 +76,9 @@ paths (Windows Python prints `\`, which the script reports as a bad
 - Timelock ERC-20 amounts are what leaves the wallet; the lock records what
   arrives, which is less for a fee-on-transfer token ("Token sent to lock").
 - Shield Vault withdrawals and deposits do not carry the token, so the amount
-  is shown in base units; `type(uint256).max` means "everything". The recovery
+  is shown in base units; `type(uint256).max` means "everything". A
+  withdrawal's amount is labelled "Before fee": the recipient gets it minus
+  the holding's exit fee. The recovery
   sheet index is shown raw, and its maximum (`NO_VETO`) means no recovery; a
   zero silence period means no fallback. Withdrawal, completion and fallback
   intents say a fee is taken without stating the rate, which is fixed per
