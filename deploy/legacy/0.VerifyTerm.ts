@@ -9,7 +9,6 @@ import {
 } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployments, getNamedAccounts, network } = hre;
@@ -21,7 +20,6 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     process.env.RPC ||
     process.env.SEPOLIA_RPC_URL;
   if (!rpcUrl) throw new Error("No RPC URL for gas price (set RPC or network url)");
-  const web3 = new Web3(rpcUrl);
 
   if (network.live) {
     await sleep(8000);
@@ -32,7 +30,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     args: [],
     log: true,
     deterministicDeployment: false,
-    gasPrice: await getBumpedGasPrice(web3),
+    gasPrice: await getBumpedGasPrice(rpcUrl),
     proxy: {
       proxyContract: "OptimizedTransparentProxy",
       owner: deployer,

@@ -8,7 +8,6 @@ import {
 } from "../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
-import Web3 from "web3";
 
 const DECIMALS = 6;
 const MINT_AMOUNT = 100_000 * 10 ** DECIMALS;
@@ -26,8 +25,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     skipIfAlreadyDeployed: true,
   };
   if (!isLocal && process.env.RPC) {
-    const web3 = new Web3(process.env.RPC);
-    baseOptions.gasPrice = await getBumpedGasPrice(web3);
+    baseOptions.gasPrice = await getBumpedGasPrice(process.env.RPC);
   }
 
   const usdc = await deployContract("ERC20Token_USDC", {

@@ -387,14 +387,14 @@
     "owner": "10102"
   },
   "Turn on automatic renewal for legacy 12": {
-    "intent": "Set automatic renewal",
+    "intent": "Set attestor timer renewal",
     "fields": [
       {
         "label": "Legacy",
         "value": "12"
       },
       {
-        "label": "Automatic renewal on",
+        "label": "Renewal allowed",
         "value": "true"
       }
     ],

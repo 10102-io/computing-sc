@@ -77,6 +77,9 @@ const beneficiaries = (base) => [
 // is always shown, and a value other than the two the app sends renders raw.
 const backupShare = (path, label) => ({ path, label, format: 'enum', params: { $ref: '$.metadata.enums.backupShare' } });
 const shieldBeneficiaries = bundled(person('config.beneficiaries.[]', 'Beneficiary'), pctBps('config.sharesBps.[]', 'Share'));
+// Bit i keeps beneficiary i's share in the vault until they claim it, so the
+// signer sees when a share is not paid straight out.
+const heldShares = unlessZero(raw('config.holdMask', 'Held shares (mask)'));
 
 const SPECS = [
   {
@@ -276,8 +279,8 @@ const SPECS = [
         ]
       },
       setAutoRenew: {
-        intent: 'Set automatic renewal',
-        fields: [legacyId, raw('enabled_', 'Automatic renewal on')],
+        intent: 'Set attestor timer renewal',
+        fields: [legacyId, raw('enabled_', 'Renewal allowed')],
         tests: [{ description: 'Turn on automatic renewal for legacy 12', args: [12n, true] }]
       },
       setSponsoredClaimsEnabled: {
@@ -382,8 +385,8 @@ const SPECS = [
           shieldBeneficiaries,
           pctBps('maxFeeBps', 'Maximum exit fee'),
           raw('vetoIndex', 'Recovery (max=off)'),
-          never('token', 'Token'),
-          never('config.holdMask', 'Held shares')
+          heldShares,
+          never('token', 'Token')
         ],
         tests: [
           {
@@ -442,12 +445,12 @@ const SPECS = [
           dur('config.silencePeriod', 'Silence (0=off)'),
           shieldBeneficiaries,
           raw('vetoIndex', 'Recovery (max=off)'),
-          never('config.holdMask', 'Held shares')
+          heldShares
         ],
         tests: [
           {
-            description: 'Change holding 3 to one beneficiary',
-            args: [3n, { exitDelay: 30 * 86400, silencePeriod: 730 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 0 }, 1n]
+            description: 'Change holding 3 to one beneficiary who claims with a card',
+            args: [3n, { exitDelay: 30 * 86400, silencePeriod: 730 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 1 }, 1n]
           },
           {
             description: 'Split holding 3 in two and remove its recovery sheet',

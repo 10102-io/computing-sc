@@ -2,7 +2,6 @@ import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { saveContract, getRpcUrl, verifyProxyOnEtherscan, shouldVerify } from "../../scripts/utils";
 import * as dotenv from "dotenv";
-import Web3 from "web3";
 dotenv.config();
 
 const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {

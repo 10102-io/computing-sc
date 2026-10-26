@@ -105,14 +105,10 @@ export function shouldVerify(networkName: string): boolean {
 /** Default gas price bump (percent) for non-local networks to avoid REPLACEMENT_UNDERPRICED. */
 const GAS_PRICE_BUMP_PERCENT = 25;
 
-/**
- * Returns current gas price with bump for non-local deploys (avoids replacement underpriced errors).
- * Uses Web3 (not ethers) for consistency with deploy scripts.
- */
-export async function getBumpedGasPrice(web3: { eth: { getGasPrice: () => Promise<string | bigint> } }): Promise<string> {
-  const current = await web3.eth.getGasPrice();
-  const bumped = (Number(current) * (100 + GAS_PRICE_BUMP_PERCENT)) / 100;
-  return String(Math.ceil(bumped));
+/** The RPC's current gas price with the bump, for non-local deploys (avoids replacement underpriced errors). */
+export async function getBumpedGasPrice(rpcUrl: string): Promise<string> {
+  const current = await new providers.JsonRpcProvider(rpcUrl).getGasPrice();
+  return current.mul(100 + GAS_PRICE_BUMP_PERCENT).add(99).div(100).toString();
 }
 
 /** RPC URL for deployments: env RPC or network config url (e.g. when using --network sepolia). */

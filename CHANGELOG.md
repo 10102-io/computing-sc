@@ -21,6 +21,29 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-10-26 — Clear-signing descriptors merged into the registry
+
+[No contract or on-chain change.]
+
+[PR #3110](https://github.com/ethereum/clear-signing-erc7730-registry/pull/3110)
+was approved after a human review of every descriptor against the verified
+source and merged: wallets that read the ERC-7730 registry (Ledger first)
+now show 10102's legacy, timelock and Shield Vault calls in plain words.
+The reviewer left eight optional suggestions. Two are built in here for a
+follow-up PR: the Shield Vault's held-shares mask is shown whenever a share
+waits in the vault for its beneficiary to claim (open and settings
+change), and the auto-renew switch says the attestor is the one renewing
+the timer. Two notes are about the contract, not the descriptors, and ride
+the next train (`computing/docs/DEFERRED.md`, `router-create-hardening`):
+ETH sent with an empty timelock create stays in the router, and a non-WETH
+swap accepts a zero minimum.
+
+Tooling: `web3` is gone (134 packages, all 19 high audit alerts). Its only
+real use, the deploy scripts' bumped gas price, reads the RPC through ethers
+(`getBumpedGasPrice(rpcUrl)`); two specs no longer read
+`DEPLOYER_PRIVATE_KEY` into unused variables. `npm audit`: no high or
+moderate; the 29 lows are dev-only (`contracts-toolchain`).
+
 ## 2026-10-21 — Clear-signing descriptors answer the registry review
 
 [No contract or on-chain change.]

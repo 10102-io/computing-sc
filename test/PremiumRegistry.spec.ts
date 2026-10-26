@@ -1,4 +1,3 @@
-import Web3 from "web3";
 import { ethers, network } from "hardhat";
 import { BigNumber, ethers as ethersI } from "ethers";
 import { assert } from "console";
@@ -12,11 +11,7 @@ import { seconds } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpe
 import { deployProxy } from "./utils/proxy";
 import { genMessage as genTransferEOAMessage } from "../scripts/utils/genMsg";
 import { wireRouters } from "./fixtures/wiring";
-const web3 = new Web3(process.env.RPC || "http://localhost:8545");
-const user_pk = process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
-const user = web3.eth.accounts.privateKeyToAccount(user_pk).address;
-const wallet = web3.eth.accounts.privateKeyToAccount(user_pk);
 
 async function genMessage(legacyAddress: string, timestamp: number): Promise<string> {
   const message = `I agree to legacy at address ${legacyAddress.toLowerCase()} at timestamp ${timestamp}`;

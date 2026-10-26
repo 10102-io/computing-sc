@@ -37,6 +37,10 @@
       {
         "label": "Recovery (max=off)",
         "value": "0"
+      },
+      {
+        "label": "Held shares (mask)",
+        "value": "2"
       }
     ],
     "owner": "10102"
@@ -158,7 +162,7 @@
     ],
     "owner": "10102"
   },
-  "Change holding 3 to one beneficiary": {
+  "Change holding 3 to one beneficiary who claims with a card": {
     "intent": "Request settings change",
     "fields": [
       {
@@ -183,6 +187,10 @@
       },
       {
         "label": "Recovery (max=off)",
+        "value": "1"
+      },
+      {
+        "label": "Held shares (mask)",
         "value": "1"
       }
     ],
