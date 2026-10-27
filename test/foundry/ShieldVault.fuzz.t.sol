@@ -219,6 +219,8 @@ contract ShieldVaultFuzz is ShieldVaultBase {
     vm.stopPrank();
     bool blockedRecovery = noise & 16 != 0;
     if (blockedRecovery) token.setBlocked(recoveryTo, true);
+    // the fuzzer may pick the owner itself as the recovery wallet: measure a delta
+    uint256 recoveryBefore = token.balanceOf(recoveryTo);
 
     vm.expectRevert(ShieldVault.WrongSecret.selector);
     vault.veto(id, wrongSecret, recoveryTo);
@@ -234,7 +236,7 @@ contract ShieldVaultFuzz is ShieldVaultBase {
     assertEq(uint8(p.pending.kind), uint8(ShieldVault.PendingKind.None), "pending survived the veto");
     assertEq(vault.feesAccrued(address(token)), 0, "veto charged a fee");
     if (blockedRecovery) assertEq(vault.owed(id, recoveryTo), 5e18, "blocked recovery wallet not owed the full balance");
-    else assertEq(token.balanceOf(recoveryTo), 5e18, "recovery wallet not paid the full balance");
+    else assertEq(token.balanceOf(recoveryTo) - recoveryBefore, 5e18, "recovery wallet not paid the full balance");
   }
 
   /// @dev I6: a copied digest pinned by a stranger neither burns the owner's
@@ -259,8 +261,9 @@ contract ShieldVaultFuzz is ShieldVaultBase {
 
     vm.expectRevert(ShieldVault.WrongSecret.selector);
     vault.veto(decoy, secret, recoveryTo);
+    uint256 recoveryBefore = token.balanceOf(recoveryTo);
     vault.veto(real, secret, recoveryTo);
-    assertEq(token.balanceOf(recoveryTo), 1e18);
+    assertEq(token.balanceOf(recoveryTo) - recoveryBefore, 1e18);
   }
 
   // ───────────── I18: signatures ─────────────
