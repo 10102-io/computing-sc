@@ -192,6 +192,9 @@ contract ShieldVaultInvariants is Test {
   /// summed and reported (docs/security/tooling-report.md).
   function afterInvariant() public {
     string memory path = vm.envOr("FUZZ_SUMMARY", string(""));
-    if (bytes(path).length != 0) h.writeSummary(path);
+    if (bytes(path).length == 0) return;
+    vm.createDir("out", true);
+    if (!vm.exists(path)) vm.writeFile(path, "");
+    h.writeSummary(path);
   }
 }

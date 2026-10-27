@@ -421,6 +421,47 @@ contract ShieldVaultFuzz is ShieldVaultBase {
     assertEq(vault.positionOf(id).balance, 2e18);
   }
 
+  // ───────────── Q9: gas griefing of trySafeTransfer ─────────────
+
+  /// @dev A caller choosing the gas limit cannot make a payable payee's
+  /// transfer run out of gas while the rest of the call completes and
+  /// records the amount as owed: the inner call receives 63/64 of what is
+  /// left, so whenever it fails for lack of gas the 1/64 remaining cannot
+  /// pay for the owed bookkeeping either, and the whole call reverts.
+  function testFuzz_gasLimitCannotForceOwed(uint256 gas, uint8 which) public {
+    gas = bound(gas, 21_000, 400_000);
+    address[] memory bens = new address[](2);
+    bens[0] = stranger;
+    bens[1] = makeAddr("second");
+    uint16[] memory shares = new uint16[](2);
+    shares[0] = 7000;
+    shares[1] = 3000;
+    bytes32 secret = keccak256("q9");
+    uint256 index = _commit(owner, secret, recovery);
+    vm.prank(owner);
+    uint256 id = vault.open(IERC20(address(token)), 4e18, _cfg(uint32(7 days), uint32(180 days), bens, shares, 0), index, MAX_FEE_BPS);
+    which = uint8(which % 3);
+    if (which == 0) {
+      vm.prank(owner);
+      vault.requestWithdraw(id, ALL, stranger);
+      vm.warp(block.timestamp + 7 days);
+    } else if (which == 2) {
+      vm.warp(block.timestamp + 180 days);
+    }
+    bool ok;
+    if (which == 0) try vault.executePending{gas: gas}(id) { ok = true; } catch {}
+    else if (which == 1) try vault.veto{gas: gas}(id, secret, recovery) { ok = true; } catch {}
+    else try vault.executeFallback{gas: gas}(id) { ok = true; } catch {}
+    if (ok) {
+      assertEq(vault.owed(id, stranger), 0, "a gas limit turned a payable payout into an owed entry");
+      assertEq(vault.owed(id, recovery), 0, "a gas limit turned the veto payout into an owed entry");
+      assertEq(vault.owed(id, bens[1]), 0, "a gas limit turned a share into an owed entry");
+      assertTrue(vault.positionOf(id).closed);
+    } else {
+      assertEq(vault.positionOf(id).balance, 4e18, "a failed call left a partial effect");
+    }
+  }
+
   // ───────────── I1 with a fee-on-transfer token: credited net, debited gross ─────────────
 
   function testFuzz_feeOnTransferCreditsWhatArrived(uint256 tokenFee, uint256 amount) public {

@@ -1,0 +1,172 @@
+# ShieldVault security evidence (docs/security/tooling-report.md).
+#
+# Four independent jobs so one slow or flaky tool never hides another's
+# result: the Hardhat suite, coverage of the two review targets, static
+# analysis (Slither and Aderyn) and the Foundry fuzz and invariant suite.
+# Everything here runs on the public toolchain only; no secrets, no RPC.
+#
+# Tests run with HARDHAT_NO_FORK=1 so a stray fork-block.json can never
+# turn CI into a mainnet fork.
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HARDHAT_NO_FORK: "1"
+  NODE_OPTIONS: ""
+
+jobs:
+  tests:
+    name: hardhat tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx hardhat compile
+      - run: npx hardhat test
+
+  coverage:
+    name: coverage (ShieldVault, registry)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run coverage
+      # The two review targets must stay fully covered. The two branch arms
+      # that are unreachable by construction are documented in
+      # docs/security/tooling-report.md; the threshold below allows exactly those.
+      - name: enforce thresholds
+        run: |
+          node -e '
+            const s = require("./coverage/coverage-summary.json");
+            const want = {
+              "contracts/shield/ShieldVault.sol": { lines: 100, statements: 100, functions: 100, branches: 98 },
+              "contracts/common/QuantumRecoveryRegistry.sol": { lines: 100, statements: 100, functions: 100, branches: 100 },
+            };
+            let bad = 0;
+            for (const [file, min] of Object.entries(want)) {
+              const got = s[file];
+              if (!got) { console.error("missing coverage for", file); bad++; continue; }
+              for (const [metric, pct] of Object.entries(min)) {
+                const have = got[metric].pct;
+                const ok = have >= pct;
+                console.log(`${ok ? "ok  " : "LOW "} ${file} ${metric} ${have}% (min ${pct}%)`);
+                if (!ok) bad++;
+              }
+            }
+            process.exit(bad ? 1 : 0);
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: |
+            coverage/
+            coverage.json
+          retention-days: 30
+
+  static-analysis:
+    name: slither and aderyn
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install slither-analyzer==0.11.6 solc-select==1.2.0
+      - run: solc-select install 0.8.35 && solc-select use 0.8.35
+      # Slither runs on the two review targets straight through solc (no
+      # Hardhat compile), with the deployed compiler settings. Every finding
+      # is triaged in docs/security/static-analysis.md; the three false
+      # positives rated Medium or High there are recorded in slither.db.json
+      # so the contract stays untouched, and anything new at Medium or above
+      # fails the job. Low and informational results are reported, not fatal.
+      - name: slither
+        run: |
+          set -o pipefail
+          for f in contracts/shield/ShieldVault.sol contracts/common/QuantumRecoveryRegistry.sol; do
+            slither "$f" \
+              --solc-remaps "@openzeppelin=node_modules/@openzeppelin" \
+              --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" \
+              --filter-paths "node_modules" \
+              --triage-database slither.db.json \
+              --fail-medium \
+              --json "slither-$(basename "$f" .sol).json" 2>&1 | tee -a slither.txt || exit 1
+          done
+      - name: aderyn
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Cyfrin/aderyn/releases/download/aderyn-v0.6.8/aderyn-installer.sh | sh
+          export PATH="$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
+          aderyn --version
+          aderyn . -s contracts \
+            -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol \
+            -o aderyn-report.md
+          grep -q "| High | 0 |" aderyn-report.md || { echo "Aderyn reports a High"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: static-analysis
+          path: |
+            slither.txt
+            slither-*.json
+            aderyn-report.md
+          retention-days: 30
+
+  fuzz:
+    name: foundry fuzz and invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.6
+      - run: forge --version
+      - name: fuzz and invariants (default profile)
+        run: |
+          mkdir -p out
+          FUZZ_SUMMARY=out/fuzz-summary.txt forge test --match-path "test/foundry/**" -vv
+      - name: reach per operation
+        if: always()
+        run: |
+          [ -f out/fuzz-summary.txt ] && awk '{c[$1]+=$2; a[$1]+=$3} END {for (k in c) printf "%-26s calls=%7d accepted=%6d\n", k, c[k], a[k]}' out/fuzz-summary.txt | sort || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-summary
+          path: out/fuzz-summary.txt
+          retention-days: 30
