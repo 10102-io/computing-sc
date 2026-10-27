@@ -14,8 +14,8 @@ whole picture is in `tooling-report.md`.
 
 | Tool | Version | Invocation |
 |---|---|---|
-| Slither | 0.11.6 (crytic-compile 0.4.2) | `slither <file> --solc-remaps @openzeppelin=node_modules/@openzeppelin --solc-args '--via-ir --optimize --optimize-runs 200 --evm-version cancun' --filter-paths node_modules --triage-database slither.db.json --fail-medium` |
-| solc for Slither | 0.8.35 via `solc-select` | Same settings as `hardhat.config.ts`, so the analysed code is the deployed shape |
+| Slither | 0.11.6 (crytic-compile 0.4.2) | `slither <file> --compile-force-framework solc --solc-remaps @openzeppelin=node_modules/@openzeppelin --solc-args '--via-ir --optimize --optimize-runs 200 --evm-version cancun' --filter-paths node_modules --triage-database slither.db.json --fail-medium` |
+| solc for Slither | 0.8.35 via `solc-select` | Same settings as `hardhat.config.ts`, so the analysed code is the deployed shape. `--compile-force-framework solc` is needed because the presence of `foundry.toml` would otherwise make crytic-compile pick Foundry and require `forge` |
 | Aderyn | 0.6.8 | `aderyn . -s contracts -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol` |
 
 Both tools run in CI (`.github/workflows/security.yml`, job

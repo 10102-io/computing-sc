@@ -113,6 +113,7 @@ jobs:
           set -o pipefail
           for f in contracts/shield/ShieldVault.sol contracts/common/QuantumRecoveryRegistry.sol; do
             slither "$f" \
+              --compile-force-framework solc \
               --solc-remaps "@openzeppelin=node_modules/@openzeppelin" \
               --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" \
               --filter-paths "node_modules" \
