@@ -21,6 +21,30 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-10-27 — ShieldVault pre-audit tooling evidence
+
+[No contract or on-chain change.]
+
+The ShieldVault v2 source is untouched (it must stay byte-identical to the
+mainnet deployment); what changed is the evidence around it, written up in
+`docs/security/tooling-report.md` and `docs/security/static-analysis.md`.
+`solidity-coverage` is wired (`npm run coverage`): ShieldVault was at
+99.1% lines and 84.9% branches under the 40 existing specs; ten new branch
+specs (`test/ShieldVault.branches.spec.ts`, including a transfer-hook
+token that tries to re-enter all eight guarded functions) bring it to 100%
+lines, statements and functions and 170 of 172 branches, the last two being
+unreachable by construction. Slither and Aderyn run clean of anything above
+informational once three well-known detector false positives are triaged
+(`slither.db.json`). A Foundry suite under `test/foundry/` adds 13
+stateless properties and a 25-operation invariant handler checking 9
+invariant functions after every call; together they give every one of the
+19 invariants in the audit package an automated check, with 0
+counterexamples against the contract. A GitHub Actions workflow
+(`.github/workflows/security.yml`, the repository's first CI) runs tests,
+coverage with thresholds, Slither, Aderyn and the fuzz suite on every PR.
+Wording everywhere: internally reviewed, tooling-verified, not
+independently audited.
+
 ## 2026-10-26 — Clear-signing descriptors merged into the registry
 
 [No contract or on-chain change.]

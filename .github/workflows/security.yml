@@ -123,7 +123,7 @@ jobs:
       - name: aderyn
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Cyfrin/aderyn/releases/download/aderyn-v0.6.8/aderyn-installer.sh | sh
-          export PATH="$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
+          export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
           aderyn --version
           aderyn . -s contracts \
             -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol \
