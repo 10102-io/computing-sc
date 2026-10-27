@@ -22,8 +22,8 @@ is tests, configuration, CI and documentation.
 | Coverage, QuantumRecoveryRegistry.sol | 100% lines (10/10), statements (9/9), functions (6/6), branches (2/2) | `npm run coverage` |
 | Slither 0.11.6 | ShieldVault: 7 results, 0 vulnerabilities (3 false positives at Medium/High, 3 Low by design, 1 Informational); registry: 0 results | `docs/security/static-analysis.md` |
 | Aderyn 0.6.8 | 0 High, 5 Low (all informational in substance) | `docs/security/static-analysis.md` |
-| Foundry stateless fuzz | 13 properties, each 2,000 runs in CI and 5,000 runs locally, 0 counterexamples | `test/foundry/ShieldVault.fuzz.t.sol` |
-| Foundry invariants | 9 invariant functions over a 25-operation handler, 256 runs x depth 200 (51,200 calls) in CI, 0 counterexamples; longer local campaign in section 4 | `test/foundry/ShieldVault.invariants.t.sol`, `ShieldVaultHandler.sol` |
+| Foundry stateless fuzz | 13 properties, each 2,000 runs in CI and 20,000 runs locally, 0 counterexamples | `test/foundry/ShieldVault.fuzz.t.sol` |
+| Foundry invariants | 9 invariant functions over a 25-operation handler, 256 runs x depth 200 (51,200 calls) in CI and 768 runs x depth 250 (192,000 calls) locally, 0 counterexamples | `test/foundry/ShieldVault.invariants.t.sol`, `ShieldVaultHandler.sol` |
 | Invariants of the audit package covered | 19 of 19 have at least one automated check; section 4 says how strong each is | section 4 |
 | CI | tests, coverage with thresholds, Slither and Aderyn, fuzz and invariants on every PR | `.github/workflows/security.yml` |
 
@@ -213,47 +213,62 @@ failure rather than a silently skipped call.
 
 CI profile, run locally on 2026-10-27 (forge 1.8.6):
 
-- Stateless: 13 tests, 2,000 runs each in the CI profile; also run at
-  5,000 runs each. 0 counterexamples.
+- Stateless: 13 tests, 2,000 runs each in the CI profile. 0
+  counterexamples.
 - Invariants: 256 runs x depth 200 = 51,200 handler calls, 9 invariant
   functions evaluated after each call. 0 counterexamples, 0 reverts.
   Wall time 336 s single-threaded.
 
-LONG_CAMPAIGN_PLACEHOLDER
+Longer local campaign, same code, run on 2026-10-27 to push past the CI
+budget (`FOUNDRY_FUZZ_RUNS=20000 FOUNDRY_INVARIANT_RUNS=768
+FOUNDRY_INVARIANT_DEPTH=250`):
 
-Reach of the CI campaign, summed over all runs from `FUZZ_SUMMARY`
-(calls made / calls the vault accepted; a refused call is also a check,
-since the handler asserts the refusal was right):
+- Stateless: 13 tests x 20,000 runs. 0 counterexamples against the
+  contract. The first pass of this campaign did find one counterexample,
+  in the test and not in the vault: `testFuzz_vetoBindsEveryField`
+  compared the recovery wallet's absolute balance with the position's
+  balance, and at run 12,963 the fuzzer picked the owner (funded with
+  10^30 tokens) as the recovery wallet. The vault had paid exactly the
+  position's 5e18; the assertion was changed to a delta and the suite
+  re-run clean at 20,000 runs (item 4 in the list below).
+- Invariants: 768 runs x depth 250 = 192,000 handler calls, 9 invariant
+  functions after each call. 0 counterexamples, 0 reverts. Wall time
+  1,357 s single-threaded. Reach, summed over the campaign (192,251 calls
+  made, 88,066 accepted by the vault):
 
 | Operation | Calls | Accepted by the vault |
 |---|---|---|
-| `admin.setDepositsPaused` | 2105 | 2105 |
-| `admin.setFee` | 2007 | 1753 |
-| `admin.setFeeRecipient` | 2124 | 1423 |
-| `admin.setTokenSupported` | 2060 | 2060 |
-| `adv.armHostile` | 2107 | 2107 |
-| `adv.decoy` | 2101 | 389 |
-| `cancelPending` | 2051 | 286 |
-| `cancelPendingWithSig` | 2062 | 194 |
-| `checkIn` | 2069 | 1039 |
-| `checkInWithSig` | 1993 | 585 |
-| `claimOwed` | 2064 | 228 |
-| `claimOwedWithSig` | 2089 | 79 |
-| `collectFees` | 2004 | 362 |
-| `deposit` | 2088 | 812 |
-| `env.blocklist` | 2036 | 2036 |
-| `env.donate` | 2015 | 1807 |
-| `env.tokenFee` | 2078 | 2078 |
-| `env.warp` | 2135 | 2135 |
-| `executeFallback` | 2065 | 137 |
-| `executePending` | 1981 | 287 |
-| `open` | 1982 | 428 |
-| `requestChange` | 2093 | 620 |
-| `requestWithdraw` | 1962 | 407 |
-| `stranger.admin` | 2036 | 0 |
-| `veto` | 2094 | 548 |
+| `admin.setDepositsPaused` | 7716 | 7716 |
+| `admin.setFee` | 7704 | 6898 |
+| `admin.setFeeRecipient` | 7566 | 5104 |
+| `admin.setTokenSupported` | 7664 | 7664 |
+| `adv.armHostile` | 7749 | 7749 |
+| `adv.decoy` | 7549 | 1339 |
+| `cancelPending` | 7620 | 1262 |
+| `cancelPendingWithSig` | 7623 | 713 |
+| `checkIn` | 7702 | 4047 |
+| `checkInWithSig` | 7678 | 1949 |
+| `claimOwed` | 7765 | 721 |
+| `claimOwedWithSig` | 7737 | 291 |
+| `collectFees` | 7754 | 1259 |
+| `deposit` | 7790 | 2892 |
+| `env.blocklist` | 7795 | 7795 |
+| `env.donate` | 7811 | 6698 |
+| `env.tokenFee` | 7618 | 7618 |
+| `env.warp` | 7464 | 7464 |
+| `executeFallback` | 7764 | 543 |
+| `executePending` | 7764 | 1057 |
+| `open` | 7680 | 1617 |
+| `requestChange` | 7758 | 2276 |
+| `requestWithdraw` | 7560 | 1637 |
+| `stranger.admin` | 7676 | 0 |
+| `veto` | 7744 | 1757 |
 
-(`stranger.admin` is accepted 0 times by design: every call is a non-admin trying an admin setter.)
+(`stranger.admin` is accepted 0 times by design: every call is a non-admin
+trying an admin setter. A refused call is also a check, since the handler
+asserts the refusal was right. The CI campaign's own counts are printed in
+the `reach per operation` step of the Foundry job and uploaded as the
+`fuzz-summary` artifact.)
 
 Counterexamples found during development, all in the harness, none in the
 contract (kept here because each one shows the handler is strict enough to
@@ -273,6 +288,9 @@ catch a real deviation of the same shape):
    while building a signature counted as "the next call"; a fallback
    address that coincided with the fuzzed destination). Both were test
    bugs.
+4. "recovery wallet not paid the full balance" at 20,000 runs: an absolute
+   balance assertion met a recovery wallet that was already funded (the
+   owner). Changed to a delta. The vault's payout was exact.
 
 ### 4.5 Honest limits of the campaign
 
@@ -326,7 +344,8 @@ never turn CI into a mainnet fork, and no secret or RPC is used. The
 repository had no CI before this; the four jobs are now the automated
 safety net for the two contracts. Expected wall time: tests about a
 minute, coverage three to four minutes, static analysis two minutes, the
-Foundry job around fifteen minutes on a standard runner.
+Foundry job ten to fifteen minutes on a standard runner (10m35s on the
+first run).
 
 ## 6. Observations that are not findings
 
