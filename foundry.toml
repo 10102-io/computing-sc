@@ -1,0 +1,55 @@
+# Foundry is used for the fuzz and invariant suite only (test/foundry/).
+# Hardhat stays the build, test and deploy tool; nothing here changes the
+# artifacts hardhat-deploy or sync-ui read. Compiler settings mirror
+# hardhat.config.ts so the fuzzed bytecode is the deployed shape.
+#
+#   npm run fuzz                                   default profile (CI)
+#   FOUNDRY_PROFILE=deep npm run fuzz              long campaign, by hand
+#   FUZZ_SUMMARY=out/fuzz-summary.txt npm run fuzz per-operation reach stats
+[profile.default]
+src = "contracts/shield"
+test = "test/foundry"
+script = "script"
+out = "out"
+cache_path = "cache_forge"
+libs = ["lib", "node_modules"]
+solc_version = "0.8.35"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/=node_modules/@openzeppelin/",
+]
+fs_permissions = [{ access = "read-write", path = "./out" }]
+verbosity = 2
+
+[profile.default.fuzz]
+runs = 2000
+max_test_rejects = 200000
+
+[profile.default.invariant]
+runs = 256
+depth = 200
+# The handler never reverts by design (every vault call is wrapped), so a
+# revert here is a harness bug and must fail the run.
+fail_on_revert = true
+call_override = false
+dictionary_weight = 60
+include_storage = true
+include_push_bytes = true
+shrink_run_limit = 5000
+
+# Long campaign, run by hand before a release or after a change to the
+# harness (the numbers in docs/security/tooling-report.md come from this).
+# Inherits everything above except what is listed.
+[profile.deep.fuzz]
+runs = 20000
+max_test_rejects = 2000000
+
+[profile.deep.invariant]
+runs = 2048
+depth = 300
+fail_on_revert = true
+shrink_run_limit = 20000

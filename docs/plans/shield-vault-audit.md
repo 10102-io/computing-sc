@@ -695,6 +695,14 @@ have no coverage figure to give you. There is no CI and no fuzzing or
 formal verification harness; the specs above and the Sepolia smoke script
 are the whole automated safety net for this contract.
 
+Update 2026-10-27: the paragraph above describes the state at the tag.
+Since then coverage is wired (`npm run coverage`), a Foundry fuzz and
+invariant suite exists under `test/foundry/` (13 properties, 9 invariant
+functions, every invariant of section 4 checked), Slither and Aderyn are
+triaged, and a GitHub Actions workflow runs all of it on every PR. Numbers
+and limits: `docs/security/tooling-report.md`. The contract source is
+unchanged.
+
 ## 6. Intentional design decisions and prior findings
 
 ### Intentional, please do not report as bugs
@@ -897,9 +905,14 @@ only; the firms' own scoping decides.
       events; the veto commitment section does not say that pinning is
       per owner; the "Out of scope for v1" section still lists gasless
       check-ins.
-- [ ] Wire `solidity-coverage` (add a `.solcover.js`; with `viaIR` it may
+- [x] (2026-10-27) Wire `solidity-coverage` (add a `.solcover.js`; with `viaIR` it may
       need `configureYulOptimizer: true`), run it on
       `test/ShieldVault.spec.ts`, and attach the line and branch figures.
+      Done: `npm run coverage`; ShieldVault 100% lines, statements and
+      functions, 170/172 branches (the two left are unreachable by
+      construction); registry 100%. Slither, Aderyn and a Foundry fuzz and
+      invariant suite were added at the same time; figures and triage in
+      `docs/security/tooling-report.md` and `docs/security/static-analysis.md`.
 - [x] (2026-09-29: 253 passing) Re-run the full repository suite on the v2 commit and record the
       count here.
 - [ ] Decide repository access (public link or invite) and send this

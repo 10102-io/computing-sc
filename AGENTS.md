@@ -22,11 +22,26 @@ npx hardhat compile
 npx hardhat test                        # mocha + chai, ~22 spec files under test/
 npx hardhat run scripts/dump-storage-layouts.ts   # layout diff before any impl swap
 npm run sync-ui:check                   # frontend ABI/address drift
+
+# ShieldVault and QuantumRecoveryRegistry evidence (docs/security/). The npm
+# scripts use POSIX env syntax for CI; in PowerShell set the variable first.
+$env:HARDHAT_NO_FORK='1'; npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,QuantumRecoveryRegistry}.spec.ts"
+git submodule update --init             # once: lib/forge-std for the fuzz suite
+forge test --match-path "test/foundry/**" -vv   # needs Foundry v1.8.6
+slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-remaps "@openzeppelin=node_modules/@openzeppelin" --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" --filter-paths node_modules --triage-database slither.db.json --fail-medium
 ```
 
-There is no CI and no fuzzing harness today; every spec you add is the
-whole safety net for that path. Coverage tooling (`solidity-coverage`) is
-installed but not wired.
+CI (`.github/workflows/security.yml`, since 2026-10-29) runs the Hardhat
+suite, coverage with thresholds for ShieldVault and the registry, Slither and
+Aderyn, and the Foundry fuzz and invariant suite on every PR and every push
+to `dev` and `main`. The checks are informational, not required: a red run
+blocks nothing, `[skip ci]` in a commit message skips one, and the workflow
+can be disabled from the Actions tab. Slither needs Foundry on the PATH
+(crytic-compile reads `forge config` whenever `foundry.toml` exists). A new
+Slither finding at Medium or above is triaged in
+`docs/security/static-analysis.md` and `slither.db.json`, never silenced by
+editing deployed contract source. Outside those two contracts, every spec
+you add is still the whole safety net for that path.
 
 ## What is live and how it changes
 
@@ -35,7 +50,9 @@ installed but not wired.
   (full suite incl. timelocks and premium, Oct 2025). Later riders
  (LegacyPullVault, auto-renew, QuantumRecoveryRegistry, UpgradeTimelock,
  ShieldVault) had adversarial review, not a third firm audit. Say so plainly when a
-  change lands on those.
+  change lands on those. ShieldVault and the registry also carry tooling
+  evidence (`docs/security/tooling-report.md`): internally reviewed and
+  tooling-verified, still not independently audited.
 - Proxies are hardhat-deploy `OptimizedTransparentProxy` behind
  `DefaultProxyAdmin`, whose owner is `UpgradeTimelock` (OpenZeppelin
  TimelockController, 48h on mainnet, 300s on Sepolia). Every
@@ -121,6 +138,9 @@ installed but not wired.
 - `docs/plans/create-flow-v2.md`: the legacy v2 architecture record.
 - `docs/plans/shield-vault.md`: ShieldVault spec, threat model, review.
 - `docs/CONTRACTS_REFERENCE.md`: what each contract is for.
+- `docs/security/tooling-report.md`, `docs/security/static-analysis.md`:
+  coverage, fuzz and static-analysis evidence for ShieldVault and the
+  registry, with every triaged finding.
 - `docs/plans/round-2026-09.md`: the current round (governance, destination
  wallet, the trains behind them) with its execution log at the top.
 - `scripts/timelock-op.ts`, `scripts/harden-governance.ts`,

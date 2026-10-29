@@ -31,3 +31,7 @@ storage-layouts*.json
 # ERC-7730 build and test-runner output (erc7730/README.md, Regenerating)
 /erc7730/tooling/out
 /erc7730/tooling/results
+
+# Foundry (fuzz/invariant suite, foundry.toml)
+/out
+/cache_forge
