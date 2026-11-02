@@ -46,8 +46,9 @@ is 2-of-3; `final` afterwards).
   routine upgrades. Sepolia: same Safe address, same owners.
 - **CANCELLER**: the guardian hardware key
   (`0x7B61dD775422f465D6b9f28C8EFEE39263ef2579`), never connected to a
-  browser wallet extension. It can stop anything queued and can queue
-  nothing. The maintainer EOA's CANCELLER is revoked in the same batch
+  browser wallet extension. It can stop anything queued. It holds no
+  PROPOSER role itself, but while the Safe has threshold 1 the guardian
+  (an owner) can queue through the Safe. The maintainer EOA's CANCELLER is revoked in the same batch
   (mainnet batch executable from 2026-09-24 ~21:02 UTC; Sepolia done).
 - **EXECUTOR**: open (`address(0)`) — anyone can execute a ready operation.
   We cannot censor an operation once its delay has passed.
@@ -91,9 +92,20 @@ EXISTING user state.
 
 The user-safety invariant that makes the split honest: **claims, check-ins,
 deletes and withdrawals are never pausable** — a hostile or compromised
-operational key can degrade the experience for new users, but cannot trap
-existing users' assets; and any change to existing-legacy behavior needs an
-implementation swap, which is now publicly visible for 48h first.
+operational key cannot trap existing users' assets, and any change to
+existing-legacy behavior needs an implementation swap, which is now
+publicly visible for 48h first.
+
+What a compromised code admin key CAN do to new users (checklist audit
+2026-11-02, M-3): `setPullVault` makes its own contract the spender that
+new creators sign unlimited Permit2 permits for, and
+`setLegacyImplementation` makes new legacies clones of its code. Since
+2026-11-02 the app pins the vault from `contract-addresses.json` and
+refuses to sign for any other; `verify-governance.ts` fails when either
+value differs from the record; the worker's timelock watch alerts on
+`PullVaultSet` and `ActivityAttestorSet` and on an implementation change.
+Moving the rotation levers behind the timelock (keeping `setCreatePaused`
+fast) is queued for the next EOA-router upgrade.
 
 ## Honest limit
 

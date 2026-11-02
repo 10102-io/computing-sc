@@ -22,6 +22,16 @@ observedNonce)` when it sees the owner's transaction count rise near the
 deadline. The router then resets the clone timer exactly as a check-in
 would (`activeAlive(owner)` — the clone's own gates still apply).
 
+"Rise" means since the countdown last restarted (worker, since
+2026-11-02): the owner's nonce now must exceed its value at the end of the
+block whose timestamp is the clone's `getLastTimestamp()` (a historical
+read; no renewal when the RPC cannot answer it). Comparing with the last
+attestation instead, as before, counted the owner's own check-in or
+opt-in transaction as fresh activity, so an owner who checked in and then
+died still got one renewal. Renewals for one legacy are also at least a
+day (or half the period) apart, since with a period of 30 days or less
+the window never closes. The on-chain `lastNonceSeen` bound is unchanged.
+
 Rejected alternatives (design memo): on-chain state proofs (the MPT →
 binary-tree migration would strand an immutable verifier) and ERC-7702
 delegation (MetaMask only signs its own delegator).

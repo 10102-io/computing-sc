@@ -181,11 +181,17 @@ accrue to nobody); wstETH is the wrapped form and is the first token.
 Initial set: wstETH, USDC, USDT, WETH.
 
 Curation assumption, stated because the accounting rests on it: a
-supported token debits the sender exactly the amount transferred and has
-no transfer hooks. A token that charged its fee to the sender on the way
-out would drain other positions in the same token. USDC and USDT are
-upgradeable; if either ever changes that behaviour, the Safe delists it
-(which stops deposits only) and a new vault is deployed.
+supported token debits the sender exactly the amount transferred, has
+no transfer hooks, and reports a transfer's outcome truthfully (returns
+`true` or nothing on success, reverts or returns `false` only when
+nothing moved). A token that charged its fee to the sender on the way
+out would drain other positions in the same token; so would one that
+moves funds but returns `false` (the Tether Gold pattern): `_payOrOwe`
+would record the amount as owed as well, and `claimOwed` would pay it a
+second time from the other positions (checklist audit 2026-11-02, L-1).
+USDC and USDT are upgradeable; if either ever changes that behaviour,
+the Safe delists it (which stops deposits only) and a new vault is
+deployed.
 
 ## Admin surface
 

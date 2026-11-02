@@ -21,6 +21,32 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-02 — Checklist audit of the unaudited riders, vault pin
+
+[No contract or on-chain change.]
+
+An internal checklist pass (ethskills EVM audit checklists at a pinned
+revision, one reviewer per area, every finding re-checked against the code
+and mainnet) over ShieldVault, LegacyPullVault and its callers,
+UpgradeTimelock, EOA auto-renew and QuantumRecoveryRegistry:
+`docs/security/checklist-audit-2026-11.md`. Not an independent audit. No
+Critical or High; four Mediums, none with a victim on mainnet today (no
+auto-renew opt-ins, no direct USDT allowances, no activated legacy still
+bound in the vault). Fixed off-chain the same day, in the sibling repos:
+the worker's auto-renew baseline, the app's vault pin and quoted unswap
+minimum. Queued for the next contract train: `SafeERC20` on the clone's
+direct ERC-20 rail (USDT claims revert today), a non-zero minimum for
+non-WETH unswaps, the EOA router's rotation levers behind the timelock,
+and an owner unbind in the next vault.
+
+In this repo: `sync-ui` now emits `pullVault` per chain (the app refuses
+to sign permits for any other vault), `verify-governance.ts` checks the EOA
+router's vault and implementation against the record and fails on a ready
+timelock operation left unexecuted (27/27 on mainnet), the ShieldVault
+listing rule requires a truthful transfer return value, and
+`upgrade-timelock.md` states what a compromised code admin key can do to
+new creators.
+
 ## 2026-10-29 — ShieldVault pre-audit tooling evidence, first CI
 
 [No contract or on-chain change.]

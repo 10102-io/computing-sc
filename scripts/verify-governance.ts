@@ -62,6 +62,7 @@ async function main() {
     "function getMinDelay() view returns (uint256)",
     "function hasRole(bytes32,address) view returns (bool)",
     "function isOperationPending(bytes32) view returns (bool)",
+    "function isOperationReady(bytes32) view returns (bool)",
     "function getTimestamp(bytes32) view returns (uint256)",
   ];
   const at = (addr: string, abi: string[]) => new ethers.Contract(addr, abi, provider);
@@ -128,6 +129,27 @@ async function main() {
     push(`${who.slice(0, 8)} is not DEFAULT_ADMIN`, "false", String(a), a === false);
   }
 
+  // The EOA router's vault and clone implementation are set by the code
+  // admin key without the timelock; the app pins the vault, and a change
+  // shows up here as a FAIL.
+  const eoaRouterEntry = (book as any).TransferEOALegacyRouter;
+  if (eoaRouterEntry?.address) {
+    const eoaRouter = at(eoaRouterEntry.address, [
+      "function pullVault() view returns (address)",
+      "function legacyImplementation() view returns (address)",
+    ]);
+    const expectedVault: string | undefined = (book as any).LegacyPullVault?.address;
+    const expectedImpl: string | undefined = (book as any).TransferEOALegacyImpl?.address;
+    if (expectedVault) {
+      const v: string = await eoaRouter.pullVault();
+      push("EOA router pullVault is the recorded vault", expectedVault, v, same(v, expectedVault));
+    }
+    if (expectedImpl) {
+      const i: string = await eoaRouter.legacyImplementation();
+      push("EOA router legacyImplementation is the recorded one", expectedImpl, i, same(i, expectedImpl));
+    }
+  }
+
   // Pending operations: worker ledger + live check.
   const workerUrl = (process.env.WORKER_URL ?? "https://reminder-worker-production.up.railway.app").replace(/\/$/, "");
   let pendingNote = "worker unreachable";
@@ -145,12 +167,17 @@ async function main() {
       } else {
         const pending = body.pending ?? [];
         const live: string[] = [];
+        const ready: string[] = [];
         for (const p of pending) {
           const isPending = await timelock.isOperationPending(p.opId);
           if (isPending) live.push(`${p.opId.slice(0, 10)}… eta ${new Date(p.eta * 1000).toISOString()} → ${p.target}`);
+          if (isPending && (await timelock.isOperationReady(p.opId))) ready.push(p.opId.slice(0, 10));
         }
         pendingNote = live.length ? live.join("; ") : "none";
         push("Pending timelock operations", "none (or known)", pendingNote, true);
+        // A ready operation never expires and anyone may execute it, so one
+        // that was superseded must be cancelled, not left waiting.
+        push("No ready operation left unexecuted", "none", ready.length ? ready.join(", ") : "none", ready.length === 0);
       }
     } else pendingNote = `worker ${res.status}`;
   } catch {

@@ -141,6 +141,9 @@ you add is still the whole safety net for that path.
 - `docs/security/tooling-report.md`, `docs/security/static-analysis.md`:
   coverage, fuzz and static-analysis evidence for ShieldVault and the
   registry, with every triaged finding.
+- `docs/security/checklist-audit-2026-11.md`: the checklist audit of the
+  unaudited riders, with each finding's status; its "Left" column is the
+  input to the next contract train.
 - `docs/plans/round-2026-09.md`: the current round (governance, destination
  wallet, the trains behind them) with its execution log at the top.
 - `scripts/timelock-op.ts`, `scripts/harden-governance.ts`,

@@ -85,6 +85,7 @@ const UI_KEYS = [
   'tokenWhitelist',
   'quantumRegistry',
   'shieldVault',
+  'pullVault',
 ] as const;
 
 type UIContractAddresses = Record<(typeof UI_KEYS)[number], string | null>;
@@ -105,6 +106,9 @@ const CONTRACT_TO_UI_KEY: Record<string, keyof UIContractAddresses> = {
   ERC20Token_USDT: 'usdtAddress',
   TokenWhiteList: 'tokenWhitelist',
   QuantumRecoveryRegistry: 'quantumRegistry',
+  // The app refuses to sign a permit for any other spender than this one,
+  // so a router whose vault was repointed cannot collect new permits.
+  LegacyPullVault: 'pullVault',
 };
 
 function checksum(addr: string | undefined): string | null {
