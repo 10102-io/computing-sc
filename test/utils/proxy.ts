@@ -8,17 +8,20 @@ import { ethers } from "hardhat";
  * @param initArgs - Arguments for the initialize function
  * @param initMethod - Name of the initializer (default: "initialize")
  * @param signer - Optional signer to deploy with (determines msg.sender for initialize)
+ * @param ctorArgs - Implementation constructor arguments (the EOA router takes
+ *   the UpgradeTimelock address since the 2026-11 train)
  */
 export async function deployProxy(
   factoryName: string,
   initArgs: any[] = [],
   initMethod: string = "initialize",
-  signer?: any
+  signer?: any,
+  ctorArgs: any[] = []
 ) {
   const Factory = signer
     ? await ethers.getContractFactory(factoryName, signer)
     : await ethers.getContractFactory(factoryName);
-  const impl = await Factory.deploy();
+  const impl = await Factory.deploy(...ctorArgs);
 
   const initData = Factory.interface.encodeFunctionData(initMethod, initArgs);
 

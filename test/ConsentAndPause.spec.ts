@@ -173,7 +173,7 @@ describe("TransferEOALegacyRouter — tx-based consent + create pause", function
       payment.address,
       uniRouter,
       weth,
-    ]);
+    ], "initialize", undefined, [dev.address]);
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
 
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [

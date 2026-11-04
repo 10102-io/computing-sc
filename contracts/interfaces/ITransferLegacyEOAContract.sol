@@ -9,6 +9,8 @@ interface ITransferEOALegacy {
 
   function delayLayer3() external view returns (uint256);
 
+  function adminFeePercent() external view returns (uint256);
+
   // Create-flow v2 PII strip (§5.1): nickname / name params removed from the
   // clone surface — that metadata lives in the off-chain metadata API.
   function initialize(

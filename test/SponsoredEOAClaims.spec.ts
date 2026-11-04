@@ -79,7 +79,7 @@ describe("TransferEOALegacyRouter — sponsored (…For) entrypoints", function 
       payment.address,
       uniRouter,
       weth,
-    ]);
+    ], "initialize", undefined, [dev.address]);
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
 
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [

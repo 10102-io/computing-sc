@@ -72,7 +72,7 @@ describe("EOA activity auto-renew (Phase 1)", function () {
       payment.address,
       uniRouter,
       weth,
-    ]);
+    ], "initialize", undefined, [dev.address]);
     await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
 
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [
@@ -502,7 +502,7 @@ describe("EOA activity auto-renew (Phase 1)", function () {
     assert.equal(state.enabled, true, "opt-in untouched by the kill switch");
   });
 
-  it("nonce poisoning (accepted L1): a max-uint64 attestation permanently stops renewals — fail-safe direction", async function () {
+  it("nonce poisoning: a max-uint64 attestation locks out only that attestor; rotation restores renewals", async function () {
     const { attestor, dev, owner, bene, other, transferEOALegacyRouter } = await loadFixture(deployFixture);
     const { legacyId } = await createLegacy(transferEOALegacyRouter, owner, bene.address, 90 * DAY);
     await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
@@ -510,18 +510,29 @@ describe("EOA activity auto-renew (Phase 1)", function () {
 
     const MAX_U64 = ethers.BigNumber.from(2).pow(64).sub(1);
     await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, MAX_U64);
+    assert.equal((await transferEOALegacyRouter.attestorNonceSeen(legacyId, attestor.address)).toString(), MAX_U64.toString());
 
-    // Survives attestor rotation AND owner toggles — renewals are dead, but
-    // only toward activation (the owner can always check in themselves).
-    await transferEOALegacyRouter.connect(dev).setActivityAttestor(other.address);
+    // Owner toggles never reset a baseline (no replay of old observations).
     await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, false);
     await transferEOALegacyRouter.connect(owner).setAutoRenew(legacyId, true);
     await increase(65 * DAY);
     try {
-      await transferEOALegacyRouter.connect(other).recordActivity(legacyId, MAX_U64);
-      assert.fail("poisoned baseline should reject everything");
+      await transferEOALegacyRouter.connect(attestor).recordActivity(legacyId, MAX_U64);
+      assert.fail("the poisoning attestor stays locked out of this legacy");
     } catch (err) {
       assert(revertedWith(err, "StaleActivityNonce()"), `unexpected: ${err}`);
+    }
+
+    // The baseline is per attestor (DEFERRED auto-renew-nonce-baseline):
+    // rotating to a fresh key restores renewals from that key's own baseline.
+    await transferEOALegacyRouter.connect(dev).setActivityAttestor(other.address);
+    assert.equal((await transferEOALegacyRouter.attestorNonceSeen(legacyId, other.address)).toString(), "0");
+    await transferEOALegacyRouter.connect(other).recordActivity(legacyId, 5);
+    try {
+      await transferEOALegacyRouter.connect(other).recordActivity(legacyId, 5);
+      assert.fail("the new attestor is still bound by its own monotonic baseline");
+    } catch (err) {
+      assert(revertedWith(err, "StaleActivityNonce()") || revertedWith(err, "AutoRenewTooEarly()"), `unexpected: ${err}`);
     }
     await transferEOALegacyRouter.connect(owner).avtiveAlive(legacyId); // owner path unaffected
   });

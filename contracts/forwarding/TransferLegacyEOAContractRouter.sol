@@ -103,6 +103,23 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
   mapping(uint256 => AutoRenewState) public autoRenewState;
 
+  // ─── 2026-11 train (docs/plans/train-2026-11.md) ──────────────────────────
+  /// @notice Highest owner nonce each attestor has cited for a legacy. APPENDED
+  /// after `autoRenewState` (slot 17, layout-safe, auto-zero). The monotonic
+  /// bound is checked per attestor, so a compromised attestor that cites
+  /// `type(uint64).max` poisons only its own baseline and rotating the
+  /// attestor restores renewals (DEFERRED `auto-renew-nonce-baseline`).
+  /// `AutoRenewState.lastNonceSeen` is still written as the latest
+  /// observation, for readers, and no longer gates anything.
+  mapping(uint256 legacyId => mapping(address attestor => uint64)) public attestorNonceSeen;
+
+  /// @notice The UpgradeTimelock. Set in the implementation's constructor, so
+  /// it lives in code, not storage, and changes only with an implementation
+  /// swap, which itself needs the timelock. It alone moves the rotation levers
+  /// (`setLegacyImplementation`, `setPullVault`, `setActivityAttestor`,
+  /// `setLegacyCreationCode`) and runs `initializeV4` (checklist audit M-3).
+  address public immutable upgradeTimelock;
+
   /// @dev How close to the activation deadline an attestation may land.
   uint256 public constant AUTO_RENEW_WINDOW = 30 days;
   /// @dev Max time auto-renewals may carry a legacy without a real check-in.
@@ -197,9 +214,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error AutoRenewLegacyNotLive();
   error AutoRenewInfeasible();
   error CheckInDeadlineTooFar();
+  error NotUpgradeTimelock();
+  error ZeroAmountOutMin();
+  error FeeAboveMax(uint256 fee, uint256 maxFeeBps);
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
+    _;
+  }
+
+  modifier onlyUpgradeTimelock() {
+    if (msg.sender != upgradeTimelock) revert NotUpgradeTimelock();
     _;
   }
 
@@ -274,9 +299,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   /// @notice The LegacyPullVault wiring changed. New creates bind to (and may
   /// name as Permit2 spender) the new vault; existing legacies are unaffected.
   event PullVaultSet(address vault);
-  /// @notice The activity attestor wiring changed (code admin).
-  /// address(0) pauses all auto-renewals; owner opt-ins are untouched.
+  /// @notice The activity attestor wiring changed (UpgradeTimelock since the
+  /// 2026-11 train). address(0) pauses all auto-renewals; owner opt-ins are untouched.
   event ActivityAttestorSet(address attestor);
+  /// @notice The clone implementation for new creates changed.
+  event LegacyImplementationSet(address implementation);
+  /// @notice The full-bytecode fallback for new creates changed.
+  event LegacyCreationCodeSet(bytes32 codeHash);
+  /// @notice The code admin (holder of `setCreatePaused`) changed.
+  event CodeAdminSet(address codeAdmin);
+  /// @notice The Payment contract new legacies snapshot their claim fee from changed.
+  event PaymentContractSet(address paymentContract);
   /// @notice The legacy owner toggled automatic activity renewal.
   event TransferEOALegacyAutoRenewSet(uint256 indexed legacyId, address indexed owner, bool enabled, uint256 timestamp);
   /// @notice The attestor renewed this legacy's inactivity timer based on
@@ -295,7 +328,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint256 timestamp
   );
 
-    constructor () {
+  constructor(address upgradeTimelock_) {
+    if (upgradeTimelock_ == address(0)) revert InvalidInitialization();
+    upgradeTimelock = upgradeTimelock_;
     _disableInitializers();
   }
 
@@ -339,27 +374,50 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     _codeAdmin = codeAdmin_;
   }
 
+  /**
+   * @dev 2026-11 train: hand the code admin (now only `setCreatePaused`) to
+   * the governance Safe and, where needed, repoint the Payment contract new
+   * legacies snapshot their fee from (Sepolia still points at an orphan).
+   * `paymentContract_ == address(0)` leaves it unchanged. Only the
+   * UpgradeTimelock may call it, so it can run as the item right after the
+   * proxy upgrade in the same timelock batch with no window for anyone else;
+   * reinitializer(5) works from both live counters (mainnet 4, Sepolia 3).
+   */
+  function initializeV4(address codeAdmin_, address paymentContract_) external reinitializer(5) onlyUpgradeTimelock {
+    if (codeAdmin_ == address(0)) revert InvalidInitialization();
+    _codeAdmin = codeAdmin_;
+    emit CodeAdminSet(codeAdmin_);
+    if (paymentContract_ != address(0)) {
+      paymentContract = paymentContract_;
+      emit PaymentContractSet(paymentContract_);
+    }
+  }
 
-  function setLegacyCreationCode(bytes calldata code_) external onlyCodeAdmin {
+  /// @dev Full-bytecode fallback for new creates (used only while
+  /// `legacyImplementation` is unset). UpgradeTimelock only, like the other
+  /// rotation levers.
+  function setLegacyCreationCode(bytes calldata code_) external onlyUpgradeTimelock {
     if (code_.length == 0) revert EmptyCode();
     legacyCreationCode = code_;
+    emit LegacyCreationCodeSet(keccak256(code_));
   }
 
   /**
-   * @dev Point new legacies at an EIP-1167 minimal-proxy implementation. Once set,
-   * `createLegacy` deploys ~45-byte clones (~40k gas) instead of the full ~18KB
-   * bytecode (~6M gas). Pass `address(0)` to fall back to the legacy bytecode path.
-   * Existing legacies are unaffected by this change.
+   * @dev Point new legacies at an EIP-1167 minimal-proxy implementation. Pass
+   * `address(0)` to fall back to the legacy bytecode path. Existing legacies
+   * are unaffected. UpgradeTimelock only since the 2026-11 train: new creators
+   * sign permits for whatever clone code this names (checklist audit M-3).
    */
-  function setLegacyImplementation(address impl_) external onlyCodeAdmin {
+  function setLegacyImplementation(address impl_) external onlyUpgradeTimelock {
     legacyImplementation = impl_;
+    emit LegacyImplementationSet(impl_);
   }
 
   /**
    * @dev Emergency circuit breaker for creation. Pauses `createLegacy` /
-   * `createLegacyV2` only — never claims, check-ins, deletes or withdrawals
-   * (users must always be able to exit). Gated on the code admin, the same
-   * role trusted to swap the clone implementation itself.
+   * `createLegacyV2*` only — never claims, check-ins, deletes or withdrawals
+   * (users must always be able to exit). Stays on the code admin, which acts
+   * in minutes, not behind the 48-hour timelock.
    */
   function setCreatePaused(bool paused_) external onlyCodeAdmin {
     createPaused = paused_;
@@ -367,18 +425,20 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   }
 
   /**
-   * @dev Wire (or rotate) the LegacyPullVault. The vault is immutable and
-   * admin-free; it pins one clone implementation's codehash, so it must be
-   * redeployed whenever `legacyImplementation` changes — always update the
-   * two together. `address(0)` disables the vault path for new creates.
-   * Existing legacies and their bindings are never affected by this setter.
+   * @dev Wire (or rotate) the LegacyPullVault for new creates. `address(0)`
+   * disables the vault path. Existing legacies and their bindings are never
+   * affected. UpgradeTimelock only since the 2026-11 train: new creators sign
+   * unlimited permits for this address (checklist audit M-3).
    */
-  function setPullVault(address vault_) external onlyCodeAdmin {
+  function setPullVault(address vault_) external onlyUpgradeTimelock {
     pullVault = vault_;
     emit PullVaultSet(vault_);
   }
 
-  function setActivityAttestor(address attestor_) external onlyCodeAdmin {
+  /// @dev UpgradeTimelock only since the 2026-11 train (checklist audit M-3).
+  /// Zeroing it, the fast way to stop renewals, is also behind the timelock;
+  /// a compromised attestor can only delay activation, never move funds.
+  function setActivityAttestor(address attestor_) external onlyUpgradeTimelock {
     activityAttestor = attestor_;
     emit ActivityAttestorSet(attestor_);
   }
@@ -462,6 +522,44 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint256 signatureTimestamp,
     bytes calldata agreementSignature
   ) external returns (address) {
+    return _createLegacyV2(distributions_, extraConfig_, layer2Distribution_, layer3Distribution_, permit2_, signatureTimestamp, agreementSignature);
+  }
+
+  /**
+   * @dev `createLegacyV2` that also binds the claim fee the creator was shown
+   * (DEFERRED `legacy-claim-fee-cap`): reverts `FeeAboveMax` when the fee the
+   * new legacy snapshotted from `Payment` exceeds `maxFeeBps_` (basis points
+   * of 10,000). New clones also refuse anything above
+   * `MAX_ADMIN_FEE_BPS` (50) on their own.
+   */
+  function createLegacyV2WithMaxFee(
+    TransferLegacyStruct.Distribution[] calldata distributions_,
+    TransferLegacyStruct.LegacyExtraConfig calldata extraConfig_,
+    TransferLegacyStruct.Distribution calldata layer2Distribution_,
+    TransferLegacyStruct.Distribution calldata layer3Distribution_,
+    Permit2CreateBundle calldata permit2_,
+    uint256 signatureTimestamp,
+    bytes calldata agreementSignature,
+    uint256 maxFeeBps_
+  ) external returns (address legacyAddress) {
+    legacyAddress = _createLegacyV2(distributions_, extraConfig_, layer2Distribution_, layer3Distribution_, permit2_, signatureTimestamp, agreementSignature);
+    _checkMaxFee(legacyAddress, maxFeeBps_);
+  }
+
+  function _checkMaxFee(address legacyAddress_, uint256 maxFeeBps_) internal view {
+    uint256 fee = ITransferEOALegacy(legacyAddress_).adminFeePercent();
+    if (fee > maxFeeBps_) revert FeeAboveMax(fee, maxFeeBps_);
+  }
+
+  function _createLegacyV2(
+    TransferLegacyStruct.Distribution[] calldata distributions_,
+    TransferLegacyStruct.LegacyExtraConfig calldata extraConfig_,
+    TransferLegacyStruct.Distribution calldata layer2Distribution_,
+    TransferLegacyStruct.Distribution calldata layer3Distribution_,
+    Permit2CreateBundle calldata permit2_,
+    uint256 signatureTimestamp,
+    bytes calldata agreementSignature
+  ) internal returns (address) {
     if (distributions_.length == 0) revert DistributionsInvalid();
 
     (, address legacyAddress) = _createLegacyCore(
@@ -688,7 +786,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
     AutoRenewState storage renewState = autoRenewState[legacyId_];
     if (!renewState.enabled) revert AutoRenewDisabled();
-    if (observedNonce_ <= renewState.lastNonceSeen) revert StaleActivityNonce();
+    if (observedNonce_ <= attestorNonceSeen[legacyId_][msg.sender]) revert StaleActivityNonce();
 
     address owner = IPremiumLegacy(legacyAddress).getLegacyOwner();
     // Premium is re-checked at renewal time, not just at opt-in — a lapsed
@@ -705,6 +803,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     if (block.timestamp >= beneficiariesTrigger) revert AutoRenewTooLate();
     if (block.timestamp > uint256(renewState.budgetAnchor) + AUTO_RENEW_BUDGET) revert AutoRenewBudgetExhausted();
 
+    attestorNonceSeen[legacyId_][msg.sender] = observedNonce_;
     renewState.lastNonceSeen = observedNonce_;
 
     try
@@ -1001,6 +1100,10 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     TransferLegacyStruct.EOALegacyETHSwap calldata swap_
   ) external payable {
     address legacyAddress = _checkLegacyExisted(legacyId_);
+    // A swap into anything but WETH (which wraps 1:1) with no minimum is a
+    // free sandwich. Router-level, so it covers every existing clone too; the
+    // app always quotes a minimum (DEFERRED `router-create-hardening`).
+    if (swap_.storageToken != weth && swap_.amountOutMin == 0) revert ZeroAmountOutMin();
     ITransferEOALegacy(legacyAddress).autoSwap{value: msg.value}(msg.sender, swap_);
     emit TransferEOALegacyAutoSwapped(legacyId_, swap_.storageToken, msg.value, block.timestamp);
   }

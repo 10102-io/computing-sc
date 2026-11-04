@@ -62,7 +62,7 @@ describe("MultisigLegacyRouter activation trigger", function () {
       payment.address,
       uniswapRouter,
       weth,
-    ]);
+    ], "initialize", undefined, [dev.address]);
 
     // Create the multisig router (this is what we are testing)
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [

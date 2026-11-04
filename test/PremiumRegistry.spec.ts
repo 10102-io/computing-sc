@@ -88,7 +88,7 @@ describe("Premium Setting", async function () {
       payment.address,
       "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008", // Uniswap router (Sepolia)
       weth,
-    ], "initialize", dev);
+    ], "initialize", dev, [dev.address]);
 
     const multisignLegacyRouter = await deployProxy(
       "MultisigLegacyRouter",

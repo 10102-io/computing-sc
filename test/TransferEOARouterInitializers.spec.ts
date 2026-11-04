@@ -63,7 +63,7 @@ describe("TransferEOALegacyRouter — initializer cascade", function () {
       payment.address,
       router,
       weth,
-    ]);
+    ], "initialize", undefined, [dev.address]);
 
     return { treasury, dev, other, transferEOALegacyRouter };
   }
@@ -113,13 +113,10 @@ describe("TransferEOALegacyRouter — initializer cascade", function () {
       const v = await readInitializedVersion(transferEOALegacyRouter.address);
       assert.equal(v, 4, `expected _initialized=4, got ${v}`);
 
-      // Confirm _codeAdmin was set by exercising an onlyCodeAdmin gate.
-      // If V3 wrote the slot correctly, setLegacyImplementation from `dev`
-      // must succeed (any non-zero impl is accepted).
-      const fakeImpl = "0x0000000000000000000000000000000000000001";
-      await transferEOALegacyRouter.connect(dev).setLegacyImplementation(fakeImpl);
-      const impl = await transferEOALegacyRouter.legacyImplementation();
-      assert.equal(impl.toLowerCase(), fakeImpl.toLowerCase());
+      // Confirm _codeAdmin was set by exercising the onlyCodeAdmin gate
+      // (setCreatePaused is the code admin's only lever since the 2026-11 train).
+      await transferEOALegacyRouter.connect(dev).setCreatePaused(true);
+      assert.equal(await transferEOALegacyRouter.createPaused(), true);
     });
 
     it("is still callable AFTER initializeV2 (mainnet-like scenario)", async function () {
@@ -143,17 +140,11 @@ describe("TransferEOALegacyRouter — initializer cascade", function () {
       assert.equal(await readInitializedVersion(transferEOALegacyRouter.address), 4);
 
       // And `dev` must now be _codeAdmin, while `other` must NOT be.
-      const fakeImpl = "0x0000000000000000000000000000000000000002";
-      await transferEOALegacyRouter.connect(dev).setLegacyImplementation(fakeImpl);
-      assert.equal(
-        (await transferEOALegacyRouter.legacyImplementation()).toLowerCase(),
-        fakeImpl.toLowerCase()
-      );
+      await transferEOALegacyRouter.connect(dev).setCreatePaused(true);
+      assert.equal(await transferEOALegacyRouter.createPaused(), true);
       try {
-        await transferEOALegacyRouter
-          .connect(other)
-          .setLegacyImplementation("0x0000000000000000000000000000000000000003");
-        assert.fail("setLegacyImplementation from previous _codeAdmin should have reverted");
+        await transferEOALegacyRouter.connect(other).setCreatePaused(false);
+        assert.fail("setCreatePaused from previous _codeAdmin should have reverted");
       } catch (err) {
         assert.ok(revertedWith(err, "NotCodeAdmin()"), `unexpected error: ${(err as any)?.message}`);
       }
@@ -180,7 +171,7 @@ describe("TransferEOALegacyRouter — initializer cascade", function () {
       }
     });
 
-    it("blocks further reinitialization (no V4 exists — _initialized=4 is terminal for the current code)", async function () {
+    it("blocks the older reinitializer after V3 (initializeV4 is covered in Train2026-11.router.spec.ts)", async function () {
       const { dev, transferEOALegacyRouter } = await loadFixture(baseFixture);
       await transferEOALegacyRouter.connect(dev).initializeV3(dev.address);
       // initializeV2 (reinitializer(3)) must also be blocked post-V3
