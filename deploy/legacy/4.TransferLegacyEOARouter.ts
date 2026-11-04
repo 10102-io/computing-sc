@@ -1,6 +1,6 @@
 import { DeployFunction } from "hardhat-deploy/dist/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { saveContract, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses } from "../../scripts/utils";
+import { saveContract, verifyProxyOnEtherscan, shouldVerify, getExternalAddresses, getContracts } from "../../scripts/utils";
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -14,10 +14,17 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const verifierTerm = (await deployments.get("EIP712LegacyVerifier")).address;
   const payment = (await deployments.get("Payment")).address;
   const { uniswapRouter, weth } = getExternalAddresses(network.name);
+  // The implementation pins the UpgradeTimelock (rotation levers, initializeV4).
+  // A fresh local chain has none, so the deployer stands in for it there.
+  const recorded = getContracts()[network.name]?.UpgradeTimelock?.address;
+  if (!recorded && shouldVerify(network.name)) {
+    throw new Error(`No UpgradeTimelock recorded for ${network.name} in contract-addresses.json`);
+  }
+  const upgradeTimelock = recorded ?? deployer;
 
   const data = await deploy("TransferEOALegacyRouter", {
     from: deployer,
-    args: [],
+    args: [upgradeTimelock],
     log: true,
     deterministicDeployment: false,
     gasLimit: 4000000,
@@ -43,7 +50,7 @@ const deploy: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
     try {
       await hre.run("verify:verify", {
         address: data.implementation,
-        constructorArguments: [],
+        constructorArguments: [upgradeTimelock],
       });
     } catch (e) {
       console.warn("Verify failed:", e);

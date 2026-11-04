@@ -48,19 +48,29 @@ async function main() {
   if (!net) throw new Error(`No addresses for ${network.name}`);
   console.log(`Network ${network.name}, deployer ${deployer.address}`);
 
+  // Implementation constructor arguments. The EOA router pins the
+  // UpgradeTimelock in code since the 2026-11 train (docs/plans/train-2026-11.md).
+  const ctorArgs = (name: string): unknown[] => {
+    if (name !== "TransferEOALegacyRouter") return [];
+    const timelock = (net as any).UpgradeTimelock?.address;
+    if (!timelock) throw new Error(`No UpgradeTimelock recorded for ${network.name}`);
+    return [timelock];
+  };
+
   const batch: Array<{ proxy: string; impl: string }> = [];
   for (const name of names) {
     const proxy = net[name]?.address;
     if (!proxy) throw new Error(`${name} proxy not recorded for ${network.name}`);
     const factory = await ethers.getContractFactory(name);
-    const impl = await factory.deploy();
+    const args = ctorArgs(name);
+    const impl = await factory.deploy(...args);
     console.log(`${name}: deploying implementation, tx ${impl.deployTransaction.hash}`);
     await impl.deployTransaction.wait(network.name === "hardhat" || network.name === "localhost" ? 1 : 2);
     console.log(`${name}: implementation ${impl.address}`);
 
     if (shouldVerify(network.name)) {
       try {
-        await hre.run("verify:verify", { address: impl.address, constructorArguments: [] });
+        await hre.run("verify:verify", { address: impl.address, constructorArguments: args });
         console.log(`${name}: verified`);
       } catch (err: any) {
         console.warn(`${name}: verify failed or already verified: ${err?.message ?? err}`);

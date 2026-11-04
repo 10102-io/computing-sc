@@ -148,6 +148,26 @@ async function main() {
       const i: string = await eoaRouter.legacyImplementation();
       push("EOA router legacyImplementation is the recorded one", expectedImpl, i, same(i, expectedImpl));
     }
+
+    // Since the 2026-11 train (docs/plans/train-2026-11.md) the implementation
+    // pins the UpgradeTimelock and the rotation levers answer only to it.
+    // Skipped while the live implementation predates the train.
+    const post = at(eoaRouterEntry.address, [
+      "function upgradeTimelock() view returns (address)",
+      "function activityAttestor() view returns (address)",
+    ]);
+    const expectedTimelock: string | undefined = (book as any).UpgradeTimelock?.address;
+    try {
+      const t: string = await post.upgradeTimelock();
+      push("EOA router rotation levers are timelocked", expectedTimelock ?? "UpgradeTimelock", t, same(t, expectedTimelock));
+      const expectedAttestor: string | undefined = (book as any).ActivityAttestor?.address;
+      if (expectedAttestor) {
+        const a: string = await post.activityAttestor();
+        push("EOA router activityAttestor is the recorded one", expectedAttestor, a, same(a, expectedAttestor));
+      }
+    } catch {
+      push("EOA router rotation levers are timelocked", "after the 2026-11 train", "pre-train implementation", true);
+    }
   }
 
   // Pending operations: worker ledger + live check.
