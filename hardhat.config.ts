@@ -128,6 +128,17 @@ const config: HardhatUserConfig = {
         },
       },
     ],
+    overrides: {
+      "contracts/forwarding/TransferLegacyEOAContract.sol": {
+        version: "0.8.35",
+        settings: {
+          evmVersion: "cancun",
+          optimizer: { enabled: true, runs: 200 },
+          viaIR: true,
+          outputSelection: { "*": { "*": ["storageLayout"] } },
+        },
+      },
+    },
   },
   etherscan: {
     apiKey: process.env.API_KEY_ETHERSCAN as string, //Single key
