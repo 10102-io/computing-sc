@@ -21,6 +21,46 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-04 — Contract train 2026-11, built and tested
+
+[Not deployed: on feat/train-2026-11]
+
+The checklist audit's four Mediums and every queued contract rider, in one
+timelock batch (wave A), plus legacy v3 (wave B), which deploys only after
+an independent audit. Plan, layouts, runbooks and the follow-up list for
+the app, admin panel and subgraph: `docs/plans/train-2026-11.md`. Neither
+wave is independently audited.
+
+Wave A, for new EOA legacies (a new clone implementation; existing legacies
+keep theirs): direct USDT allowances pay out on the claim path (SafeERC20,
+audit M-2); a non-WETH unswap needs a nonzero minimum (M-4); the owner's
+WETH unswap unwraps instead of reverting; a claim fee above 0.5% is refused
+and the create can bind the fee the creator saw. LegacyPullVaultV2 lets an
+owner unbind an activated legacy before signing for the next one (M-1) and
+admits further clone implementations only through the timelock. For every
+legacy: the EOA router's rotation levers (implementation, vault, attestor,
+creation code) move behind the 48-hour timelock and the pause moves to the
+governance Safe (M-3); auto-renew baselines are per attestor; zero-minimum
+swaps into non-WETH tokens are refused. Timelocks: an absolute unlock date
+(`createTimelockUntil`, for autopilot) and no more empty or zero-minimum
+creates. Premium: coupon codes and automatic referral shares. Multisig
+legacies: the legacy's Safe can manage its notifications. Terms: a user can
+record consent to the active terms for a reference such as a ShieldVault
+position, with no change to ShieldVault.
+
+Wave B, legacy v3 (a separate clone implementation, all features off by
+default): NFTs from an allowlisted set of collections, per-beneficiary
+backup lines (A, then A2, then A3), and an optional executor who can bring
+claims forward to a 30-day grace that any owner activity cancels and who
+can never benefit or hold anything.
+
+Tooling: clone implementations compile in their own job and reproduce byte
+for byte from the input Etherscan verifies; the train's deploy and batch
+script; the verifier, multisig router and EOA router ABIs are now covered by
+`sync-ui --check`. The Hardhat 3 migration is not done: it changes every
+contract's metadata hash, so deployed bytecode would no longer be
+reproduced byte for byte. 339 tests passing (263 before).
+
 ## 2026-11-04 — Deployment artifacts match the chain again
 
 [No contract or on-chain change.]
