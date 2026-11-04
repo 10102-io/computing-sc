@@ -263,6 +263,63 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       assert.equal((await usdc.balanceOf(bene2.address)).toString(), String(399000000 + 39900000), "B's 40 of the inflow, no more");
     });
 
+    it("round 3: the second line takes only shares whose own line never claimed; a claimed share's later inflows stay its line's", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, bene3, other, router, usdc, vault, nft721 } = f;
+      const { legacy, legacyId } = await createV3(f, sixtyForty(f), {
+        layer2: { user: other.address, percent: 1000000 },
+        delayLayer2: 60 * DAY,
+      });
+      await legacy.connect(owner).setBackupLines(30 * DAY, [{ primary: bene.address, second: bene3.address, third: ZERO }]);
+      await legacy.connect(owner).setNftItems([
+        item(nft721.address, ERC721, 0, 1, bene.address),
+        item(nft721.address, ERC721, 1, 1, bene2.address),
+      ]);
+      await nft721.connect(owner).setApprovalForAll(vault.address, true);
+      await usdc.connect(owner).approve(legacy.address, MAX);
+
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // A's line claims: 600
+      assert.equal(await legacy.lineClaimed(bene.address), true);
+      assert.equal(await legacy.lineClaimed(bene2.address), false);
+      await usdc.mint(owner.address, 100_000_000); // deposit after A's claim
+
+      await increase(61 * DAY);
+      await router.connect(other).activeLegacy(legacyId, [usdc.address], false);
+      // Only B's due: 40% of 1,100 = 440 gross. A's 60 of the deposit stays A's.
+      assert.equal((await usdc.balanceOf(other.address)).toString(), "438900000");
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "60000000");
+      await router.connect(other).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "60000000", "a second sweep still leaves A's due");
+      // NFTs follow the same rule: B's item to the second line, A's stays A's.
+      await legacy.connect(other).claimNfts([0, 1]);
+      assert.equal(await nft721.ownerOf(1), other.address);
+      assert.equal(await nft721.ownerOf(0), owner.address);
+
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(bene.address)).toString(), String(598500000 + 59850000));
+      await legacy.connect(bene).claimNfts([0]);
+      assert.equal(await nft721.ownerOf(0), bene.address);
+    });
+
+    it("round 3: without backup lines the whole-estate second line is unchanged (it takes everything pullable)", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, other, router, usdc } = f;
+      const { legacy, legacyId } = await createV3(f, sixtyForty(f), {
+        layer2: { user: other.address, percent: 1000000 },
+        delayLayer2: 60 * DAY,
+      });
+      await usdc.connect(owner).approve(legacy.address, MAX);
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // one claim pays both
+      assert.equal((await usdc.balanceOf(bene2.address)).toString(), "399000000");
+      await usdc.mint(owner.address, 100_000_000);
+      await increase(61 * DAY);
+      await router.connect(other).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(other.address)).toString(), "99750000");
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "0");
+    });
+
     it("ETH shares work the same way", async function () {
       const { owner, bene2, bene3, router, legacy, legacyId } = await withLines();
       await owner.sendTransaction({ to: legacy.address, value: 1_000_000_000 });

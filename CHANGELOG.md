@@ -54,8 +54,9 @@ a reference such as a ShieldVault position, with no change to ShieldVault.
 
 Wave B, legacy v3 (a separate clone implementation, all features off by
 default): NFTs from an allowlisted set of collections, per-beneficiary
-backup lines (A, then A2, then A3) where each share is its own running
-account so no heir's claim takes from another's, and an optional executor
+backup lines (A, then A2, then A3), where each share is its own running
+account so no heir's claim takes from another's and the second and third
+lines take only shares whose own line never claimed; and an optional executor
 who can bring claims forward to a 30-day grace (after the owner has been
 silent for half the trigger) that any owner activity cancels, and who can
 never benefit or hold anything. Backup lines and the executor are Premium.
@@ -65,7 +66,7 @@ for byte from the input Etherscan verifies; the train's deploy and batch
 script; the verifier, multisig router and EOA router ABIs are now covered by
 `sync-ui --check`. The Hardhat 3 migration is not done: it changes every
 contract's metadata hash, so deployed bytecode would no longer be
-reproduced byte for byte. 346 tests passing (263 before).
+reproduced byte for byte. 348 tests passing (263 before).
 
 ## 2026-11-04 — Deployment artifacts match the chain again
 
