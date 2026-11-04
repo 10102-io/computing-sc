@@ -236,11 +236,27 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       await router.connect(owner).autoSwap(legacyId, { storageToken: usdc.address, amountOutMin: 1, deadline: now + 3600 }, { value: 1_000_000_000 });
       await owner.sendTransaction({ to: legacy.address, value: 1_000_000 });
       await increase(DAY + 1);
-      await expectRevert(router.connect(bene2).activeLegacyAndUnswap(legacyId, [], 1, now + 7200 + DAY), "UnswapNotInPerShareMode()");
+      // Two first-line shares: the router refuses first (review round 2).
+      await expectRevert(router.connect(bene2).activeLegacyAndUnswap(legacyId, [], 1, now + 7200 + DAY), "UnswapNeedsSoleRecipient()");
       await router.connect(bene2).activeLegacy(legacyId, [], true); // ETH only
       await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
       // A takes 60% of the token, B's 40% waits in the owner's wallet.
       assert.equal((await usdc.balanceOf(owner.address)).toString(), "800000000");
+    });
+
+    it("a sole first-line share in per-share mode passes the router guard and is refused by the clone", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene3, router, usdc, uni } = f;
+      const { legacy, legacyId } = await createV3(f, [{ user: bene.address, percent: 1000000 }]);
+      await legacy.connect(owner).setBackupLines(30 * DAY, [{ primary: bene.address, second: bene3.address, third: ZERO }]);
+      await usdc.mint(uni.address, ethers.utils.parseUnits("1000000", 6));
+      const now = await currentTime();
+      await router.connect(owner).autoSwap(legacyId, { storageToken: usdc.address, amountOutMin: 1, deadline: now + 3600 }, { value: 1_000_000_000 });
+      await usdc.connect(owner).approve(legacy.address, MAX);
+      await increase(DAY + 1);
+      await expectRevert(router.connect(bene).activeLegacyAndUnswap(legacyId, [], 1, now + 7200 + DAY), "UnswapNotInPerShareMode()");
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      assert((await usdc.balanceOf(bene.address)).gt(0));
     });
 
     it("the whole-estate second line settles every outstanding share; later inflows still split by percentage", async function () {

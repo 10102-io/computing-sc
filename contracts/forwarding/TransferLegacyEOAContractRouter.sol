@@ -219,6 +219,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   error NotUpgradeTimelock();
   error ZeroAmountOutMin();
   error FeeAboveMax(uint256 fee, uint256 maxFeeBps);
+  error UnswapNeedsSoleRecipient();
 
   modifier onlyCodeAdmin() {
     if (msg.sender != _codeAdmin) revert NotCodeAdmin();
@@ -1019,6 +1020,17 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     uint256 deadline_
   ) external nonReentrant {
     address legacyAddress = _checkLegacyExisted(legacyId_);
+
+    // Router-level, so it covers every existing clone, which has neither
+    // guard: a non-WETH swap needs a minimum, and only a sole recipient of
+    // their layer may pick it (a co-recipient could sandwich everyone's share
+    // and bear only their part). Others claim the token with `activeLegacy`.
+    // Every clone vintage exposes eoaStorageToken() and getBeneficiaries(address).
+    address storageToken = ITransferEOALegacy(legacyAddress).eoaStorageToken();
+    if (storageToken != address(0) && storageToken != weth) {
+      if (amountOutMin_ == 0) revert ZeroAmountOutMin();
+      if (ITransferEOALegacy(legacyAddress).getBeneficiaries(msg.sender).length != 1) revert UnswapNeedsSoleRecipient();
+    }
 
     ITransferEOALegacy(legacyAddress).activeLegacyAndUnswap(
       assets_,

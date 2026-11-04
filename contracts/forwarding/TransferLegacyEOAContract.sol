@@ -177,22 +177,25 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     uint256 amountOutMin_,
     uint256 deadline_
   ) external onlyRouter onlyLive onlyOwner(sender_) {
-    if (eoaStorageToken == address(0)) revert AssetInvalid();
+    address token = eoaStorageToken;
+    if (token == address(0)) revert AssetInvalid();
     if (amountIn_ == 0) revert AssetInvalid();
+    // State first: nothing below may run with the swap still recorded.
+    eoaStorageToken = address(0);
+    _lastTimestamp = block.timestamp;
 
-    IERC20(eoaStorageToken).safeTransferFrom(sender_, address(this), amountIn_);
+    IERC20(token).safeTransferFrom(sender_, address(this), amountIn_);
 
-    if (eoaStorageToken == weth) {
+    if (token == weth) {
       if (block.timestamp > deadline_) revert SwapExpired();
       IWETH(weth).withdraw(amountIn_);
-      (bool sent, ) = payable(sender_).call{value: amountIn_}("");
-      if (!sent) revert EthTransferFailed();
+      _sendEth(sender_, amountIn_);
     } else {
       if (amountOutMin_ == 0) revert ZeroAmountOutMin();
-      IERC20(eoaStorageToken).forceApprove(uniswapRouter, amountIn_);
+      IERC20(token).forceApprove(uniswapRouter, amountIn_);
 
       address[] memory path = new address[](2);
-      path[0] = eoaStorageToken;
+      path[0] = token;
       path[1] = weth;
 
       IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
@@ -203,9 +206,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
         deadline_
       );
     }
-
-    eoaStorageToken = address(0);
-    _lastTimestamp = block.timestamp;
   }
 
   /* View functions to support premium */

@@ -73,6 +73,8 @@ interface ITransferEOALegacy {
 
   function eoaStorageToken() external view returns (address);
 
+  function getBeneficiaries(address bene_) external view returns (address[] memory);
+
   function autoSwap(
     address sender_,
     TransferLegacyStruct.EOALegacyETHSwap calldata swap_
