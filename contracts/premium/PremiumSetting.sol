@@ -212,19 +212,22 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     _updateUserConfig(msg.sender, timePriorActivation);
   }
 
-  function updateLegacyConfig(address[] calldata legacyAddresses, LegacyRecipients[] calldata legacyData) external onlyPremium(msg.sender) {
+  /// @notice Replace the reminder recipient sets of legacies the caller
+  /// administers (see `_notifyAdmin`); the creator must be premium and have
+  /// set their reminder timing.
+  function updateLegacyConfig(address[] calldata legacyAddresses, LegacyRecipients[] calldata legacyData) external {
     if (legacyAddresses.length != legacyData.length) revert LengthMismatch();
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
       _updateLegacyConfig(legacyAddresses[i], legacyData[i]);
     }
   }
 
-  function clearLegacyConfig(address[] calldata legacyAddresses) external onlyPremium(msg.sender) {
+  function clearLegacyConfig(address[] calldata legacyAddresses) external {
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
       IPremiumLegacy transferLegacy = IPremiumLegacy(legacyAddresses[i]);
-      if (msg.sender != transferLegacy.creator()) revert OnlyLegacyCreator();
+      address creator = _notifyAdmin(transferLegacy, true);
       _clearLegacyConfig(legacyAddresses[i]);
-      emit LegacyConfigReset(msg.sender, transferLegacy.getLegacyId(), legacyAddresses[i], transferLegacy.LEGACY_TYPE());
+      emit LegacyConfigReset(creator, transferLegacy.getLegacyId(), legacyAddresses[i], transferLegacy.LEGACY_TYPE());
     }
   }
 
@@ -242,7 +245,7 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   /// while keeping the (non-PII) addresses. Callable by the legacy creator.
   function clearLegacyPII(address[] calldata legacyAddresses) external {
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
-      if (msg.sender != IPremiumLegacy(legacyAddresses[i]).creator()) revert OnlyLegacyCreator();
+      address creator = _notifyAdmin(IPremiumLegacy(legacyAddresses[i]), false);
       LegacyConfig storage cfg = legacyCfgs[legacyAddresses[i]];
       for (uint256 j = 0; j < cfg.cosigners.length; j++) {
         cfg.cosigners[j].email = "";
@@ -256,7 +259,7 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
       cfg.secondLine.name = "";
       cfg.thirdLine.email = "";
       cfg.thirdLine.name = "";
-      emit PIICleared(msg.sender, legacyAddresses[i]);
+      emit PIICleared(creator, legacyAddresses[i]);
     }
   }
 
@@ -365,27 +368,42 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     string[] calldata names,
     address[] calldata watchers,
     bool[] calldata isFullVisibility
-  ) external onlyPremium(msg.sender) {
+  ) external {
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
+    address creator = _notifyAdmin(legacy, true);
     (uint256 legacyId, , ) = legacy.getLegacyInfo();
     uint128 legacyType = legacy.LEGACY_TYPE();
-    if (msg.sender != legacy.creator()) revert OnlyLegacyCreator();
     if (names.length != watchers.length || watchers.length != isFullVisibility.length) revert LengthMismatch();
     if (names.length == 0) revert CannotSetEmpty();
-    emit WatcherUpdated(msg.sender, legacyId, legacyAddress, legacyType, names, watchers, isFullVisibility);
+    emit WatcherUpdated(creator, legacyId, legacyAddress, legacyType, names, watchers, isFullVisibility);
   }
 
-  function clearWatcher(address[] memory legacyAddresses) external onlyPremium(msg.sender) {
+  function clearWatcher(address[] memory legacyAddresses) external {
     for (uint256 i = 0; i < legacyAddresses.length; i++) {
       IPremiumLegacy legacy = IPremiumLegacy(legacyAddresses[i]);
+      address creator = _notifyAdmin(legacy, true);
       (uint256 legacyId, , ) = legacy.getLegacyInfo();
       uint128 legacyType = legacy.LEGACY_TYPE();
-      if (msg.sender != legacy.creator()) revert OnlyLegacyCreator();
-      emit WatcherReset(msg.sender, legacyId, legacyAddresses[i], legacyType);
+      emit WatcherReset(creator, legacyId, legacyAddresses[i], legacyType);
     }
   }
 
   /* INTERNAL FUNCTIONS */
+
+  /**
+   * @dev Who may change a legacy's notification settings (2026-11 train,
+   * founder decision on DEFERRED "Multisig legacy creator-only off-chain
+   * admin"): its creator, or the legacy's own Safe, which every multisig
+   * legacy records as its owner, matching the router's `onlySafeWallet`. For
+   * an EOA legacy the owner is the creator, so nothing changes there. Premium
+   * is the creator's (`premiumOnly_`), whoever calls. Returns the creator:
+   * events stay keyed by it, so indexers see the same `user` either way.
+   */
+  function _notifyAdmin(IPremiumLegacy legacy, bool premiumOnly_) internal view returns (address creator) {
+    creator = legacy.creator();
+    if (msg.sender != creator && msg.sender != legacy.getLegacyOwner()) revert OnlyLegacyCreator();
+    if (premiumOnly_ && !isPremium(creator)) revert PremiumOnly();
+  }
   function _updateUserConfig(address user, uint256 timePriorActivation) internal {
     if (timePriorActivation == 0) revert TimePriorZero();
     UserConfig storage uc = userConfigs[user];
@@ -396,13 +414,15 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     emit UserConfigUpdated(user, timePriorActivation);
   }
 
-  function _updateLegacyConfig(address legacyAddr, LegacyRecipients calldata newCfg) internal requireUserConfig(msg.sender) {
+  function _updateLegacyConfig(address legacyAddr, LegacyRecipients calldata newCfg) internal {
     //prepare data
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddr);
     (uint256 legacyId, address owner, ) = legacy.getLegacyInfo();
     uint128 legacyType = legacy.LEGACY_TYPE();
 
-    if (msg.sender != legacy.creator()) revert OnlyLegacyCreator();
+    address creator = _notifyAdmin(legacy, true);
+    // Reminder timing is the creator's, whoever edits the recipients.
+    if (userConfigs[creator].timePriorActivation == 0) revert UserConfigNotSet();
     _clearLegacyConfig(legacyAddr);
 
     // Set cosigners (safe legacy) -> check cosigner valid. Stored PII-free (addr only).
@@ -444,7 +464,7 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
     }
 
     emit LegacyReminderUpdated(
-      msg.sender,
+      creator,
       legacyId,
       legacyAddr,
       legacyType,

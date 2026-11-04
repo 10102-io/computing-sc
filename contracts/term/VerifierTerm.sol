@@ -61,6 +61,24 @@ contract EIP712LegacyVerifier is Initializable, ReentrancyGuard, OwnableUpgradea
   /// signed-message modality keeps using `legacySigned`).
   mapping(address => Consent[]) public userConsents;
 
+  // ── Self-recorded consent (2026-11 train, closes `shield-vault-consent`) ──
+  // APPENDED storage (upgrade-safe). Third modality, for products that cannot
+  // call this verifier themselves: ShieldVault is immutable and must never
+  // depend on an upgradeable contract. The user's own transaction records
+  // "msg.sender accepted terms H for reference (contract, id)" next to the
+  // action it covers (a vault `open`), so attribution is the user's signature
+  // and nothing calls into or out of the referenced contract.
+
+  struct SelfConsent {
+    bytes32 termsHash;
+    uint64 timestamp;
+    address refContract;
+    uint256 refId;
+  }
+
+  /// @dev Per-user append-only log of self-recorded consents.
+  mapping(address => SelfConsent[]) public userSelfConsents;
+
   event LegacySigned(address indexed user, uint256 legacyId, uint256 timestamp);
   /// @dev Emitted alongside LegacySigned when the consent bound a specific
   /// terms version. Kept as a separate additive event so existing indexers
@@ -78,6 +96,17 @@ contract EIP712LegacyVerifier is Initializable, ReentrancyGuard, OwnableUpgradea
     uint256 timestamp
   );
   event ConsentRecorderSet(address indexed recorder, bool allowed);
+  /// @dev Self-recorded consent. `refContract` / `refId` name what it covers
+  /// (a ShieldVault and its position id); they are the user's own claim,
+  /// checked off-chain against that contract's events.
+  event SelfConsentRecorded(
+    address indexed user,
+    bytes32 indexed termsHash,
+    address indexed refContract,
+    uint256 refId,
+    string termsVersion,
+    uint256 timestamp
+  );
 
   error InvalidSignature();
   error SignatureUsed();
@@ -166,6 +195,35 @@ contract EIP712LegacyVerifier is Initializable, ReentrancyGuard, OwnableUpgradea
 
   function getUserConsentCount(address user) external view returns (uint256) {
     return userConsents[user].length;
+  }
+
+  /**
+   * @notice Record that the caller accepts the active terms for `refContract_`
+   * / `refId_` (e.g. a ShieldVault position). `termsHash_` is the document the
+   * app showed; it must be the active one, so a terms change between display
+   * and transaction reverts instead of recording consent to unseen terms.
+   */
+  function recordSelfConsent(bytes32 termsHash_, address refContract_, uint256 refId_) external {
+    if (activeTermsHash == bytes32(0)) revert NoActiveTerms();
+    if (termsHash_ != activeTermsHash) revert InvalidTerms();
+    if (refContract_ == address(0)) revert ZeroAddressNotAllowed();
+    userSelfConsents[msg.sender].push(
+      SelfConsent({termsHash: termsHash_, timestamp: uint64(block.timestamp), refContract: refContract_, refId: refId_})
+    );
+    emit SelfConsentRecorded(msg.sender, termsHash_, refContract_, refId_, activeTermsVersion, block.timestamp);
+  }
+
+  function getUserSelfConsentCount(address user) external view returns (uint256) {
+    return userSelfConsents[user].length;
+  }
+
+  /// @notice A self-recorded consent with the version tag its terms hash was published under.
+  function getUserSelfConsent(
+    address user,
+    uint256 index
+  ) external view returns (bytes32 termsHash, string memory termsVersion, uint256 timestamp, address refContract, uint256 refId) {
+    SelfConsent memory c = userSelfConsents[user][index];
+    return (c.termsHash, termsVersionOf[c.termsHash], c.timestamp, c.refContract, c.refId);
   }
 
   /// @notice Full tx-based consent record incl. the version tag the bound
