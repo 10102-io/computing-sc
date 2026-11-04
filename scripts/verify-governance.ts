@@ -22,8 +22,15 @@
 import { ethers, network } from "hardhat";
 import * as dotenv from "dotenv";
 import { getContracts } from "./utils";
+import { readEoaRouterAdmin } from "./utils/live-code";
 
 dotenv.config();
+
+/** The EOA router implementations live before the 2026-11 train. */
+const PRE_TRAIN_EOA_ROUTER_IMPL: Record<string, string> = {
+  mainnet: "0x355BBf74B91e021f18Cee0de191b295B4159E4A1",
+  sepolia: "0x580E53D243F4156B77A56c53093B6e7aa3B97eaF",
+};
 
 type Phase = "baseline" | "interim" | "final";
 const MAINTAINER = "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630";
@@ -162,27 +169,33 @@ async function main() {
       const a: string = await post.activityAttestor();
       push("EOA router activityAttestor is the recorded one", expectedAttestor, a, same(a, expectedAttestor));
     }
+    // "Not yet" is decided by the EIP-1967 slot alone: under ethers 5 a
+    // transport error also surfaces as CALL_EXCEPTION, so a failed call must
+    // never count as the pre-train case.
+    let admin: { counter: number; codeAdmin: string; implementation: string } | undefined;
     try {
-      const t: string = await post.upgradeTimelock();
-      push("EOA router rotation levers are timelocked", expectedTimelock ?? "UpgradeTimelock", t, same(t, expectedTimelock));
+      admin = await readEoaRouterAdmin(eoaRouterEntry.address);
     } catch (e: any) {
-      // "Not yet" only when the call reverted on the recorded pre-train
-      // implementation. An RPC failure, or a revert on any other
-      // implementation, is a failure, never a pass.
-      const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
-      let live = "";
-      try {
-        live = ethers.utils.getAddress("0x" + (await provider.getStorageAt(eoaRouterEntry.address, IMPL_SLOT)).slice(26));
-      } catch {
-        /* unknown */
+      push("EOA router storage readable", "implementation, counter, code admin", `could not read: ${e?.message ?? e}`, false);
+    }
+    if (admin) {
+      const preTrainImpl = PRE_TRAIN_EOA_ROUTER_IMPL[network.name];
+      if (preTrainImpl && same(admin.implementation, preTrainImpl)) {
+        push("EOA router rotation levers are timelocked", "after the 2026-11 train", `pre-train implementation ${admin.implementation}`, true);
+        push("EOA router code admin is the recorded pre-train key", gov.eoaRouterCodeAdmin ?? "governance.eoaRouterCodeAdmin", admin.codeAdmin, same(admin.codeAdmin, gov.eoaRouterCodeAdmin));
+      } else {
+        let t = "";
+        try {
+          t = await post.upgradeTimelock();
+        } catch (e: any) {
+          t = `could not read: ${e?.code ?? e?.message ?? e}`;
+        }
+        push("EOA router rotation levers are timelocked", expectedTimelock ?? "UpgradeTimelock", t, same(t, expectedTimelock));
+        // After the train the code admin (pause and attestor kill switch) is
+        // the only fast key on the router: it must be the Safe.
+        push("EOA router code admin is the governance Safe", safe ?? "governance.safe", admin.codeAdmin, same(admin.codeAdmin, safe));
+        push("EOA router initializer counter", "5", String(admin.counter), admin.counter === 5);
       }
-      const preTrain = e?.code === "CALL_EXCEPTION" && same(live, eoaRouterEntry.implementation);
-      push(
-        "EOA router rotation levers are timelocked",
-        "after the 2026-11 train",
-        preTrain ? `pre-train implementation ${live}` : `could not read: ${e?.code ?? e?.message ?? e}`,
-        preTrain
-      );
     }
   }
 

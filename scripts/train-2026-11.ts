@@ -13,10 +13,16 @@
  *   Recorded under `train202611` in contract-addresses.json, never over the
  *   live entries (they move when the batch has executed).
  *
- * batch (no transaction): runs the pre-schedule assertions (proxy admin owned
- * by the timelock; vault2's router and timelock; the new router
- * implementation's timelock; code at every address; mainnet Payment argument
- * 0 unless TRAIN_PAYMENT is set) and, only if all pass, writes the file:
+ * batch (no transaction): runs the pre-schedule assertions and, only if all
+ * pass, writes the file. Assertions: the router's live code admin is the
+ * recorded one (governance.eoaRouterCodeAdmin before wave A, the Safe before
+ * wave B) and its initializer counter fits; the proxy admin is owned by the
+ * timelock; every pending implementation, the new clone, vault2 (and in wave
+ * B the v3 implementation and the list) run the compiled code, immutables
+ * masked; vault2's router and timelock; the new router implementation's
+ * timelock; Payment: on mainnet TRAIN_PAYMENT may only be unset or the
+ * recorded Payment, and on every network the router's Payment after the
+ * batch is the recorded one.
  *   a: output/train-2026-11-wave-a-<network>.json
  *      [0] DefaultProxyAdmin.upgrade(TransferEOALegacyRouter, pending impl)
  *      [1] router.initializeV4(governance Safe, Payment or 0)
@@ -30,7 +36,8 @@
  *      [0] LegacyPullVaultV2.allowImplementation(TransferEOALegacyV3)
  *      [1] router.setLegacyImplementation(TransferEOALegacyV3)
  *
- * check: the same assertions, nothing written; run it right before print and
+ * check: the same assertions, nothing written, and the written file must
+ * equal the batch they build, item for item; run it right before print and
  * schedule.
  *
  * Then: $env:TL_ACTION="print"; $env:TL_BATCH="<file>"; npx hardhat run scripts/timelock-op.ts --network <net>
@@ -41,6 +48,7 @@ import * as hre from "hardhat";
 import { ethers, network } from "hardhat";
 import * as dotenv from "dotenv";
 import { getContracts, shouldVerify, sleep } from "./utils";
+import { compileAgainstLive, readEoaRouterAdmin } from "./utils/live-code";
 
 dotenv.config();
 
@@ -122,7 +130,26 @@ async function main() {
     if (!ok) failures.push(what);
   };
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  const hasCode = async (a: string) => (await ethers.provider.getCode(a)) !== "0x";
+  const isCompiled = async (contractName: string, address: string) => (await compileAgainstLive(contractName, address)).matches;
+  const zero = ethers.constants.AddressZero;
+
+  console.log("Pre-schedule assertions:");
+
+  // Who controls the router right now. Sepolia sits at counter 3, where the
+  // live implementation's ungated initializeV3 still lets anyone set the code
+  // admin until this batch runs; mainnet is at 4 (closed).
+  const admin = await readEoaRouterAdmin(routerProxy);
+  console.log(`  EOA router ${routerProxy}: implementation ${admin.implementation}, initializer counter ${admin.counter}, code admin ${admin.codeAdmin}`);
+  const expectedAdmin =
+    wave === "a"
+      ? need(net.governance?.eoaRouterCodeAdmin, "governance.eoaRouterCodeAdmin")
+      : need(net.governance?.safe, "governance.safe");
+  assert(same(admin.codeAdmin, expectedAdmin), `code admin is the expected ${wave === "a" ? "pre-train key" : "governance Safe"} ${expectedAdmin}`);
+  assert(
+    wave === "a" ? admin.counter === 3 || admin.counter === 4 : admin.counter === 5,
+    wave === "a" ? "initializer counter is 3 or 4 (initializeV4 is reinitializer 5)" : "initializer counter is 5 (wave A executed)"
+  );
+
   const vaultAddr = need(train.LegacyPullVaultV2, "train202611.LegacyPullVaultV2");
   const vault = V.attach(vaultAddr);
   const proxyAdmin = new ethers.Contract(
@@ -130,9 +157,8 @@ async function main() {
     ["function owner() view returns (address)"],
     ethers.provider
   );
-
-  console.log("Pre-schedule assertions:");
   assert(same(await proxyAdmin.owner(), timelock), "DefaultProxyAdmin.owner() is the UpgradeTimelock");
+  assert(await isCompiled("LegacyPullVaultV2", vaultAddr), `vault2 ${vaultAddr} runs the compiled LegacyPullVaultV2`);
   assert(same(await vault.router(), routerProxy), "vault2.router() is the EOA router proxy");
   assert(same(await vault.upgradeTimelock(), timelock), "vault2.upgradeTimelock() is the UpgradeTimelock");
 
@@ -142,31 +168,36 @@ async function main() {
     const names = ["TransferEOALegacyRouter", "TimeLockRouter", "PremiumRegistry", "PremiumSetting", "EIP712LegacyVerifier"];
     for (const n of names) {
       const impl = need(net[n]?.pendingImplementation, `${n}.pendingImplementation (run deploy-impl.ts)`);
-      assert(await hasCode(impl), `${n} pending implementation ${impl} has code`);
+      assert(await isCompiled(n, impl), `${n} pending implementation ${impl} runs the compiled ${n}`);
     }
     const routerImpl = R.attach(net.TransferEOALegacyRouter.pendingImplementation);
     assert(same(await routerImpl.upgradeTimelock(), timelock), "new router implementation's upgradeTimelock() is the UpgradeTimelock");
-    assert(await hasCode(clone), `clone implementation ${clone} has code`);
+    assert(await isCompiled("TransferEOALegacy", clone), `clone implementation ${clone} runs the compiled TransferEOALegacy`);
     assert((await vault.cloneCodehash()) === (await vault.codehashOf(clone)), "vault2 pins the new clone implementation");
-    assert(await hasCode(safe), `governance Safe ${safe} has code`);
+    assert((await ethers.provider.getCode(safe)) !== "0x", `governance Safe ${safe} has code`);
 
-    // initializeV4's Payment argument: 0 (unchanged) on mainnet unless
-    // TRAIN_PAYMENT says otherwise; on Sepolia the recorded Payment when the
-    // router still points at the orphan.
+    // initializeV4's Payment argument. Mainnet: 0 (unchanged); TRAIN_PAYMENT
+    // may only be unset or the recorded mainnet Payment. Elsewhere: the
+    // recorded Payment when the router points at another one. Either way the
+    // router's Payment after the batch must be the recorded one.
     const live = await ethers.getContractAt("TransferEOALegacyRouter", routerProxy);
     const livePayment = ethers.utils.getAddress(await live.paymentContract());
     const recordedPayment = need(net.Payment?.address, "Payment");
     const explicit = process.env.TRAIN_PAYMENT;
-    const payment = explicit
-      ? need(explicit, "TRAIN_PAYMENT")
-      : network.name === "mainnet" || livePayment === recordedPayment
-        ? ethers.constants.AddressZero
-        : recordedPayment;
-    console.log(`  Payment: live ${livePayment}, recorded ${recordedPayment}, initializeV4 argument ${payment}`);
+    // PowerShell $env: values persist across commands: say what is set.
+    console.log(`  TRAIN_PAYMENT is ${explicit === undefined || explicit === "" ? "unset" : `set to ${explicit}`}`);
+    let payment = zero;
     if (network.name === "mainnet") {
-      assert(payment === ethers.constants.AddressZero || Boolean(explicit), "mainnet Payment argument is 0 unless TRAIN_PAYMENT is set");
+      assert(!explicit || same(explicit, recordedPayment), `mainnet: TRAIN_PAYMENT is unset or the recorded Payment ${recordedPayment}`);
+      if (explicit && same(explicit, recordedPayment) && !same(livePayment, recordedPayment)) payment = recordedPayment;
+    } else if (explicit) {
+      payment = need(explicit, "TRAIN_PAYMENT");
+    } else if (!same(livePayment, recordedPayment)) {
+      payment = recordedPayment;
     }
-    if (payment !== ethers.constants.AddressZero) assert(await hasCode(payment), `Payment ${payment} has code`);
+    const after = payment === zero ? livePayment : payment;
+    console.log(`  Payment: live ${livePayment}, recorded ${recordedPayment}; initializeV4 argument ${payment}; after the batch ${after}`);
+    assert(same(after, recordedPayment), `the router's Payment after the batch is the recorded ${recordedPayment}`);
 
     items.push({ proxy: "TransferEOALegacyRouter", impl: net.TransferEOALegacyRouter.pendingImplementation });
     items.push({ target: routerProxy, data: R.interface.encodeFunctionData("initializeV4", [safe, payment]), label: `router.initializeV4(${safe}, ${payment})` });
@@ -185,6 +216,8 @@ async function main() {
     }
     assert(same(routerTimelock || "0x", timelock), "wave A executed: the router pins the UpgradeTimelock");
     assert(same(await live.pullVault(), vaultAddr), "wave A executed: the router uses vault2");
+    assert(await isCompiled("TransferEOALegacyV3", v3), `v3 implementation ${v3} runs the compiled TransferEOALegacyV3`);
+    assert(await isCompiled("NftCollectionWhiteList", list), `list ${list} runs the compiled NftCollectionWhiteList`);
     assert(!(await vault.isAllowedCodehash(await vault.codehashOf(v3))), "vault2 does not allow v3 yet");
     const V3 = await ethers.getContractFactory("TransferEOALegacyV3");
     assert(same(await V3.attach(v3).nftAllowlist(), list), "v3 implementation's nftAllowlist() is the recorded list");
@@ -192,19 +225,38 @@ async function main() {
     items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setLegacyImplementation", [v3]), label: `router.setLegacyImplementation(${v3})` });
   }
 
+  const outDir = path.join(__dirname, "..", "output");
+  const file = path.join(outDir, `train-2026-11-wave-${wave}-${network.name}.json`);
+  const rel = path.relative(process.cwd(), file);
+  if (action === "check") {
+    // The file the Safe will schedule must be exactly what these assertions built.
+    const norm = (list: Array<Record<string, string>>) =>
+      JSON.stringify(list.map((it) => Object.fromEntries(Object.entries(it).map(([k, v]) => [k, String(v).toLowerCase()]))));
+    if (!fs.existsSync(file)) {
+      assert(false, `${rel} exists (run TRAIN_ACTION=batch first)`);
+    } else {
+      const written: Array<Record<string, string>> = JSON.parse(fs.readFileSync(file, "utf-8"));
+      const n = Math.max(written.length, items.length);
+      for (let i = 0; i < n; i++) {
+        if (norm([written[i] ?? {}]) !== norm([items[i] ?? {}])) {
+          console.log(`  item ${i}: file ${JSON.stringify(written[i])}\n          expected ${JSON.stringify(items[i])}`);
+        }
+      }
+      assert(norm(written) === norm(items), `${rel} matches the batch these assertions build, item for item`);
+    }
+  }
+
   if (failures.length) throw new Error(`${failures.length} assertion(s) failed; nothing written. Fix and rerun.`);
   if (action === "check") {
-    console.log("All assertions pass. Safe to print and schedule the batch file written by TRAIN_ACTION=batch.");
+    console.log(`All assertions pass and ${rel} matches. Safe to print and schedule it.`);
     return;
   }
 
-  const outDir = path.join(__dirname, "..", "output");
   fs.mkdirSync(outDir, { recursive: true });
-  const file = path.join(outDir, `train-2026-11-wave-${wave}-${network.name}.json`);
   fs.writeFileSync(file, JSON.stringify(items, null, 2));
   items.forEach((it, i) => console.log(`  [${i}] ${it.label ?? `upgrade ${it.proxy} -> ${it.impl}`}`));
-  console.log(`\nWrote ${path.relative(process.cwd(), file)}`);
-  console.log(`Next: $env:TL_ACTION="print"; $env:TL_BATCH="${path.relative(process.cwd(), file)}"; npx hardhat run scripts/timelock-op.ts --network ${network.name}`);
+  console.log(`\nWrote ${rel}`);
+  console.log(`Next: $env:TRAIN_ACTION="check" (same network), then $env:TL_ACTION="print"; $env:TL_BATCH="${rel}"; npx hardhat run scripts/timelock-op.ts --network ${network.name}`);
 }
 
 main().catch((e) => {

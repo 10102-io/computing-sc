@@ -45,7 +45,8 @@ router's rotation levers (implementation, vault, attestor, creation code)
 move behind the 48-hour timelock, the pause and the attestor kill switch
 move to the governance Safe (M-3), the old ungated reinitializers are gone;
 auto-renew baselines are per attestor; zero-minimum swaps into non-WETH
-tokens are refused. Timelocks: an absolute unlock date
+tokens are refused, and existing clones' unswap claims get the same
+minimum and sole-recipient rules at the router. Timelocks: an absolute unlock date
 (`createTimelockUntil`, for autopilot) and no more empty or zero-minimum
 creates. Premium: coupon codes and automatic referral shares. Notifications:
 the legacy's Safe can manage them, and a contract posing as a legacy can no
@@ -63,10 +64,12 @@ never benefit or hold anything. Backup lines and the executor are Premium.
 
 Tooling: clone implementations compile in their own job and reproduce byte
 for byte from the input Etherscan verifies; the train's deploy and batch
-script; the verifier, multisig router and EOA router ABIs are now covered by
-`sync-ui --check`. The Hardhat 3 migration is not done: it changes every
-contract's metadata hash, so deployed bytecode would no longer be
-reproduced byte for byte. 348 tests passing (263 before).
+script, which checks every address it schedules against the compiled code
+and the router's live code admin before writing the batch; the verifier,
+multisig router and EOA router ABIs are now covered by `sync-ui --check`.
+The Hardhat 3 migration is not done: it changes every contract's metadata
+hash, so deployed bytecode would no longer be reproduced byte for byte.
+353 tests passing (263 before).
 
 ## 2026-11-04 — Deployment artifacts match the chain again
 

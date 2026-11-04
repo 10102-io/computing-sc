@@ -216,6 +216,8 @@
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
       ],
+      "eoaRouterCodeAdmin": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
+      "_eoaRouterCodeAdminNote": "Sepolia TransferEOALegacyRouter _codeAdmin until the train. The router is at initializer counter 3, so its live initializeV3 is callable by anyone until the batch runs (testnet only); train-2026-11.ts fails if the live value differs.",
       "activityAttestor": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
       "_activityAttestorNote": "Sepolia rehearsal attestor (the maintainer EOA), read 2026-11-04."
     },
@@ -430,6 +432,8 @@
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
       ],
+      "eoaRouterCodeAdmin": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
+      "_eoaRouterCodeAdminNote": "TransferEOALegacyRouter _codeAdmin (storage) until the 2026-11 train's initializeV4 hands it to the Safe; train-2026-11.ts and verify-governance.ts compare the live value with it.",
       "activityAttestor": "0x0925B872a4F4a39544A5a191dB67C42E30240a1E",
       "_activityAttestorNote": "EOA router activityAttestor, rotated 2026-10-22 after the Railway incident (computing/docs/OPS-CHECKLIST.md); replaces 0x4B05aC1b0BF109A9CE30dCEc2831990d694d74D0 (2026-07-30). Checked by verify-governance.ts."
     },
