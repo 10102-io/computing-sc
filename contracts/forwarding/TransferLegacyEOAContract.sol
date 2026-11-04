@@ -801,20 +801,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       // legacy-pull-vault.md). Per token, pull through whichever grants most
       // — a single deterministic path per token keeps the accounting simple
       // and matches the original min(balance, allowance) semantics exactly.
-      PullRoute route = PullRoute.DirectErc20;
-      uint256 effectiveAllowance = IERC20(token).allowance(ownerAddress, address(this));
-      {
-        uint256 permit2AllowanceAmount = _permit2Allowance(ownerAddress, token);
-        if (permit2AllowanceAmount > effectiveAllowance) {
-          effectiveAllowance = permit2AllowanceAmount;
-          route = PullRoute.Permit2Clone;
-        }
-      }
-      (uint256 vaultAllowanceAmount, address vault) = _vaultAllowance(ownerAddress, token);
-      if (vaultAllowanceAmount > effectiveAllowance) {
-        effectiveAllowance = vaultAllowanceAmount;
-        route = PullRoute.Vault;
-      }
+      (PullRoute route, uint256 effectiveAllowance, address vault) = _route(ownerAddress, token);
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
       uint256 totalAmount = balanceAmountErc20 > effectiveAllowance ? effectiveAllowance : balanceAmountErc20;
       if (totalAmount > 0) {
@@ -887,6 +874,24 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, vault);
     if (block.timestamp > expiration) return (0, address(0));
     return (amount, vault);
+  }
+
+  /// @dev The rail granting the most for (owner_, token_): the direct ERC-20
+  /// allowance, Permit2 with this clone as spender, or Permit2 through the
+  /// pinned vault. `vault` is set only on the vault rail.
+  function _route(address owner_, address token_) internal view returns (PullRoute route, uint256 allowance_, address vault) {
+    allowance_ = IERC20(token_).allowance(owner_, address(this));
+    uint256 permit2Amount = _permit2Allowance(owner_, token_);
+    if (permit2Amount > allowance_) {
+      allowance_ = permit2Amount;
+      route = PullRoute.Permit2Clone;
+    }
+    (uint256 vaultAmount, address vault_) = _vaultAllowance(owner_, token_);
+    if (vaultAmount > allowance_) {
+      allowance_ = vaultAmount;
+      route = PullRoute.Vault;
+      vault = vault_;
+    }
   }
 
   /// @dev Which authorization rail a token is pulled through at claim time.

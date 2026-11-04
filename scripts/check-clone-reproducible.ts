@@ -2,10 +2,10 @@
  * Proves that a clone implementation's deployed bytecode is reproducible from
  * the minimal standard-JSON input Etherscan and Sourcify receive, i.e. that it
  * will verify. Recompiles the artifact's own build-info input with the cached
- * native solc and compares the runtime bytecode byte for byte; then compiles
- * the same contract inside the repo-wide input (every contract in one job, the
- * shape that produced the unverifiable April 2026 target) and reports whether
- * unrelated files shift its bytecode.
+ * native solc and compares the runtime bytecode byte for byte (exit 1 if not);
+ * then, for information, compiles the same contract inside a repo-wide input
+ * (every contract in one job, the shape that produced the unverifiable April
+ * 2026 target) and reports whether unrelated files shift its bytecode.
  *
  *   npx hardhat run scripts/check-clone-reproducible.ts
  *   $env:CLONE="contracts/forwarding/TransferLegacyEOAContractV3.sol:TransferEOALegacyV3"; npx hardhat run scripts/check-clone-reproducible.ts
@@ -55,13 +55,18 @@ async function main() {
   const reproducible = got === expected;
   console.log(`  minimal input (what verification submits): ${reproducible ? "IDENTICAL" : "DIFFERENT"}`);
 
-  // Repo-wide input: every .sol under contracts/ plus whatever they import,
-  // resolved from the other build-infos Hardhat already wrote.
+  // Repo-wide input: every source any build-info names, with project files
+  // read from disk (older build-infos can hold stale copies of them).
+  const root = path.join(__dirname, "..");
   const allSources: Record<string, { content: string }> = {};
-  const biDir = path.join(__dirname, "..", "artifacts", "build-info");
+  const biDir = path.join(root, "artifacts", "build-info");
   for (const f of fs.readdirSync(biDir)) {
     const bi = JSON.parse(fs.readFileSync(path.join(biDir, f), "utf-8"));
-    for (const [name, src] of Object.entries<any>(bi.input.sources)) allSources[name] = { content: src.content };
+    for (const [name, src] of Object.entries<any>(bi.input.sources)) {
+      const onDisk = path.join(root, name);
+      if (name.startsWith("contracts/") && !fs.existsSync(onDisk)) continue;
+      allSources[name] = { content: name.startsWith("contracts/") ? fs.readFileSync(onDisk, "utf-8") : src.content };
+    }
   }
   const wide = compile(solc, { ...buildInfo.input, sources: allSources });
   const wideGot = ("0x" + wide.contracts[sourceName][contractName].evm.deployedBytecode.object).toLowerCase();
