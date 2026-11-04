@@ -128,17 +128,33 @@ const config: HardhatUserConfig = {
         },
       },
     ],
-    overrides: {
-      "contracts/forwarding/TransferLegacyEOAContract.sol": {
-        version: "0.8.35",
-        settings: {
-          evmVersion: "cancun",
-          optimizer: { enabled: true, runs: 200 },
-          viaIR: true,
-          outputSelection: { "*": { "*": ["storageLayout"] } },
+    // EOA clone implementations compile in their own job. With viaIR, solc
+    // 0.8.x emits different bytecode depending on which unrelated files are
+    // in the standard-JSON input, so the April 2026 clone target could never
+    // be matched by Etherscan or Sourcify (sourcify#618,
+    // `extra_file_input_bug`). An override gets a job whose input is exactly
+    // the file's dependency closure, which is what verification submits
+    // (scripts/check-clone-reproducible.ts). viaIR stays on: the clone does
+    // not compile without it (stack too deep).
+    // The v3 clone optimizes for size (runs 1): at 200 runs it exceeds the
+    // 24,576-byte limit. Runs trade deploy size against call gas only.
+    overrides: Object.fromEntries(
+      [
+        ["contracts/forwarding/TransferLegacyEOAContract.sol", 200],
+        ["contracts/forwarding/TransferLegacyEOAContractV3.sol", 1],
+      ].map(([file, runs]) => [
+        file as string,
+        {
+          version: "0.8.35",
+          settings: {
+            evmVersion: "cancun",
+            optimizer: { enabled: true, runs: runs as number },
+            viaIR: true,
+            outputSelection: { "*": { "*": ["storageLayout"] } },
+          },
         },
-      },
-    },
+      ])
+    ),
   },
   etherscan: {
     apiKey: process.env.API_KEY_ETHERSCAN as string, //Single key
