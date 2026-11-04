@@ -98,7 +98,7 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
       uniswapRouterAddr,
       weth,
     ], "initialize", undefined, [dev.address]);
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
 
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [
       legacyDeployer.address,

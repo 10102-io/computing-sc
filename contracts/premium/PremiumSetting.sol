@@ -8,6 +8,11 @@ import "../interfaces/IPremiumSetting.sol";
 
 import {TransferLegacyStruct} from "../libraries/TransferLegacyStruct.sol";
 
+/// @dev The routers' id-to-legacy record (EOALegacyFactory and LegacyFactory).
+interface ILegacyRegistry {
+  function legacyAddresses(uint256 legacyId) external view returns (address);
+}
+
 contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   struct UserConfig {
     string ownerName;
@@ -136,6 +141,7 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
   error InvalidBeneficiary();
   error InvalidLineAddress();
   error TooManyAttempts();
+  error NotALegacy();
 
   /* Modifier */
   modifier onlyPremium(address user) {
@@ -400,6 +406,16 @@ contract PremiumSetting is OwnableUpgradeable, IPremiumSetting {
    * events stay keyed by it, so indexers see the same `user` either way.
    */
   function _notifyAdmin(IPremiumLegacy legacy, bool premiumOnly_) internal view returns (address creator) {
+    // Everything below is read from the legacy, so first prove it is one:
+    // the router for its type must have created it under its id. Otherwise
+    // any contract could answer with another legacy's id and type and a
+    // premium creator, and forge notification events for it.
+    uint128 legacyType = legacy.LEGACY_TYPE();
+    address router = legacyType == 3
+      ? transferLegacyEOAContractRouter
+      : legacyType == 1 ? multisigLegacyContractRouter : legacyType == 2 ? transferLegacyContractRouter : address(0);
+    if (router == address(0) || ILegacyRegistry(router).legacyAddresses(legacy.getLegacyId()) != address(legacy)) revert NotALegacy();
+
     creator = legacy.creator();
     if (msg.sender != creator && msg.sender != legacy.getLegacyOwner()) revert OnlyLegacyCreator();
     if (premiumOnly_ && !isPremium(creator)) revert PremiumOnly();

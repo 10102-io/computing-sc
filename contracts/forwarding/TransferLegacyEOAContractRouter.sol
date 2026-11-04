@@ -83,7 +83,8 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   // only DELAY activation — never accelerate it, never claim, never move
   // funds — and only within four hard bounds enforced here:
   //   1. per-legacy owner opt-in (premium-gated, default OFF),
-  //   2. strictly increasing attested nonce (no re-using one observation),
+  //   2. strictly increasing attested nonce, per attestor (no re-using one
+  //      observation),
   //   3. only within AUTO_RENEW_WINDOW of the activation deadline
   //      (~one renewal per period),
   //   4. an AUTO_RENEW_BUDGET since the owner's last REAL check-in, after
@@ -93,8 +94,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
 
   /// @dev Packed per-legacy auto-renew state (single slot).
   /// `budgetAnchor` = timestamp of opt-in or the owner's last real check-in;
-  /// `lastNonceSeen` survives disable/re-enable so a stale observation can
-  /// never be replayed after a toggle.
+  /// `lastNonceSeen` = the latest observation, informational only since the
+  /// 2026-11 train: replays are blocked by `attestorNonceSeen`, per attestor,
+  /// which owner toggles never reset.
   struct AutoRenewState {
     bool enabled;
     uint64 lastNonceSeen;
@@ -358,30 +360,21 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     weth = weth_;
   }
 
-  function initializeV2(address codeAdmin_) external reinitializer(3) {
-    if (codeAdmin_ == address(0)) revert InvalidInitialization();
-    _codeAdmin = codeAdmin_;
-  }
-
-  // Additional rotation path for proxies whose `_initialized` counter has
-  // already advanced past 3 due to a prior reinitialization cycle performed on
-  // an earlier implementation. Use this when `initializeV2` is no longer
-  // callable (e.g. mainnet as of the EIP-1167 upgrade). Must be called
-  // atomically with the proxy upgrade (e.g. via `admin.upgradeAndCall`) to
-  // prevent any window for front-running.
-  function initializeV3(address codeAdmin_) external reinitializer(4) {
-    if (codeAdmin_ == address(0)) revert InvalidInitialization();
-    _codeAdmin = codeAdmin_;
-  }
+  // initializeV2 (reinitializer 3) and initializeV3 (reinitializer 4), which
+  // set the code admin without any caller check, are gone: the batch that
+  // installs this implementation runs initializeV4 at once, after which the
+  // counter is 5 and they could never run again. A fresh deployment goes
+  // initialize, then initializeV4 from the timelock.
 
   /**
-   * @dev 2026-11 train: hand the code admin (now only `setCreatePaused`) to
-   * the governance Safe and, where needed, repoint the Payment contract new
-   * legacies snapshot their fee from (Sepolia still points at an orphan).
-   * `paymentContract_ == address(0)` leaves it unchanged. Only the
-   * UpgradeTimelock may call it, so it can run as the item right after the
-   * proxy upgrade in the same timelock batch with no window for anyone else;
-   * reinitializer(5) works from both live counters (mainnet 4, Sepolia 3).
+   * @dev 2026-11 train: hand the code admin (`setCreatePaused`, and zeroing
+   * the attestor) to the governance Safe and, where needed, repoint the
+   * Payment contract new legacies snapshot their fee from (Sepolia still
+   * points at an orphan). `paymentContract_ == address(0)` leaves it
+   * unchanged. Only the UpgradeTimelock may call it, so it runs as the item
+   * right after the proxy upgrade in the same batch with no window for anyone
+   * else; reinitializer(5) works from both live counters (mainnet 4, Sepolia
+   * 3). It runs once: a later re-upgrade batch must not repeat it.
    */
   function initializeV4(address codeAdmin_, address paymentContract_) external reinitializer(5) onlyUpgradeTimelock {
     if (codeAdmin_ == address(0)) revert InvalidInitialization();
@@ -435,10 +428,14 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     emit PullVaultSet(vault_);
   }
 
-  /// @dev UpgradeTimelock only since the 2026-11 train (checklist audit M-3).
-  /// Zeroing it, the fast way to stop renewals, is also behind the timelock;
-  /// a compromised attestor can only delay activation, never move funds.
-  function setActivityAttestor(address attestor_) external onlyUpgradeTimelock {
+  /// @dev Installing an attestor needs the UpgradeTimelock since the 2026-11
+  /// train (checklist audit M-3). Removing it (address(0)) is the kill switch
+  /// and stays fast: the code admin may do it too. Removal can only stop
+  /// renewals, which fails safe (activation proceeds on schedule).
+  function setActivityAttestor(address attestor_) external {
+    if (msg.sender != upgradeTimelock && (attestor_ != address(0) || msg.sender != _codeAdmin)) {
+      revert NotUpgradeTimelock();
+    }
     activityAttestor = attestor_;
     emit ActivityAttestorSet(attestor_);
   }
@@ -760,9 +757,9 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     AutoRenewState storage renewState = autoRenewState[legacyId_];
     renewState.enabled = enabled_;
     if (enabled_) {
-      // Fresh budget from the moment of consent. `lastNonceSeen` is
-      // intentionally preserved across toggles so a pre-disable observation
-      // can never be replayed after re-enabling.
+      // Fresh budget from the moment of consent. Toggles never touch
+      // `attestorNonceSeen`, so a pre-disable observation can never be
+      // replayed after re-enabling.
       renewState.budgetAnchor = uint64(block.timestamp);
     }
     emit TransferEOALegacyAutoRenewSet(legacyId_, msg.sender, enabled_, block.timestamp);

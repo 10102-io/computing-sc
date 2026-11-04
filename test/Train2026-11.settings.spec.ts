@@ -17,24 +17,44 @@ describe("Train 2026-11 — PremiumSetting Safe admin", function () {
   this.timeout(150000);
 
   async function deployFixture() {
-    const [dev, creator, safe, stranger, router, multisigRouter, beneficiary] = await ethers.getSigners();
+    const [dev, creator, safe, stranger, beneficiary] = await ethers.getSigners();
     const setting = await deployProxy("PremiumSetting", [], "initialize", dev);
+    const Registry = await ethers.getContractFactory("MockLegacyRegistry");
+    const eoaRouter = await Registry.deploy();
+    const multisigRouter = await Registry.deploy();
     const registry = ethers.Wallet.createRandom().address;
-    await setting.connect(dev).setParams(registry, ethers.constants.AddressZero, router.address, multisigRouter.address);
+    await setting.connect(dev).setParams(registry, ethers.constants.AddressZero, eoaRouter.address, multisigRouter.address);
     await ethers.provider.send("hardhat_impersonateAccount", [registry]);
     await ethers.provider.send("hardhat_setBalance", [registry, "0x1000000000000000000"]);
     const registrySigner = await ethers.getSigner(registry);
     await setting.connect(registrySigner).updatePremiumTime(creator.address, YEAR);
+    await setting.connect(registrySigner).updatePremiumTime(stranger.address, YEAR);
 
     const Mock = await ethers.getContractFactory("MockPremiumLegacy");
     // A multisig legacy records its Safe as owner and the submitting EOA as creator.
     const multisig = await Mock.deploy(creator.address, safe.address, multisigRouter.address, "m", 1, 1);
     await multisig.setLegacyType(1);
+    await multisig.setLegacyId(7);
+    await multisigRouter.set(7, multisig.address);
     // An EOA legacy: owner == creator.
-    const eoa = await Mock.deploy(creator.address, creator.address, router.address, "e", 1, 1);
+    const eoa = await Mock.deploy(creator.address, creator.address, eoaRouter.address, "e", 1, 1);
+    await eoa.setLegacyId(8);
+    await eoaRouter.set(8, eoa.address);
 
-    return { dev, creator, safe, stranger, beneficiary, setting, multisig, eoa };
+    return { dev, creator, safe, stranger, beneficiary, setting, multisig, eoa, eoaRouter, multisigRouter, Mock };
   }
+
+  it("review L-1: a fake legacy that copies a real one's id and type, with a premium creator, is refused", async function () {
+    const { stranger, setting, Mock, multisigRouter } = await loadFixture(deployFixture);
+    for (const [type, id] of [[1, 7], [3, 8], [2, 7], [9, 7]]) {
+      const fake = await Mock.deploy(stranger.address, stranger.address, multisigRouter.address, "fake", 1, 1);
+      await fake.setLegacyType(type);
+      await fake.setLegacyId(id);
+      await expectRevert(setting.connect(stranger).setWatchers(fake.address, ["w"], [stranger.address], [true]), "NotALegacy()");
+      await expectRevert(setting.connect(stranger).clearLegacyPII([fake.address]), "NotALegacy()");
+      await expectRevert(setting.connect(stranger).updateLegacyConfig([fake.address], [recipients]), "NotALegacy()");
+    }
+  });
 
   const recipients = { cosigners: [], beneficiaries: [], secondLine: ethers.constants.AddressZero, thirdLine: ethers.constants.AddressZero };
 

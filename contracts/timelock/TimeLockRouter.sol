@@ -227,6 +227,12 @@ contract TimeLockRouter is OwnableUpgradeable {
   // ───────────── Native Token Receive ─────────────
   receive() external payable {}
 
+  /// @dev Locks the implementation contract itself; the proxy keeps its own
+  /// initializer state. No storage.
+  constructor() {
+    _disableInitializers();
+  }
+
   function initialize(address initialOwner) external initializer {
     __Ownable_init(initialOwner);
   }

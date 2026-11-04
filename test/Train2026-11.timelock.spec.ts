@@ -54,6 +54,12 @@ describe("Train 2026-11 — TimeLockRouter (wave A)", function () {
     ...extra,
   });
 
+  it("review L-2: the implementation contract itself cannot be initialized", async function () {
+    const [, , , attacker] = await ethers.getSigners();
+    const impl = await (await ethers.getContractFactory("TimeLockRouter")).deploy();
+    await expectRevert(impl.connect(attacker).initialize(attacker.address), "InvalidInitialization()");
+  });
+
   describe("router-create-hardening", function () {
     it("an empty regular, soft or gift create reverts, with or without ETH attached", async function () {
       const { user, recipient, router } = await loadFixture(deployFixture);

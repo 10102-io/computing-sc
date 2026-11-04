@@ -64,7 +64,7 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
       router,
       weth,
     ], "initialize", undefined, [dev.address]);
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
 
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
     await transferEOALegacyRouter
@@ -323,7 +323,7 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
       router,
       weth,
     ], "initialize", undefined, [dev.address]);
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
 
     const eoaImpl = await (await ethers.getContractFactory("TransferEOALegacy")).deploy();
     await transferEOALegacyRouter.connect(dev).setLegacyImplementation(eoaImpl.address);

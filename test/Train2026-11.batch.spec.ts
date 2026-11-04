@@ -81,7 +81,9 @@ describe("Train 2026-11 — wave A batch through the UpgradeTimelock, from live 
       "TransferEOALegacyRouter",
       R.interface.encodeFunctionData("initialize", [legacyDeployer.address, premiumSetting.address, verifierTerm.address, payment.address, uni.address, weth.address])
     );
-    await router.connect(dev).initializeV3(dev.address); // mainnet: counter 4, maintainer EOA as code admin
+    // Mainnet today: counter 4, the maintainer EOA as code admin. The live
+    // code still has initializeV3; the train's implementation does not.
+    await new ethers.Contract(router.address, ["function initializeV3(address)"], dev).initializeV3(dev.address);
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [legacyDeployer.address, premiumSetting.address, verifierTerm.address]);
     await wireRouters({
       admin: dev,
@@ -213,6 +215,8 @@ describe("Train 2026-11 — wave A batch through the UpgradeTimelock, from live 
     await expectRevert(router.connect(dev).setCreatePaused(true), "NotCodeAdmin()");
     await router.connect(safe).setCreatePaused(true);
     await router.connect(safe).setCreatePaused(false);
+    // The attestor kill switch is the Safe's too; reinstalling needs the timelock.
+    await expectRevert(router.connect(safe).setActivityAttestor(attacker.address), "NotUpgradeTimelock()");
 
     // The pre-train legacy still claims through the vault it pinned (v1).
     assert.equal(await l1.legacy.pullVault(), vaultV1.address);
@@ -243,5 +247,29 @@ describe("Train 2026-11 — wave A batch through the UpgradeTimelock, from live 
     await increase(DELAY);
     await timelock.connect(attacker).executeBatch(...batch);
     await expectRevert(router.connect(attacker).initializeV4(attacker.address, ethers.constants.AddressZero), "InvalidInitialization()");
+  });
+
+  it("rollback rule: a later re-upgrade batch that repeats initializeV4 reverts as a whole; without it, it lands", async function () {
+    const { safe, attacker, timelock, proxyAdmin, router, batch, newImpls } = await loadFixture(fixture);
+    await timelock.connect(safe).scheduleBatch(...batch, DELAY);
+    await increase(DELAY);
+    await timelock.connect(attacker).executeBatch(...batch);
+
+    const R = await ethers.getContractFactory("TransferEOALegacyRouter");
+    const again = await R.deploy(timelock.address);
+    const up = proxyAdmin.interface.encodeFunctionData("upgrade", [router.address, again.address]);
+    const v4 = R.interface.encodeFunctionData("initializeV4", [safe.address, ethers.constants.AddressZero]);
+    const bad = [[proxyAdmin.address, router.address], [0, 0], [up, v4], ZERO32, ethers.utils.id("bad")] as const;
+    await timelock.connect(safe).scheduleBatch(...bad, DELAY);
+    await increase(DELAY);
+    await expectRevert(timelock.connect(attacker).executeBatch(...bad), "InvalidInitialization()");
+    assert.equal(await proxyAdmin.getProxyImplementation(router.address), newImpls.TransferEOALegacyRouter, "nothing landed");
+
+    const good = [[proxyAdmin.address], [0], [up], ZERO32, ethers.utils.id("good")] as const;
+    await timelock.connect(safe).scheduleBatch(...good, DELAY);
+    await increase(DELAY);
+    await timelock.connect(attacker).executeBatch(...good);
+    assert.equal(await proxyAdmin.getProxyImplementation(router.address), again.address);
+    await router.connect(safe).setCreatePaused(true); // the code admin survives a re-upgrade
   });
 });

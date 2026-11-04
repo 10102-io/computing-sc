@@ -51,6 +51,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   error AdminFeeAboveCap(uint256 fee);
   error SwapExpired();
   error EthTransferFailed();
+  error UnswapNeedsSoleRecipient();
+  error TooManyBeneficiaries();
 
   /* State variable */
   uint128 public constant LEGACY_TYPE = 3;
@@ -217,10 +219,16 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     return _lastTimestamp + getActivationTrigger();
   }
 
-  /// @dev Runs after any beneficiary change (`layer1Changed_` when the
-  /// first-line set itself changed). No-op here; the v3 clone uses it to keep
-  /// its executor off every line and to void stale backup lines and NFT items.
+  /// @dev Runs after any change to the beneficiaries or the line delays
+  /// (`layer1Changed_` when the first-line set itself changed). No-op here;
+  /// the v3 clone uses it to keep its executor and backups off every other
+  /// line, to order backups before the second line, and to void stale backup
+  /// lines and NFT items.
   function _afterBeneficiariesChanged(bool layer1Changed_) internal virtual {}
+
+  /// @dev Runs before an unswap claim. No-op here; the v3 clone refuses the
+  /// unswap claim in per-share mode.
+  function _checkUnswapClaim() internal view virtual {}
 
   function getTriggerActivationTimestamp() public view override returns (uint256, uint256, uint256) {
     uint256 beneficiariesTrigger = _activationDeadline();
@@ -456,6 +464,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     delayLayer2 = delayLayer2_;
     delayLayer3 = delayLayer3_;
     if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
+    _afterBeneficiariesChanged(false);
     _lastTimestamp = block.timestamp;
 
   }
@@ -561,7 +570,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       try ILegacyPullVault(vault).release(sender_) {} catch {}
     }
 
-    payable(sender_).transfer(address(this).balance);
+    uint256 balance = address(this).balance;
+    if (balance > 0) _sendEth(sender_, balance);
   }
 
   receive() external payable {
@@ -587,7 +597,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       revert NotEnoughETH();
     }
     _lastTimestamp = block.timestamp;
-    payable(sender_).transfer(amount_);
+    _sendEth(sender_, amount_);
+  }
+
+  /// @dev A checked call, not `transfer`: an owner that is a contract or an
+  /// EIP-7702 account may need more than 2,300 gas to receive. Only the owner
+  /// is ever paid here, after every state change, so re-entry gains nothing.
+  function _sendEth(address to_, uint256 amount_) private {
+    (bool sent, ) = payable(to_).call{value: amount_}("");
+    if (!sent) revert EthTransferFailed();
   }
 
   /**
@@ -624,6 +642,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     uint256 deadline_
   ) external onlyRouter {
     if (!(_checkActiveLegacy() && _isLive == 1)) revert NotEnoughContitionalActive();
+    _checkUnswapClaim();
 
     if (eoaStorageToken != address(0)) {
       address ownerAddress = getLegacyOwner();
@@ -637,6 +656,11 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           IWETH(weth).withdraw(pullAmount);
         } else {
           if (amountOutMin_ == 0) revert ZeroAmountOutMin();
+          // The caller picks the minimum for a swap of everyone's share: with
+          // co-recipients they could set a token minimum, sandwich it, and bear
+          // only their part of the loss. Only a sole recipient may swap; others
+          // claim the token itself (`activeLegacy`).
+          if (getBeneficiaries(bene_).length != 1) revert UnswapNeedsSoleRecipient();
           IERC20(eoaStorageToken).forceApprove(uniswapRouter, pullAmount);
           address[] memory path = new address[](2);
           path[0] = eoaStorageToken;
@@ -743,7 +767,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       // independently this guard turns a silent underflow panic into an
       // explicit revert with a reason string. Surfaced at activation
       // time so off-chain tooling can route around it.
-      require(beneficiaries.length < maxTransfer, "Too many beneficiaries for ETH activation");
+      if (beneficiaries.length >= maxTransfer) revert TooManyBeneficiaries();
       maxTransfer = maxTransfer - beneficiaries.length;
     }
     //actual number of assets claimed in this tranasaction

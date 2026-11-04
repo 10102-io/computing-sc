@@ -120,7 +120,7 @@ export async function deployTrain(opts: TrainOptions = {}) {
     undefined,
     [timelock.address]
   );
-  await router.connect(dev).initializeV2(dev.address);
+  await router.connect(timelock).initializeV4(dev.address, ethers.constants.AddressZero);
 
   const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [
     legacyDeployer.address,

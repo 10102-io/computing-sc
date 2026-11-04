@@ -68,42 +68,36 @@ describe("Train 2026-11 — TransferEOALegacyRouter (wave A)", function () {
     });
   });
 
-  describe("initializeV4 (reinitializer(5), timelock only)", function () {
-    it("only the timelock can run it; it hands setCreatePaused to the Safe", async function () {
-      const { dev, timelock, safe, router } = await loadFixture(fixture);
-      await expectRevert(router.connect(dev).initializeV4(safe.address, ethers.constants.AddressZero), "NotUpgradeTimelock()");
-      await expectRevert(router.connect(safe).initializeV4(safe.address, ethers.constants.AddressZero), "NotUpgradeTimelock()");
-      const rc = await (await router.connect(timelock).initializeV4(safe.address, ethers.constants.AddressZero)).wait();
-      assert(rc.events?.some((e: any) => e.event === "CodeAdminSet"));
+  describe("initializeV4 in the fixture (cascade details: TransferEOARouterInitializers.spec.ts)", function () {
+    it("ran once from the timelock: counter 5, code admin set, Payment untouched by a zero argument", async function () {
+      const { dev, timelock, router, payment } = await loadFixture(fixture);
       assert.equal(await initializedVersion(router.address), 5);
-
-      await router.connect(safe).setCreatePaused(true);
-      await expectRevert(router.connect(dev).setCreatePaused(false), "NotCodeAdmin()");
-      await expectRevert(router.connect(timelock).initializeV4(safe.address, ethers.constants.AddressZero), "InvalidInitialization()");
-    });
-
-    it("works from the mainnet counter (4, after initializeV3) and from Sepolia's (3)", async function () {
-      const { dev, timelock, safe, router } = await loadFixture(fixture);
-      assert.equal(await initializedVersion(router.address), 3, "fixture ran initializeV2: Sepolia-like");
-      await router.connect(dev).initializeV3(dev.address);
-      assert.equal(await initializedVersion(router.address), 4, "mainnet-like");
-      await router.connect(timelock).initializeV4(safe.address, ethers.constants.AddressZero);
-      assert.equal(await initializedVersion(router.address), 5);
-    });
-
-    it("repoints Payment only when given one (Sepolia), never to zero", async function () {
-      const { timelock, safe, router, payment } = await loadFixture(fixture);
-      const other = await (await ethers.getContractFactory("Payment")).deploy();
-      await router.connect(timelock).initializeV4(safe.address, other.address);
-      assert.equal(await router.paymentContract(), other.address);
-      assert.notEqual(other.address, payment.address);
-      await expectRevert(router.connect(timelock).initializeV4(ethers.constants.AddressZero, ethers.constants.AddressZero), "InvalidInitialization()");
-    });
-
-    it("a zero Payment argument leaves the current one in place", async function () {
-      const { timelock, safe, router, payment } = await loadFixture(fixture);
-      await router.connect(timelock).initializeV4(safe.address, ethers.constants.AddressZero);
       assert.equal(await router.paymentContract(), payment.address);
+      await router.connect(dev).setCreatePaused(true);
+      await expectRevert(router.connect(timelock).initializeV4(dev.address, ethers.constants.AddressZero), "InvalidInitialization()");
+    });
+  });
+
+  describe("attestor kill switch (founder decision 2026-11-04)", function () {
+    it("the code admin removes the attestor at once; renewals stop", async function () {
+      const { dev, owner, bene, attestor, router } = await loadFixture(fixture);
+      const { legacyId } = await createLegacyV2(router, owner, [{ user: bene.address, percent: 1000000 }], { trigger: 90 * DAY });
+      await router.connect(owner).setAutoRenew(legacyId, true);
+      const rc = await (await router.connect(dev).setActivityAttestor(ethers.constants.AddressZero)).wait();
+      assert(rc.events?.some((e: any) => e.event === "ActivityAttestorSet"));
+      assert.equal(await router.activityAttestor(), ethers.constants.AddressZero);
+      await ethers.provider.send("evm_increaseTime", [65 * DAY]);
+      await ethers.provider.send("evm_mine", []);
+      await expectRevert(router.connect(attestor).recordActivity(legacyId, 1), "NotActivityAttestor()");
+    });
+
+    it("installing any attestor still needs the timelock, even for the code admin", async function () {
+      const { dev, timelock, attacker, router } = await loadFixture(fixture);
+      await expectRevert(router.connect(dev).setActivityAttestor(attacker.address), "NotUpgradeTimelock()");
+      await expectRevert(router.connect(attacker).setActivityAttestor(ethers.constants.AddressZero), "NotUpgradeTimelock()");
+      await router.connect(timelock).setActivityAttestor(ethers.constants.AddressZero);
+      await router.connect(timelock).setActivityAttestor(attacker.address);
+      assert.equal(await router.activityAttestor(), attacker.address);
     });
   });
 

@@ -129,6 +129,24 @@ describe("Train 2026-11 — wave A clone (TransferEOALegacy)", function () {
       await router.connect(bene).activeLegacyAndUnswap(legacyId, [], 0, now + 3600);
     });
 
+    it("claim with unswap (review L-3): with co-recipients a non-WETH swap reverts; they claim the token instead", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, router, usdc, uni } = f;
+      const { legacy, legacyId } = await createLegacyV2(router, owner, [
+        { user: bene.address, percent: 500000 },
+        { user: bene2.address, percent: 500000 },
+      ]);
+      await usdc.mint(uni.address, ethers.utils.parseUnits("1000000", 6));
+      const now = await currentTime();
+      await router.connect(owner).autoSwap(legacyId, { storageToken: usdc.address, amountOutMin: 1, deadline: now + 3600 }, { value: 1_000_000_000 });
+      await usdc.connect(owner).approve(legacy.address, ethers.constants.MaxUint256);
+      await increase(DAY + 1);
+      // A co-beneficiary would pick the minimum for everyone's share: refused.
+      await expectRevert(router.connect(bene).activeLegacyAndUnswap(legacyId, [], 1, now + 7200), "UnswapNeedsSoleRecipient()");
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      assert((await usdc.balanceOf(bene2.address)).gt(0), "each co-recipient gets the token itself");
+    });
+
     it("claim with unswap: WETH unwraps 1:1 and needs no minimum", async function () {
       const { bene, router, legacyId, uni } = await withStorageToken("weth");
       const uniEth = await ethers.provider.getBalance(uni.address);
@@ -164,6 +182,36 @@ describe("Train 2026-11 — wave A clone (TransferEOALegacy)", function () {
       await expectRevert(router.connect(owner).unswap(legacyId, 1_000_000_000, 0, now + 3600), "ZeroAmountOutMin()");
       await router.connect(owner).unswap(legacyId, 1_000_000_000, 1, now + 3600);
       assert.equal(await legacy.eoaStorageToken(), ethers.constants.AddressZero);
+    });
+  });
+
+  describe("ETH to the owner with a checked call", function () {
+    it("an owner that is a contract (or an EIP-7702 account) can withdraw and delete", async function () {
+      const { dev, bene, router, verifierTerm } = await loadFixture(fixture);
+      // Tx-based consent: the contract owner cannot sign the agreement message.
+      await verifierTerm.connect(dev).setActiveTerms("v2026-11", ethers.utils.id("terms"));
+      await verifierTerm.connect(dev).setConsentRecorder(router.address, true);
+      const wallet = await (await ethers.getContractFactory("MockContractOwner")).deploy();
+      const zero = { user: ethers.constants.AddressZero, percent: 0 };
+      const create = router.interface.encodeFunctionData("createLegacyV2", [
+        [{ user: bene.address, percent: 1000000 }],
+        { lackOfOutgoingTxRange: DAY, delayLayer2: 0, delayLayer3: 0 },
+        zero,
+        zero,
+        { permitBatch: { details: [], spender: ethers.constants.AddressZero, sigDeadline: 0 }, signature: "0x" },
+        0,
+        "0x",
+      ]);
+      await wallet.exec(router.address, create);
+      const legacyId = await router._legacyId();
+      const legacyAddress = await router.legacyAddresses(legacyId);
+      await wallet.exec(legacyAddress, "0x", { value: 1000 });
+
+      await wallet.exec(router.address, router.interface.encodeFunctionData("withdraw", [legacyId, 400]));
+      assert.equal((await wallet.received()).toString(), "400", "receive() costs more than 2,300 gas and still lands");
+      await wallet.exec(router.address, router.interface.encodeFunctionData("deleteLegacy", [legacyId]));
+      assert.equal((await wallet.received()).toString(), "1000");
+      assert.equal((await ethers.provider.getBalance(legacyAddress)).toString(), "0");
     });
   });
 
