@@ -215,7 +215,9 @@
       "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
-      ]
+      ],
+      "activityAttestor": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
+      "_activityAttestorNote": "Sepolia rehearsal attestor (the maintainer EOA), read 2026-11-04."
     },
     "ShieldVault": {
       "address": "0xa88f4c2D15e0917652fBad2cFce73cD65CAc2407"
@@ -427,7 +429,9 @@
       "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
-      ]
+      ],
+      "activityAttestor": "0x0925B872a4F4a39544A5a191dB67C42E30240a1E",
+      "_activityAttestorNote": "EOA router activityAttestor, rotated 2026-10-22 after the Railway incident (computing/docs/OPS-CHECKLIST.md); replaces 0x4B05aC1b0BF109A9CE30dCEc2831990d694d74D0 (2026-07-30). Checked by verify-governance.ts."
     },
     "ShieldVault": {
       "address": "0xA1EA2F8C0518458975E09ED63bf5D48980f76C38"

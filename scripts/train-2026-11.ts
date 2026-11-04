@@ -13,7 +13,10 @@
  *   Recorded under `train202611` in contract-addresses.json, never over the
  *   live entries (they move when the batch has executed).
  *
- * batch (no transaction; reads the router live and writes the file):
+ * batch (no transaction): runs the pre-schedule assertions (proxy admin owned
+ * by the timelock; vault2's router and timelock; the new router
+ * implementation's timelock; code at every address; mainnet Payment argument
+ * 0 unless TRAIN_PAYMENT is set) and, only if all pass, writes the file:
  *   a: output/train-2026-11-wave-a-<network>.json
  *      [0] DefaultProxyAdmin.upgrade(TransferEOALegacyRouter, pending impl)
  *      [1] router.initializeV4(governance Safe, Payment or 0)
@@ -23,10 +26,12 @@
  *      [5] DefaultProxyAdmin.upgrade(PremiumRegistry, pending impl)
  *      [6] DefaultProxyAdmin.upgrade(PremiumSetting, pending impl)
  *      [7] DefaultProxyAdmin.upgrade(EIP712LegacyVerifier, pending impl)
- *      [8] router.setActivityAttestor(TRAIN_ATTESTOR), only when set
  *   b: output/train-2026-11-wave-b-<network>.json
  *      [0] LegacyPullVaultV2.allowImplementation(TransferEOALegacyV3)
  *      [1] router.setLegacyImplementation(TransferEOALegacyV3)
+ *
+ * check: the same assertions, nothing written; run it right before print and
+ * schedule.
  *
  * Then: $env:TL_ACTION="print"; $env:TL_BATCH="<file>"; npx hardhat run scripts/timelock-op.ts --network <net>
  */
@@ -81,8 +86,8 @@ function need(v: string | undefined, what: string): string {
 async function main() {
   const wave = (process.env.TRAIN_WAVE ?? "").toLowerCase();
   const action = (process.env.TRAIN_ACTION ?? "").toLowerCase();
-  if (!["a", "b"].includes(wave) || !["deploy", "batch"].includes(action)) {
-    throw new Error("Set TRAIN_WAVE=a|b and TRAIN_ACTION=deploy|batch");
+  if (!["a", "b"].includes(wave) || !["deploy", "batch", "check"].includes(action)) {
+    throw new Error("Set TRAIN_WAVE=a|b and TRAIN_ACTION=deploy|batch|check");
   }
   const { net } = book();
   const routerProxy = need(net.TransferEOALegacyRouter?.address, "TransferEOALegacyRouter proxy");
@@ -109,39 +114,88 @@ async function main() {
   }
 
   const R = await ethers.getContractFactory("TransferEOALegacyRouter");
+  const V = await ethers.getContractFactory("LegacyPullVaultV2");
   const items: Array<Record<string, string>> = [];
+  const failures: string[] = [];
+  const assert = (ok: boolean, what: string) => {
+    console.log(`  ${ok ? "ok  " : "FAIL"} ${what}`);
+    if (!ok) failures.push(what);
+  };
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const hasCode = async (a: string) => (await ethers.provider.getCode(a)) !== "0x";
+  const vaultAddr = need(train.LegacyPullVaultV2, "train202611.LegacyPullVaultV2");
+  const vault = V.attach(vaultAddr);
+  const proxyAdmin = new ethers.Contract(
+    need(net.DefaultProxyAdmin?.address, "DefaultProxyAdmin"),
+    ["function owner() view returns (address)"],
+    ethers.provider
+  );
+
+  console.log("Pre-schedule assertions:");
+  assert(same(await proxyAdmin.owner(), timelock), "DefaultProxyAdmin.owner() is the UpgradeTimelock");
+  assert(same(await vault.router(), routerProxy), "vault2.router() is the EOA router proxy");
+  assert(same(await vault.upgradeTimelock(), timelock), "vault2.upgradeTimelock() is the UpgradeTimelock");
+
   if (wave === "a") {
     const safe = need(net.governance?.safe, "governance.safe");
     const clone = need(train.TransferEOALegacyImpl, "train202611.TransferEOALegacyImpl");
-    const vault = need(train.LegacyPullVaultV2, "train202611.LegacyPullVaultV2");
-    for (const n of ["TransferEOALegacyRouter", "TimeLockRouter", "PremiumRegistry", "PremiumSetting", "EIP712LegacyVerifier"]) {
-      need(net[n]?.pendingImplementation, `${n}.pendingImplementation (run deploy-impl.ts)`);
+    const names = ["TransferEOALegacyRouter", "TimeLockRouter", "PremiumRegistry", "PremiumSetting", "EIP712LegacyVerifier"];
+    for (const n of names) {
+      const impl = need(net[n]?.pendingImplementation, `${n}.pendingImplementation (run deploy-impl.ts)`);
+      assert(await hasCode(impl), `${n} pending implementation ${impl} has code`);
     }
-    // Sepolia's router still points at an orphan Payment; repoint it to the
-    // recorded one. Mainnet already matches, so 0 leaves it untouched.
+    const routerImpl = R.attach(net.TransferEOALegacyRouter.pendingImplementation);
+    assert(same(await routerImpl.upgradeTimelock(), timelock), "new router implementation's upgradeTimelock() is the UpgradeTimelock");
+    assert(await hasCode(clone), `clone implementation ${clone} has code`);
+    assert((await vault.cloneCodehash()) === (await vault.codehashOf(clone)), "vault2 pins the new clone implementation");
+    assert(await hasCode(safe), `governance Safe ${safe} has code`);
+
+    // initializeV4's Payment argument: 0 (unchanged) on mainnet unless
+    // TRAIN_PAYMENT says otherwise; on Sepolia the recorded Payment when the
+    // router still points at the orphan.
     const live = await ethers.getContractAt("TransferEOALegacyRouter", routerProxy);
     const livePayment = ethers.utils.getAddress(await live.paymentContract());
     const recordedPayment = need(net.Payment?.address, "Payment");
-    const payment = livePayment === recordedPayment ? ethers.constants.AddressZero : recordedPayment;
-    console.log(`Payment: live ${livePayment}, recorded ${recordedPayment} -> initializeV4 arg ${payment}`);
+    const explicit = process.env.TRAIN_PAYMENT;
+    const payment = explicit
+      ? need(explicit, "TRAIN_PAYMENT")
+      : network.name === "mainnet" || livePayment === recordedPayment
+        ? ethers.constants.AddressZero
+        : recordedPayment;
+    console.log(`  Payment: live ${livePayment}, recorded ${recordedPayment}, initializeV4 argument ${payment}`);
+    if (network.name === "mainnet") {
+      assert(payment === ethers.constants.AddressZero || Boolean(explicit), "mainnet Payment argument is 0 unless TRAIN_PAYMENT is set");
+    }
+    if (payment !== ethers.constants.AddressZero) assert(await hasCode(payment), `Payment ${payment} has code`);
 
     items.push({ proxy: "TransferEOALegacyRouter", impl: net.TransferEOALegacyRouter.pendingImplementation });
     items.push({ target: routerProxy, data: R.interface.encodeFunctionData("initializeV4", [safe, payment]), label: `router.initializeV4(${safe}, ${payment})` });
     items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setLegacyImplementation", [clone]), label: `router.setLegacyImplementation(${clone})` });
-    items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setPullVault", [vault]), label: `router.setPullVault(${vault})` });
-    for (const n of ["TimeLockRouter", "PremiumRegistry", "PremiumSetting", "EIP712LegacyVerifier"]) {
-      items.push({ proxy: n, impl: net[n].pendingImplementation });
-    }
-    if (process.env.TRAIN_ATTESTOR) {
-      const attestor = need(process.env.TRAIN_ATTESTOR, "TRAIN_ATTESTOR");
-      items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setActivityAttestor", [attestor]), label: `router.setActivityAttestor(${attestor})` });
-    }
+    items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setPullVault", [vaultAddr]), label: `router.setPullVault(${vaultAddr})` });
+    for (const n of names.slice(1)) items.push({ proxy: n, impl: net[n].pendingImplementation });
   } else {
-    const vault = need(train.LegacyPullVaultV2, "train202611.LegacyPullVaultV2");
     const v3 = need(train.TransferEOALegacyV3Impl, "train202611.TransferEOALegacyV3Impl");
-    const V = await ethers.getContractFactory("LegacyPullVaultV2");
-    items.push({ target: vault, data: V.interface.encodeFunctionData("allowImplementation", [v3]), label: `vault2.allowImplementation(${v3})` });
+    const list = need(train.NftCollectionWhiteList, "train202611.NftCollectionWhiteList");
+    const live = await ethers.getContractAt("TransferEOALegacyRouter", routerProxy);
+    let routerTimelock = "";
+    try {
+      routerTimelock = await live.upgradeTimelock();
+    } catch {
+      /* pre-train router */
+    }
+    assert(same(routerTimelock || "0x", timelock), "wave A executed: the router pins the UpgradeTimelock");
+    assert(same(await live.pullVault(), vaultAddr), "wave A executed: the router uses vault2");
+    assert(!(await vault.isAllowedCodehash(await vault.codehashOf(v3))), "vault2 does not allow v3 yet");
+    const V3 = await ethers.getContractFactory("TransferEOALegacyV3");
+    assert(same(await V3.attach(v3).nftAllowlist(), list), "v3 implementation's nftAllowlist() is the recorded list");
+    items.push({ target: vaultAddr, data: V.interface.encodeFunctionData("allowImplementation", [v3]), label: `vault2.allowImplementation(${v3})` });
     items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setLegacyImplementation", [v3]), label: `router.setLegacyImplementation(${v3})` });
+  }
+
+  if (failures.length) throw new Error(`${failures.length} assertion(s) failed; nothing written. Fix and rerun.`);
+  if (action === "check") {
+    console.log("All assertions pass. Safe to print and schedule the batch file written by TRAIN_ACTION=batch.");
+    return;
   }
 
   const outDir = path.join(__dirname, "..", "output");

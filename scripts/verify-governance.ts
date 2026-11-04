@@ -157,16 +157,32 @@ async function main() {
       "function activityAttestor() view returns (address)",
     ]);
     const expectedTimelock: string | undefined = (book as any).UpgradeTimelock?.address;
+    const expectedAttestor: string | undefined = gov.activityAttestor;
+    if (expectedAttestor) {
+      const a: string = await post.activityAttestor();
+      push("EOA router activityAttestor is the recorded one", expectedAttestor, a, same(a, expectedAttestor));
+    }
     try {
       const t: string = await post.upgradeTimelock();
       push("EOA router rotation levers are timelocked", expectedTimelock ?? "UpgradeTimelock", t, same(t, expectedTimelock));
-      const expectedAttestor: string | undefined = (book as any).ActivityAttestor?.address;
-      if (expectedAttestor) {
-        const a: string = await post.activityAttestor();
-        push("EOA router activityAttestor is the recorded one", expectedAttestor, a, same(a, expectedAttestor));
+    } catch (e: any) {
+      // "Not yet" only when the call reverted on the recorded pre-train
+      // implementation. An RPC failure, or a revert on any other
+      // implementation, is a failure, never a pass.
+      const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+      let live = "";
+      try {
+        live = ethers.utils.getAddress("0x" + (await provider.getStorageAt(eoaRouterEntry.address, IMPL_SLOT)).slice(26));
+      } catch {
+        /* unknown */
       }
-    } catch {
-      push("EOA router rotation levers are timelocked", "after the 2026-11 train", "pre-train implementation", true);
+      const preTrain = e?.code === "CALL_EXCEPTION" && same(live, eoaRouterEntry.implementation);
+      push(
+        "EOA router rotation levers are timelocked",
+        "after the 2026-11 train",
+        preTrain ? `pre-train implementation ${live}` : `could not read: ${e?.code ?? e?.message ?? e}`,
+        preTrain
+      );
     }
   }
 
