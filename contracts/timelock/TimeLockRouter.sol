@@ -195,6 +195,17 @@ contract TimeLockRouter is OwnableUpgradeable {
   error InvalidSponsorNonce();
   error InvalidSponsorSignature();
   error CreationPaused();
+  /// @dev A create that locks no ERC-20, ERC-721, ERC-1155 and no ETH swap.
+  /// With ETH attached the ETH would stay in this router (no sweep) and a
+  /// timelock id would be spent on nothing (DEFERRED `router-create-hardening`).
+  error EmptyTimelock();
+  /// @dev An ETH swap into a token other than WETH with `amountOutMin == 0`.
+  error ZeroAmountOutMin();
+  /// @dev `createTimelockUntil` with an `unlockAt` that is not in the future.
+  error UnlockAtInvalid();
+  /// @dev `createTimelockUntil` with a nonzero `duration` in the struct: the
+  /// unlock date must have exactly one source.
+  error DurationWithUnlockAt();
 
   event TimelockWithdrawnFor(uint256 indexed id, address indexed recipient, address indexed relayer, uint256 timestamp);
   /// @notice Where a sponsored withdrawal was paid. `payTo == recipient` when
@@ -278,7 +289,18 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   function createTimelock(TimelockRegular calldata timelockRegular) external payable {
-    _createTimelockRegular(timelockRegular);
+    _createTimelockRegular(timelockRegular, timelockRegular.duration);
+  }
+
+  /// @notice `createTimelock` with an absolute unlock date: the lock opens at
+  /// `unlockAt` exactly, whenever the transaction lands (DEFERRED
+  /// `autopilot-unlock-at`). An autopilot policy can then pin the date itself
+  /// instead of capping a relative duration. `timelockRegular.duration` must
+  /// be 0.
+  function createTimelockUntil(TimelockRegular calldata timelockRegular, uint64 unlockAt) external payable {
+    if (timelockRegular.duration != 0) revert DurationWithUnlockAt();
+    if (unlockAt <= block.timestamp) revert UnlockAtInvalid();
+    _createTimelockRegular(timelockRegular, unlockAt - block.timestamp);
   }
 
   /// @notice Single-confirm create: registers the creator's signed Permit2
@@ -288,13 +310,14 @@ contract TimeLockRouter is OwnableUpgradeable {
   function createTimelockWithPermit2(TimelockRegular calldata timelockRegular, Permit2CreateBundle calldata permit2_) external payable {
     _registerPermit2(permit2_);
     _permit2Pull = true;
-    _createTimelockRegular(timelockRegular);
+    _createTimelockRegular(timelockRegular, timelockRegular.duration);
     _permit2Pull = false;
   }
 
-  function _createTimelockRegular(TimelockRegular calldata timelockRegular) private {
+  function _createTimelockRegular(TimelockRegular calldata timelockRegular, uint256 duration) private {
     if (createPaused) revert CreationPaused();
-    if (timelockRegular.duration == 0) revert TimelockHelper.ZeroDuration();
+    if (duration == 0) revert TimelockHelper.ZeroDuration();
+    _requireNotEmpty(timelockRegular.timelockETHSwap, timelockRegular.timelockERC20.length, timelockRegular.timelockERC721.length, timelockRegular.timelockERC1155.length);
 
     timelockCounter++;
 
@@ -303,7 +326,7 @@ contract TimeLockRouter is OwnableUpgradeable {
         timelockCounter,
         timelockRegular.timelockETHSwap,
         timelockRegular.timelockERC20,
-        timelockRegular.duration,
+        duration,
         timelockRegular.name,
         msg.sender,
         TimelockHelper.LockStatus.Live
@@ -313,7 +336,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       _handleTimelockRegularERC721(
         timelockCounter,
         timelockRegular.timelockERC721,
-        timelockRegular.duration,
+        duration,
         timelockRegular.name,
         msg.sender,
         TimelockHelper.LockStatus.Live
@@ -323,7 +346,7 @@ contract TimeLockRouter is OwnableUpgradeable {
       _handleTimelockRegularERC1155(
         timelockCounter,
         timelockRegular.timelockERC1155,
-        timelockRegular.duration,
+        duration,
         timelockRegular.name,
         msg.sender,
         TimelockHelper.LockStatus.Live
@@ -357,6 +380,7 @@ contract TimeLockRouter is OwnableUpgradeable {
   function _createSoftTimelock(TimelockSoft calldata timelockSoft) private {
     if (createPaused) revert CreationPaused();
     if (timelockSoft.bufferTime == 0) revert TimelockHelper.ZeroBufferTime();
+    _requireNotEmpty(timelockSoft.timelockETHSwap, timelockSoft.timelockERC20.length, timelockSoft.timelockERC721.length, timelockSoft.timelockERC1155.length);
 
     timelockCounter++;
 
@@ -411,6 +435,7 @@ contract TimeLockRouter is OwnableUpgradeable {
     if (createPaused) revert CreationPaused();
     if (timelockGift.duration == 0) revert TimelockHelper.ZeroDuration();
     if (timelockGift.recipient == address(0)) revert TimelockHelper.InvalidRecipient();
+    _requireNotEmpty(timelockGift.timelockETHSwap, timelockGift.timelockERC20.length, timelockGift.timelockERC721.length, timelockGift.timelockERC1155.length);
 
     timelockCounter++;
 
@@ -595,6 +620,18 @@ contract TimeLockRouter is OwnableUpgradeable {
   }
 
   // ───────────── private ─────────────
+
+  function _requireNotEmpty(
+    TimelockETHSwapInputData calldata timelockETHSwap,
+    uint256 erc20Count,
+    uint256 erc721Count,
+    uint256 erc1155Count
+  ) private pure {
+    if (timelockETHSwap.storageToken == address(0) && erc20Count == 0 && erc721Count == 0 && erc1155Count == 0) {
+      revert EmptyTimelock();
+    }
+  }
+
   // ********** Regular **********
 
   // regular ERC20
@@ -674,6 +711,8 @@ contract TimeLockRouter is OwnableUpgradeable {
       SafeERC20.safeTransfer(IERC20(weth), address(timelockERC20Contract), msg.value);
       return (weth, msg.value);
     }
+    // Any other token goes through Uniswap: a zero minimum is a free sandwich.
+    if (timelockETHSwap.amountOutMin == 0) revert ZeroAmountOutMin();
 
     address[] memory path = new address[](2);
     path[0] = weth;

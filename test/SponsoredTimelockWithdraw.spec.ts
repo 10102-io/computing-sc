@@ -253,9 +253,11 @@ describe("TimeLockRouter — sponsored withdraw (withdrawFor, domain v2 with pay
     const f = await loadFixture(deployFixture);
     const { user, recipient, relayer, destination, router, storage, domain } = f;
     const now = await currentTime();
+    // A non-WETH swap needs a nonzero minimum since the 2026-11 train
+    // (router-create-hardening); the app always quotes one.
     await router.connect(user).createTimelockedGift(
       gift([], 86400, recipient.address, {
-        timelockETHSwap: { storageToken: storage.address, amountOutMin: 0, deadline: now + 3600 },
+        timelockETHSwap: { storageToken: storage.address, amountOutMin: 1, deadline: now + 3600 },
       }),
       { value: ONE_ETH }
     );
