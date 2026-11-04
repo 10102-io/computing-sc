@@ -2,114 +2,9 @@
   "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
   "abi": [
     {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "previousAdmin",
-          "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "newAdmin",
-          "type": "address"
-        }
-      ],
-      "name": "AdminChanged",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "beacon",
-          "type": "address"
-        }
-      ],
-      "name": "BeaconUpgraded",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "implementation",
-          "type": "address"
-        }
-      ],
-      "name": "Upgraded",
-      "type": "event"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "fallback"
-    },
-    {
       "inputs": [],
-      "name": "admin",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        }
-      ],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "implementation",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "implementation_",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        }
-      ],
-      "name": "upgradeTo",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "data",
-          "type": "bytes"
-        }
-      ],
-      "name": "upgradeToAndCall",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "receive"
+      "type": "constructor"
     },
     {
       "inputs": [],
@@ -872,27 +767,6 @@
       ],
       "stateMutability": "view",
       "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_logic",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "_data",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "payable",
-      "type": "constructor"
     }
   ],
   "transactionHash": "0xdfbe938be240d2199580f34486b41ab7ce99f2a864b315d22e6c11acf3d708dc",

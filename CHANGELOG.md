@@ -21,6 +21,31 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-04 — Deployment artifacts match the chain again
+
+[No contract or on-chain change.]
+
+`deployments/<net>/*.json` had fallen behind the chain on both networks:
+the EOA router's artifacts named an implementation two upgrades old (25
+ABI entries missing, the auto-renew errors among them), and the facades of
+the verifier, PremiumRegistry and PremiumSetting pointed at retired
+implementations. `contract-addresses.json`, the source of truth, was right
+throughout, and nothing deploys from these files, so no transaction was
+affected; `sync-ui` reads its ABIs from them, which is how the app's
+`premiumRegistry.ts` came to miss `SafeERC20FailedOperation`.
+
+- Every proxy's artifacts re-read from its EIP-1967 slot on mainnet and
+  Sepolia. `refresh-impl-artifacts.ts` now writes compiled bytecode and
+  ABI only when the compiled runtime code equals the live code with
+  immutables masked: the multisig router, PremiumRegistry and
+  PremiumSetting run solc 0.8.20 builds from before the compiler bump,
+  so their recorded artifacts are kept and only pointers move. Sepolia's
+  PremiumRegistry is byte-identical to mainnet's and takes its artifact.
+- `scripts/audit-deployment-artifacts.ts` is back from the archive and
+  runs in CI (offline: the pointers within each network must agree); with
+  `--network` it also checks every proxy against the chain. Both networks
+  pass. The upgrade runbook runs it after the refresh.
+
 ## 2026-11-02 — Checklist audit of the unaudited riders, vault pin
 
 [No contract or on-chain change.]

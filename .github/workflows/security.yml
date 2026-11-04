@@ -40,6 +40,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npx hardhat compile
       - run: npx hardhat test
+      # deployments/<net>/*.json pointers must agree with each other; the
+      # on-chain cross-check needs an RPC and runs by hand (--network).
+      - run: npx hardhat run scripts/audit-deployment-artifacts.ts
 
   coverage:
     name: coverage (ShieldVault, registry)

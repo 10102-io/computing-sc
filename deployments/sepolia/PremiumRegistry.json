@@ -2,114 +2,9 @@
   "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
   "abi": [
     {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "previousAdmin",
-          "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "newAdmin",
-          "type": "address"
-        }
-      ],
-      "name": "AdminChanged",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "beacon",
-          "type": "address"
-        }
-      ],
-      "name": "BeaconUpgraded",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "implementation",
-          "type": "address"
-        }
-      ],
-      "name": "Upgraded",
-      "type": "event"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "fallback"
-    },
-    {
       "inputs": [],
-      "name": "admin",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        }
-      ],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "implementation",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "implementation_",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        }
-      ],
-      "name": "upgradeTo",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newImplementation",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "data",
-          "type": "bytes"
-        }
-      ],
-      "name": "upgradeToAndCall",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "receive"
+      "type": "constructor"
     },
     {
       "inputs": [],
@@ -162,6 +57,17 @@
         }
       ],
       "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        }
+      ],
+      "name": "SafeERC20FailedOperation",
       "type": "error"
     },
     {
@@ -1062,27 +968,6 @@
       ],
       "stateMutability": "view",
       "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_logic",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "admin_",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "_data",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "payable",
-      "type": "constructor"
     }
   ],
   "transactionHash": "0xf6af3333628157c09873ab14f7ec61d078299286a3af8be69749868c04591382",
@@ -1205,7 +1090,7 @@
       "0xd4bf99da7fBcb0A2Fd80754cB5CC9c7CDc9e8D78"
     ]
   },
-  "implementation": "0x2f206a515F715efa84526738DD68341e849d181b",
+  "implementation": "0xDF08d4584aB77aDeD8db9B8082457E73fA2c9D32",
   "devdoc": {
     "details": "This contract implements a proxy that is upgradeable by an admin. To avoid https://medium.com/nomic-labs-blog/malicious-backdoors-in-ethereum-proxies-62629adf3357[proxy selector clashing], which can potentially be used in an attack, this contract uses the https://blog.openzeppelin.com/the-transparent-proxy-pattern/[transparent proxy pattern]. This pattern implies two things that go hand in hand: 1. If any account other than the admin calls the proxy, the call will be forwarded to the implementation, even if that call matches one of the admin functions exposed by the proxy itself. 2. If the admin calls the proxy, it can access the admin functions, but its calls will never be forwarded to the implementation. If the admin tries to call a function on the implementation it will fail with an error that says \"admin cannot fallback to proxy target\". These properties mean that the admin account can only be used for admin actions like upgrading the proxy or changing the admin, so it's best if it's a dedicated account that is not used for anything else. This will avoid headaches due to sudden errors when trying to call a function from the proxy implementation. Our recommendation is for the dedicated account to be an instance of the {ProxyAdmin} contract. If set up this way, you should think of the `ProxyAdmin` instance as the real administrative interface of your proxy.",
     "kind": "dev",

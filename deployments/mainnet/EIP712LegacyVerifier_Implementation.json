@@ -916,15 +916,15 @@
   "storageLayout": {
     "storage": [
       {
-        "astId": 664,
+        "astId": 41382,
         "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
         "label": "legacySigned",
         "offset": 0,
         "slot": "0",
-        "type": "t_mapping(t_address,t_array(t_struct(Legacy)658_storage)dyn_storage)"
+        "type": "t_mapping(t_address,t_array(t_struct(Legacy)41376_storage)dyn_storage)"
       },
       {
-        "astId": 666,
+        "astId": 41384,
         "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
         "label": "transferLegacyEOA",
         "offset": 0,
@@ -932,7 +932,7 @@
         "type": "t_address"
       },
       {
-        "astId": 668,
+        "astId": 41386,
         "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
         "label": "transferLegacy",
         "offset": 0,
@@ -940,7 +940,7 @@
         "type": "t_address"
       },
       {
-        "astId": 670,
+        "astId": 41388,
         "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
         "label": "multisigLegacy",
         "offset": 0,
@@ -948,12 +948,60 @@
         "type": "t_address"
       },
       {
-        "astId": 674,
+        "astId": 41392,
         "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
         "label": "signatureUsed",
         "offset": 0,
         "slot": "4",
         "type": "t_mapping(t_bytes_memory_ptr,t_uint256)"
+      },
+      {
+        "astId": 41394,
+        "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+        "label": "activeTermsVersion",
+        "offset": 0,
+        "slot": "5",
+        "type": "t_string_storage"
+      },
+      {
+        "astId": 41396,
+        "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+        "label": "activeTermsHash",
+        "offset": 0,
+        "slot": "6",
+        "type": "t_bytes32"
+      },
+      {
+        "astId": 41401,
+        "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+        "label": "signatureTermsHash",
+        "offset": 0,
+        "slot": "7",
+        "type": "t_mapping(t_bytes_memory_ptr,t_bytes32)"
+      },
+      {
+        "astId": 41406,
+        "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+        "label": "termsVersionOf",
+        "offset": 0,
+        "slot": "8",
+        "type": "t_mapping(t_bytes32,t_string_storage)"
+      },
+      {
+        "astId": 41411,
+        "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+        "label": "consentRecorders",
+        "offset": 0,
+        "slot": "9",
+        "type": "t_mapping(t_address,t_bool)"
+      },
+      {
+        "astId": 41427,
+        "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+        "label": "userConsents",
+        "offset": 0,
+        "slot": "10",
+        "type": "t_mapping(t_address,t_array(t_struct(Consent)41420_storage)dyn_storage)"
       }
     ],
     "types": {
@@ -962,10 +1010,26 @@
         "label": "address",
         "numberOfBytes": "20"
       },
-      "t_array(t_struct(Legacy)658_storage)dyn_storage": {
-        "base": "t_struct(Legacy)658_storage",
+      "t_array(t_struct(Consent)41420_storage)dyn_storage": {
+        "base": "t_struct(Consent)41420_storage",
+        "encoding": "dynamic_array",
+        "label": "struct EIP712LegacyVerifier.Consent[]",
+        "numberOfBytes": "32"
+      },
+      "t_array(t_struct(Legacy)41376_storage)dyn_storage": {
+        "base": "t_struct(Legacy)41376_storage",
         "encoding": "dynamic_array",
         "label": "struct EIP712LegacyVerifier.Legacy[]",
+        "numberOfBytes": "32"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_bytes32": {
+        "encoding": "inplace",
+        "label": "bytes32",
         "numberOfBytes": "32"
       },
       "t_bytes_memory_ptr": {
@@ -978,12 +1042,40 @@
         "label": "bytes",
         "numberOfBytes": "32"
       },
-      "t_mapping(t_address,t_array(t_struct(Legacy)658_storage)dyn_storage)": {
+      "t_mapping(t_address,t_array(t_struct(Consent)41420_storage)dyn_storage)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => struct EIP712LegacyVerifier.Consent[])",
+        "numberOfBytes": "32",
+        "value": "t_array(t_struct(Consent)41420_storage)dyn_storage"
+      },
+      "t_mapping(t_address,t_array(t_struct(Legacy)41376_storage)dyn_storage)": {
         "encoding": "mapping",
         "key": "t_address",
         "label": "mapping(address => struct EIP712LegacyVerifier.Legacy[])",
         "numberOfBytes": "32",
-        "value": "t_array(t_struct(Legacy)658_storage)dyn_storage"
+        "value": "t_array(t_struct(Legacy)41376_storage)dyn_storage"
+      },
+      "t_mapping(t_address,t_bool)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => bool)",
+        "numberOfBytes": "32",
+        "value": "t_bool"
+      },
+      "t_mapping(t_bytes32,t_string_storage)": {
+        "encoding": "mapping",
+        "key": "t_bytes32",
+        "label": "mapping(bytes32 => string)",
+        "numberOfBytes": "32",
+        "value": "t_string_storage"
+      },
+      "t_mapping(t_bytes_memory_ptr,t_bytes32)": {
+        "encoding": "mapping",
+        "key": "t_bytes_memory_ptr",
+        "label": "mapping(bytes => bytes32)",
+        "numberOfBytes": "32",
+        "value": "t_bytes32"
       },
       "t_mapping(t_bytes_memory_ptr,t_uint256)": {
         "encoding": "mapping",
@@ -992,12 +1084,56 @@
         "numberOfBytes": "32",
         "value": "t_uint256"
       },
-      "t_struct(Legacy)658_storage": {
+      "t_string_storage": {
+        "encoding": "bytes",
+        "label": "string",
+        "numberOfBytes": "32"
+      },
+      "t_struct(Consent)41420_storage": {
+        "encoding": "inplace",
+        "label": "struct EIP712LegacyVerifier.Consent",
+        "members": [
+          {
+            "astId": 41413,
+            "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+            "label": "termsHash",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_bytes32"
+          },
+          {
+            "astId": 41415,
+            "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+            "label": "timestamp",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_uint64"
+          },
+          {
+            "astId": 41417,
+            "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+            "label": "recorder",
+            "offset": 8,
+            "slot": "1",
+            "type": "t_address"
+          },
+          {
+            "astId": 41419,
+            "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
+            "label": "refId",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_uint256"
+          }
+        ],
+        "numberOfBytes": "96"
+      },
+      "t_struct(Legacy)41376_storage": {
         "encoding": "inplace",
         "label": "struct EIP712LegacyVerifier.Legacy",
         "members": [
           {
-            "astId": 653,
+            "astId": 41371,
             "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
             "label": "legacyAddress",
             "offset": 0,
@@ -1005,7 +1141,7 @@
             "type": "t_address"
           },
           {
-            "astId": 655,
+            "astId": 41373,
             "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
             "label": "timestamp",
             "offset": 0,
@@ -1013,7 +1149,7 @@
             "type": "t_uint256"
           },
           {
-            "astId": 657,
+            "astId": 41375,
             "contract": "contracts/term/VerifierTerm.sol:EIP712LegacyVerifier",
             "label": "signature",
             "offset": 0,
@@ -1027,6 +1163,11 @@
         "encoding": "inplace",
         "label": "uint256",
         "numberOfBytes": "32"
+      },
+      "t_uint64": {
+        "encoding": "inplace",
+        "label": "uint64",
+        "numberOfBytes": "8"
       }
     }
   }

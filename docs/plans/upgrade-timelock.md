@@ -158,7 +158,10 @@ Direct hardhat-deploy proxy upgrades from the deployer key **revert** now
    scripts/refresh-impl-artifacts.ts --network mainnet` reads the live
    EIP-1967 implementation, promotes `pendingImplementation` to
    `implementation`, and rewrites `deployments/<net>/<Name>.json` and
-   `<Name>_Implementation.json`. Then `npm run sync-ui:check` (it compares
+   `<Name>_Implementation.json` (bytecode and ABI only when the compiled
+   code equals the live code; it warns otherwise). `npx hardhat run
+   scripts/audit-deployment-artifacts.ts --network mainnet` must then
+   report no issues (CI runs it offline). Then `npm run sync-ui:check` (it compares
    the frontend's ABI modules too) and `--write` if it drifts. Finally
    `npx hardhat run scripts/verify-etherscan-status.ts --network mainnet`:
    it confirms every live and pending implementation is source-verified

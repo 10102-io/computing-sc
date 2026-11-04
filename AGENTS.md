@@ -32,8 +32,9 @@ slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-r
 ```
 
 CI (`.github/workflows/security.yml`, since 2026-10-29) runs the Hardhat
-suite, coverage with thresholds for ShieldVault and the registry, Slither and
-Aderyn, and the Foundry fuzz and invariant suite on every PR and every push
+suite, the `deployments/` pointer audit, coverage with thresholds for
+ShieldVault and the registry, Slither and Aderyn, and the Foundry fuzz and
+invariant suite on every PR and every push
 to `dev` and `main`. The checks are informational, not required: a red run
 blocks nothing, `[skip ci]` in a commit message skips one, and the workflow
 can be disabled from the Actions tab. Slither needs Foundry on the PATH
