@@ -65,8 +65,6 @@ interface ITransferEOALegacy {
     TransferLegacyStruct.Distribution calldata distribution_
   ) external;
 
-  function setDelayLayer23(address sender_, uint256 delayLayer2_, uint256 delayLayer3_) external;
-
   function getBeneficiaryLayer(address beneficiary) external view returns (uint8);
 
   function getLayer() external view returns (uint8);

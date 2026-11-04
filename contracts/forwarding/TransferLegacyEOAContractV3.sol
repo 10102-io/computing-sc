@@ -5,7 +5,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {TransferEOALegacy} from "./TransferLegacyEOAContract.sol";
 import {ILegacyPullVault} from "../interfaces/ILegacyPullVault.sol";
@@ -36,19 +35,22 @@ interface ILegacyPullVaultNft {
  *    first-line beneficiary each goes to. Items stay in the owner's wallet;
  *    at claim they move through LegacyPullVaultV2 (the owner approves that one
  *    verified operator) or a direct approval to this legacy.
- * 2. Per-beneficiary backup lines. With `backupDelay` set, every first-line
- *    share is claimed by its own line, A then A2 then A3: A from the
- *    activation deadline, A2 from `backupDelay` later, A3 from twice that,
- *    first to claim each token's share takes it. The whole-estate second and
- *    third lines work exactly as before.
- * 3. An executor. An address that can never be a beneficiary, a backup or the
- *    owner may attest the owner's death, which brings the activation deadline
- *    forward to `DEATH_GRACE` after the attestation; any owner activity in
- *    the meantime (a check-in, any owner action) cancels it. Never needed for
- *    a claim, never holds or receives anything.
+ * 2. Per-beneficiary backup lines (Premium). With `backupDelay` set, every
+ *    first-line share is its own running account per token, claimed by its
+ *    own line: A from the activation deadline, A2 from `backupDelay` later,
+ *    A3 from twice that. Each claim pays the share's due, its percentage of
+ *    everything that share's token ever made available minus what the share
+ *    already received, so no claim takes from another share and nobody waits
+ *    for another heir. The second and third lines, in their periods, settle
+ *    every share's due at once.
+ * 3. An executor (Premium). An address that can never be a beneficiary, a
+ *    backup or the owner may attest the owner's death once the owner has been
+ *    silent for half the activation trigger; claims then open `DEATH_GRACE`
+ *    after the attestation unless the owner shows any activity first. Never
+ *    needed for a claim, never holds or receives anything.
  *
  * The v3 settings are called on this legacy by the owner directly (no router
- * change); check-ins and claims still go through the router. Storage is
+ * change); check-ins and token claims still go through the router. Storage is
  * appended after TransferEOALegacy's (slot 26 on).
  */
 contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
@@ -68,8 +70,11 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     address third;
   }
 
+  /// @dev `kind` 1 = ERC-721 (amount 1), 2 = ERC-1155; it must match the
+  /// allowlist when named and is what the claim uses.
   struct NftItem {
     address collection;
+    uint8 kind;
     uint256 tokenId;
     uint256 amount;
     address beneficiary;
@@ -90,11 +95,14 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   uint64 internal _nftEpoch;
   mapping(uint256 epoch => mapping(address primary => address[2])) internal _lines;
   mapping(uint256 epoch => mapping(address backup => address)) internal _primaryOf;
-  /// @dev Per token (address(0) = ETH), bit i set = first-line share i took
-  /// its part of the current round. A full mask starts a new round.
-  mapping(address token => uint256) internal _claimedMask;
+  /// @notice Per-share mode: everything released to first-line shares, per
+  /// token (address(0) = ETH), and what each share (keyed by its first-line
+  /// beneficiary) received, gross of the claim fee.
+  mapping(address token => uint256) public totalReleased;
+  mapping(address token => mapping(address primary => uint256)) public released;
   mapping(uint256 epoch => NftItem[]) internal _nftItems;
-  mapping(uint256 epoch => mapping(uint256 index => bool)) internal _nftClaimed;
+  /// @dev Units of each item already moved (ERC-1155 may move in parts).
+  mapping(uint256 epoch => mapping(uint256 index => uint256)) internal _nftMoved;
 
   error NotExecutor();
   error ExecutorInvalid();
@@ -102,49 +110,72 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   error BackupDelayInvalid();
   error BackupLineInvalid();
   error BackupNotYet(uint256 opensAt);
+  error UnswapNotInPerShareMode();
   error NftsDisabled();
   error NftItemInvalid(uint256 index);
   error TooManyNftItems();
 
   event ExecutorSet(address indexed executor);
   event DeathAttested(address indexed executor, uint256 deadline);
-  /// @notice Lines replaced (or voided, with backupDelay 0); one BackupLineSet per line precedes it.
+  /// @notice Lines replaced, or voided (backupDelay 0); one BackupLineSet per line precedes it.
   event BackupLinesSet(uint256 indexed epoch, uint64 backupDelay);
   event BackupLineSet(uint256 indexed epoch, address indexed primary, address second, address third);
-  /// @notice Items replaced (or voided, with count 0); one NftItemSet per item precedes it.
+  /// @notice Items replaced, or voided (count 0); one NftItemSet per item precedes it.
   event NftItemsSet(uint256 indexed epoch, uint256 count);
-  event NftItemSet(uint256 indexed epoch, uint256 index, address indexed collection, uint256 tokenId, uint256 amount, address indexed beneficiary);
+  event NftItemSet(uint256 indexed epoch, uint256 index, address indexed collection, uint8 kind, uint256 tokenId, uint256 amount, address indexed beneficiary);
+  /// @notice A per-share claim: `primary` is the share (address(0) = every
+  /// share, a second- or third-line claim), `amount` is gross of the fee.
   event ShareClaimed(address indexed token, address indexed claimant, address indexed primary, uint256 amount);
   event NftClaimed(uint256 indexed index, address indexed collection, uint256 tokenId, uint256 amount, address indexed to);
-
-  modifier onlyOwnerCaller() {
-    if (msg.sender != getLegacyOwner()) revert OnlyOwner();
-    _;
-  }
+  /// @notice The legacy activated through an NFT claim, which does not pass
+  /// through the router; same meaning as the router's
+  /// `TransferEOALegacyActivated`.
+  event LegacyActivated(uint256 indexed legacyId, uint8 layer, uint256 timestamp);
 
   constructor(address nftAllowlist_) {
     nftAllowlist = nftAllowlist_;
   }
 
+  /// @dev Owner-only v3 setting while the legacy is live and not activated;
+  /// counts as owner activity (and so cancels a pending attestation).
+  function _ownerSetting() private {
+    if (msg.sender != getLegacyOwner()) revert OnlyOwner();
+    if (!isLive()) revert LegacyIsDeleted();
+    _lastTimestamp = block.timestamp;
+  }
+
+  function _requirePremium() private view {
+    if (!premiumSetting.isPremium(msg.sender)) revert NotPremium();
+  }
+
   // ─── Executor ─────────────────────────────────────────────────────────────
 
-  /// @notice Name (or, with address(0), remove) the executor. Clears any
-  /// pending attestation and counts as owner activity.
-  function setExecutor(address executor_) external onlyOwnerCaller onlyLive isActiveLegacy {
-    if (executor_ != address(0) && (executor_ == getLegacyOwner() || _isOnAnyLine(executor_))) revert ExecutorInvalid();
+  /// @notice Name (Premium) or, with address(0), remove the executor. Clears
+  /// any pending attestation.
+  function setExecutor(address executor_) external {
+    _ownerSetting();
+    if (executor_ != address(0)) {
+      if (executor_ == msg.sender || _isOnAnyLine(executor_)) revert ExecutorInvalid();
+      _requirePremium();
+    }
     executor = executor_;
     deathAttestedAt = 0;
-    _lastTimestamp = block.timestamp;
     emit ExecutorSet(executor_);
   }
 
   /// @notice The executor attests the owner's death: claims open
-  /// `DEATH_GRACE` from now unless the owner shows activity first. At most
-  /// one attestation per grace period.
+  /// `DEATH_GRACE` from now unless the owner shows activity first. Only after
+  /// the owner has been silent for half the activation trigger, and at most
+  /// once per grace period.
   function attestDeath() external {
-    if (msg.sender != executor || executor == address(0)) revert NotExecutor();
-    if (!isLive() || _checkActiveLegacy() || _isOnAnyLine(msg.sender)) revert AttestationNotAllowed();
-    if (deathAttestedAt != 0 && block.timestamp < uint256(deathAttestedAt) + DEATH_GRACE) revert AttestationNotAllowed();
+    if (msg.sender != executor) revert NotExecutor();
+    if (
+      !isLive() ||
+      _checkActiveLegacy() ||
+      _isOnAnyLine(msg.sender) ||
+      block.timestamp < _lastTimestamp + getActivationTrigger() / 2 ||
+      (deathAttestedAt != 0 && block.timestamp < uint256(deathAttestedAt) + DEATH_GRACE)
+    ) revert AttestationNotAllowed();
     deathAttestedAt = uint64(block.timestamp);
     emit DeathAttested(msg.sender, _activationDeadline());
   }
@@ -162,39 +193,46 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
 
   // ─── Backup lines ─────────────────────────────────────────────────────────
 
-  /// @notice Turn per-share mode on with these lines (premium), or off with
-  /// `backupDelay_ == 0` and no lines. Replaces any previous lines.
-  function setBackupLines(uint64 backupDelay_, BackupLine[] calldata lines_) external onlyOwnerCaller onlyLive isActiveLegacy {
+  /// @notice Turn per-share mode on with these lines (Premium), or off with
+  /// `backupDelay_ == 0` and no lines. Replaces any previous lines. The second
+  /// line, if any, must open at least two backup delays after the deadline,
+  /// so every backup's window opens before it.
+  function setBackupLines(uint64 backupDelay_, BackupLine[] calldata lines_) external {
+    _ownerSetting();
     uint256 epoch = ++_linesEpoch;
     if (backupDelay_ == 0) {
       if (lines_.length != 0) revert BackupDelayInvalid();
     } else {
       if (backupDelay_ < MIN_BACKUP_DELAY || backupDelay_ > MAX_BACKUP_DELAY) revert BackupDelayInvalid();
-      if (!premiumSetting.isPremium(msg.sender)) revert NotPremium();
-      address owner_ = getLegacyOwner();
+      _requirePremium();
       for (uint256 i; i < lines_.length; ++i) {
         BackupLine calldata line = lines_[i];
         if (_distributions[line.primary] == 0 || _lines[epoch][line.primary][0] != address(0)) revert BackupLineInvalid();
         if (line.second == address(0) || line.second == line.third) revert BackupLineInvalid();
-        _claimBackupSlot(epoch, line.primary, line.second, owner_);
-        if (line.third != address(0)) _claimBackupSlot(epoch, line.primary, line.third, owner_);
+        _claimBackupSlot(epoch, line.primary, line.second);
+        if (line.third != address(0)) _claimBackupSlot(epoch, line.primary, line.third);
         _lines[epoch][line.primary] = [line.second, line.third];
         emit BackupLineSet(epoch, line.primary, line.second, line.third);
       }
     }
     backupDelay = backupDelay_;
-    _lastTimestamp = block.timestamp;
+    _checkLineOrder();
     emit BackupLinesSet(epoch, backupDelay_);
   }
 
-  function _claimBackupSlot(uint256 epoch, address primary, address backup, address owner_) private {
+  function _claimBackupSlot(uint256 epoch, address primary, address backup) private {
     if (
-      backup == owner_ ||
+      backup == msg.sender ||
       backup == executor ||
       TransferEOALegacy.getBeneficiaryLayer(backup) != 0 ||
       _primaryOf[epoch][backup] != address(0)
     ) revert BackupLineInvalid();
     _primaryOf[epoch][backup] = primary;
+  }
+
+  /// @dev Backups open before the second line sweeps (review L-4).
+  function _checkLineOrder() private view {
+    if (backupDelay != 0 && delayLayer2 != 0 && delayLayer2 < 2 * uint256(backupDelay)) revert BackupDelayInvalid();
   }
 
   /// @notice A first-line share's backups (A2, A3) under the current lines.
@@ -208,111 +246,141 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     return _primaryOf[_linesEpoch][backup];
   }
 
-  /// @notice Bitmask of first-line shares (index in getLegacyBeneficiaries)
-  /// that took their part of `token`'s current round (address(0) = ETH).
-  function claimedMask(address token) external view returns (uint256) {
-    return _claimedMask[token];
-  }
-
   /// @dev Backups count as first-line claimants for the router's checks.
   function getBeneficiaryLayer(address beneficiary) public view override returns (uint8) {
     uint8 layer = TransferEOALegacy.getBeneficiaryLayer(beneficiary);
-    if (layer == 0 && backupDelay != 0 && _primaryOf[_linesEpoch][beneficiary] != address(0)) return 1;
+    if (layer == 0 && _primaryOf[_linesEpoch][beneficiary] != address(0)) return 1;
     return layer;
   }
 
-  /// @dev A beneficiary change voids backup lines and NFT items when the
-  /// first line changed (they name first-line addresses), and must never
-  /// make the executor a beneficiary.
+  /// @dev After any beneficiary or delay change: the executor and the backups
+  /// stay off every other line (review L-3), backups still open before the
+  /// second line, and a first-line change voids the backup lines (per-share
+  /// mode off) and the NFT items, with their events (they name first-line
+  /// addresses; the owner sets them again).
   function _afterBeneficiariesChanged(bool layer1Changed_) internal override {
-    if (executor != address(0) && TransferEOALegacy.getBeneficiaryLayer(executor) != 0) revert ExecutorInvalid();
+    uint256 epoch = _linesEpoch;
+    if (
+      (executor != address(0) && TransferEOALegacy.getBeneficiaryLayer(executor) != 0) ||
+      _primaryOf[epoch][_layer2Beneficiary] != address(0) ||
+      _primaryOf[epoch][_layer3Beneficiary] != address(0)
+    ) revert BackupLineInvalid();
     if (layer1Changed_) {
-      uint256 epoch = ++_linesEpoch;
+      epoch = ++_linesEpoch;
       backupDelay = 0;
       emit BackupLinesSet(epoch, 0);
       epoch = ++_nftEpoch;
       emit NftItemsSet(epoch, 0);
     }
+    _checkLineOrder();
   }
 
   function _isOnAnyLine(address who) private view returns (bool) {
     return TransferEOALegacy.getBeneficiaryLayer(who) != 0 || _primaryOf[_linesEpoch][who] != address(0);
   }
 
+  /// @dev In per-share mode the unswap claim would convert every share's token
+  /// at the caller's minimum; heirs claim the token (or ETH) instead.
+  function _checkUnswapClaim() internal view override {
+    if (backupDelay != 0) revert UnswapNotInPerShareMode();
+  }
+
   // ─── Per-share claims ─────────────────────────────────────────────────────
 
   function _transferAssetToBeneficiaries(address[] calldata assets_, bool isETH_, address bene_) internal override {
-    if (backupDelay == 0 || getBeneficiaryLayer(bene_) != 1) {
+    if (backupDelay == 0) {
       super._transferAssetToBeneficiaries(assets_, isETH_, bene_);
       return;
     }
-    address primary = _distributions[bene_] > 0 ? bene_ : _primaryOf[_linesEpoch][bene_];
-    uint256 rank = primary == bene_ ? 0 : (_lines[_linesEpoch][primary][0] == bene_ ? 1 : 2);
-    uint256 opensAt = _activationDeadline() + rank * uint256(backupDelay);
-    if (block.timestamp < opensAt) revert BackupNotYet(opensAt);
-
+    // A first-line claimant settles their own share once their window opens;
+    // a second- or third-line claimant (the router checked the period)
+    // settles every share (`only == address(0)`).
+    address only;
+    if (getBeneficiaryLayer(bene_) == 1) {
+      only = _distributions[bene_] > 0 ? bene_ : _primaryOf[_linesEpoch][bene_];
+      uint256 opensAt = _activationDeadline() + _rank(only, bene_) * uint256(backupDelay);
+      if (block.timestamp < opensAt) revert BackupNotYet(opensAt);
+    }
     address[] memory shares = _beneficiariesSet.values();
-    uint256 bit;
-    for (uint256 i; i < shares.length; ++i) {
-      if (shares[i] == primary) bit = 1 << i;
-    }
-    uint256 full = (1 << shares.length) - 1;
-    uint256 pct = _distributions[primary];
-
-    if (isETH_) {
-      uint256 mask = _roundMask(address(0), full);
-      if (mask & bit == 0) {
-        uint256 amount = (address(this).balance * pct) / _unclaimedPercent(shares, mask);
-        uint256 fee = (amount * adminFeePercent) / 10000;
-        if (amount > 0 && _transferEthToBeneficiary(bene_, amount - fee) > 0) {
-          _claimedMask[address(0)] = mask | bit;
-          if (fee > 0) _transferEthToBeneficiary(paymentContract, fee);
-          emit ShareClaimed(address(0), bene_, primary, amount - fee);
-        }
-      }
-    }
-
     address ownerAddress = getLegacyOwner();
+    if (isETH_) _settle(address(0), address(this).balance, shares, only, bene_, PullRoute.DirectErc20, address(0));
     uint256 n = assets_.length < MAX_TRANSFER ? assets_.length : MAX_TRANSFER;
     for (uint256 t; t < n; ++t) {
       address token = assets_[t];
       if (token == eoaStorageToken) eoaStorageToken = address(0);
-      uint256 mask = _roundMask(token, full);
-      if (mask & bit != 0) continue;
       (PullRoute route, uint256 allowance_, address vault) = _route(ownerAddress, token);
       uint256 balance = IERC20(token).balanceOf(ownerAddress);
-      uint256 amount = ((balance < allowance_ ? balance : allowance_) * pct) / _unclaimedPercent(shares, mask);
-      if (amount == 0) continue;
-      uint256 fee = (amount * adminFeePercent) / 10000;
-      uint256 sent = _transferErc20ToBeneficiary(token, ownerAddress, bene_, amount - fee, route, vault);
-      if (sent == 0) continue;
-      _claimedMask[token] = mask | bit;
-      if (fee > 0) {
+      _settle(token, balance < allowance_ ? balance : allowance_, shares, only, bene_, route, vault);
+    }
+  }
+
+  /**
+   * @dev Pays `to` the due of one share (`only`) or of every share, for one
+   * token. A share's due is its percentage of everything the token ever made
+   * available to the first line (`available` now plus `totalReleased`) minus
+   * what it already received, so claim order and inflows between claims
+   * change nothing for anyone else. A failed payout records nothing.
+   */
+  function _settle(
+    address token,
+    uint256 available,
+    address[] memory shares,
+    address only,
+    address to,
+    PullRoute route,
+    address vault
+  ) private {
+    if (available == 0) return;
+    uint256 pot = available + totalReleased[token];
+    uint256 amount;
+    for (uint256 pass; pass < 2; ++pass) {
+      for (uint256 i; i < shares.length; ++i) {
+        address share = shares[i];
+        if (only != address(0) && share != only) continue;
+        uint256 entitled = (pot * _distributions[share]) / MAX_PERCENT;
+        uint256 got = released[token][share];
+        if (entitled <= got) continue;
+        if (pass == 0) amount += entitled - got;
+        else released[token][share] = entitled;
+      }
+      if (pass == 0) {
+        // Sum of dues never exceeds `available` (floor division).
+        if (amount == 0) return;
+        uint256 net = amount - (amount * adminFeePercent) / 10000;
+        uint256 sent = token == address(0)
+          ? _transferEthToBeneficiary(to, net)
+          : _transferErc20ToBeneficiary(token, getLegacyOwner(), to, net, route, vault);
+        if (sent == 0) return;
+      }
+    }
+    totalReleased[token] += amount;
+    uint256 fee = (amount * adminFeePercent) / 10000;
+    if (fee > 0) {
+      if (token == address(0)) {
+        _transferEthToBeneficiary(paymentContract, fee);
+      } else {
         uint256 before = IERC20(token).balanceOf(address(this));
-        _transferErc20ToBeneficiary(token, ownerAddress, address(this), fee, route, vault);
+        _transferErc20ToBeneficiary(token, getLegacyOwner(), address(this), fee, route, vault);
         uint256 received = IERC20(token).balanceOf(address(this)) - before;
         if (received > 0) _swapAdminFee(token, received);
       }
-      emit ShareClaimed(token, bene_, primary, sent);
     }
+    emit ShareClaimed(token, to, only, amount);
   }
 
-  function _roundMask(address token, uint256 full) private view returns (uint256 mask) {
-    mask = _claimedMask[token];
-    if (mask == full) mask = 0;
-  }
-
-  function _unclaimedPercent(address[] memory shares, uint256 mask) private view returns (uint256 total) {
-    for (uint256 i; i < shares.length; ++i) {
-      if (mask & (1 << i) == 0) total += _distributions[shares[i]];
-    }
+  /// @dev 0 for the primary, 1 for A2, 2 for A3.
+  function _rank(address primary, address claimant) private view returns (uint256) {
+    if (claimant == primary) return 0;
+    return _lines[_linesEpoch][primary][0] == claimant ? 1 : 2;
   }
 
   // ─── NFTs ─────────────────────────────────────────────────────────────────
 
   /// @notice Replace the NFT items this legacy hands on. Each names an
-  /// allowed collection and a first-line beneficiary; ERC-721 amount is 1.
-  function setNftItems(NftItem[] calldata items_) external onlyOwnerCaller onlyLive isActiveLegacy {
+  /// allowed collection with its kind and a first-line beneficiary; ERC-721
+  /// amount is 1.
+  function setNftItems(NftItem[] calldata items_) external {
+    _ownerSetting();
     if (nftAllowlist == address(0)) revert NftsDisabled();
     if (items_.length > MAX_NFT_ITEMS) revert TooManyNftItems();
     uint256 epoch = ++_nftEpoch;
@@ -320,12 +388,15 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     for (uint256 i; i < items_.length; ++i) {
       NftItem calldata item = items_[i];
       uint8 kind = INftCollectionWhiteList(nftAllowlist).kindOf(item.collection);
-      bool amountOk = kind == 1 ? item.amount == 1 : (kind == 2 && item.amount > 0);
-      if (!amountOk || _distributions[item.beneficiary] == 0) revert NftItemInvalid(i);
+      if (
+        kind == 0 ||
+        item.kind != kind ||
+        (kind == 1 ? item.amount != 1 : item.amount == 0) ||
+        _distributions[item.beneficiary] == 0
+      ) revert NftItemInvalid(i);
       list.push(item);
-      emit NftItemSet(epoch, i, item.collection, item.tokenId, item.amount, item.beneficiary);
+      emit NftItemSet(epoch, i, item.collection, kind, item.tokenId, item.amount, item.beneficiary);
     }
-    _lastTimestamp = block.timestamp;
     emit NftItemsSet(epoch, items_.length);
   }
 
@@ -333,9 +404,10 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     return _nftItems[_nftEpoch].length;
   }
 
-  function nftItem(uint256 index) external view returns (NftItem memory item, bool claimed) {
+  /// @return item the item; @return moved the units already claimed.
+  function nftItem(uint256 index) external view returns (NftItem memory item, uint256 moved) {
     uint256 epoch = _nftEpoch;
-    return (_nftItems[epoch][index], _nftClaimed[epoch][index]);
+    return (_nftItems[epoch][index], _nftMoved[epoch][index]);
   }
 
   /**
@@ -343,30 +415,33 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
    * third-line beneficiary (in its period) takes every item; on the first line
    * each item goes to its named beneficiary, or in per-share mode to whoever
    * of that beneficiary's line claims it in their window. Items the caller may
-   * not take yet, or that fail to move, are skipped. Called by the claimant
-   * directly, not through the router.
+   * not take yet, or that fail to move, are skipped; an ERC-1155 item can move
+   * in parts. The legacy activates only when something moves. Called by the
+   * claimant directly, not through the router.
    */
   function claimNfts(uint256[] calldata indexes_) external nonReentrant returns (uint256 moved) {
     if (!(_checkActiveLegacy() && _isLive == 1)) revert NotEnoughContitionalActive();
     uint8 layer = getBeneficiaryLayer(msg.sender);
     if (layer == 0 || layer > getCurrentLayer()) revert NotBeneficiary();
-    if (getIsActiveLegacy() == 1) _setLegacyToInactive();
 
     uint256 epoch = _nftEpoch;
     NftItem[] storage list = _nftItems[epoch];
     for (uint256 k; k < indexes_.length; ++k) {
       uint256 index = indexes_[k];
-      if (index >= list.length || _nftClaimed[epoch][index]) continue;
+      if (index >= list.length) continue;
       NftItem memory item = list[index];
+      uint256 left = item.amount - _nftMoved[epoch][index];
       address to = _nftPayee(item.beneficiary, layer);
-      if (to == address(0)) continue;
-      _nftClaimed[epoch][index] = true;
-      uint256 amount = _pullNft(item, to);
-      if (amount == 0) {
-        _nftClaimed[epoch][index] = false;
-        continue;
-      }
+      if (left == 0 || to == address(0)) continue;
+      _nftMoved[epoch][index] += left;
+      uint256 amount = _pullNft(item, left, to);
+      if (amount < left) _nftMoved[epoch][index] -= left - amount;
+      if (amount == 0) continue;
       ++moved;
+      if (getIsActiveLegacy() == 1) {
+        _setLegacyToInactive();
+        emit LegacyActivated(getLegacyId(), layer, block.timestamp);
+      }
       emit NftClaimed(index, item.collection, item.tokenId, amount, to);
     }
   }
@@ -374,47 +449,43 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   function _nftPayee(address primary, uint8 layer) private view returns (address) {
     if (layer != 1) return msg.sender;
     if (backupDelay == 0) return primary;
-    uint256 rank;
-    if (msg.sender == primary) rank = 0;
-    else if (_primaryOf[_linesEpoch][msg.sender] == primary) rank = _lines[_linesEpoch][primary][0] == msg.sender ? 1 : 2;
-    else return address(0);
-    return block.timestamp >= _activationDeadline() + rank * uint256(backupDelay) ? msg.sender : address(0);
+    if (msg.sender != primary && _primaryOf[_linesEpoch][msg.sender] != primary) return address(0);
+    return block.timestamp >= _activationDeadline() + _rank(primary, msg.sender) * uint256(backupDelay) ? msg.sender : address(0);
   }
 
-  /// @dev Through the bound vault when the owner approved it as operator,
-  /// otherwise straight from the owner's approval to this legacy. Returns the
-  /// amount moved (0 = nothing moved).
-  function _pullNft(NftItem memory item, address to) private returns (uint256 amount) {
+  /// @dev Up to `left` units, through the bound vault when the owner approved
+  /// it as operator, otherwise straight from the owner's approval to this
+  /// legacy. Returns the units moved (0 = nothing moved). The allowlist is not
+  /// read: a collection removed after it was named stays claimable.
+  function _pullNft(NftItem memory item, uint256 left, address to) private returns (uint256 amount) {
     address owner_ = getLegacyOwner();
     address vault = pullVault;
+    address collection = item.collection;
+    if (collection.code.length == 0) return 0;
     // `isApprovedForAll` has the same selector on ERC-721 and ERC-1155.
+    (bool ok, bytes memory ret) = collection.staticcall(abi.encodeCall(IERC721.isApprovedForAll, (owner_, vault)));
     bool viaVault = vault != address(0) &&
-      ILegacyPullVault(vault).boundLegacy(owner_) == address(this) &&
-      _staticBool(item.collection, abi.encodeCall(IERC721.isApprovedForAll, (owner_, vault)));
-    // The allowlist is not read here: a collection removed after it was named
-    // stays claimable.
+      ok &&
+      ret.length >= 32 &&
+      abi.decode(ret, (uint256)) == 1 &&
+      ILegacyPullVault(vault).boundLegacy(owner_) == address(this);
     bytes memory data;
-    if (_staticBool(item.collection, abi.encodeCall(IERC165.supportsInterface, (0x80ac58cd)))) {
+    if (item.kind == 1) {
       amount = 1;
       data = viaVault
-        ? abi.encodeCall(ILegacyPullVaultNft.pullERC721, (owner_, item.collection, to, item.tokenId))
+        ? abi.encodeCall(ILegacyPullVaultNft.pullERC721, (owner_, collection, to, item.tokenId))
         : abi.encodeCall(IERC721SafeTransfer.safeTransferFrom, (owner_, to, item.tokenId));
     } else {
-      (bool ok, bytes memory ret) = item.collection.staticcall(abi.encodeCall(IERC1155.balanceOf, (owner_, item.tokenId)));
+      (ok, ret) = collection.staticcall(abi.encodeCall(IERC1155.balanceOf, (owner_, item.tokenId)));
       if (!ok || ret.length < 32) return 0;
-      uint256 balance = abi.decode(ret, (uint256));
-      amount = balance < item.amount ? balance : item.amount;
+      amount = abi.decode(ret, (uint256));
+      if (amount > left) amount = left;
       if (amount == 0) return 0;
       data = viaVault
-        ? abi.encodeCall(ILegacyPullVaultNft.pullERC1155, (owner_, item.collection, to, item.tokenId, amount))
+        ? abi.encodeCall(ILegacyPullVaultNft.pullERC1155, (owner_, collection, to, item.tokenId, amount))
         : abi.encodeCall(IERC1155.safeTransferFrom, (owner_, to, item.tokenId, amount, ""));
     }
-    (bool sent, ) = (viaVault ? vault : item.collection).call(data);
-    if (!sent) return 0;
-  }
-
-  function _staticBool(address target, bytes memory data) private view returns (bool) {
-    (bool ok, bytes memory ret) = target.staticcall(data);
-    return ok && ret.length >= 32 && abi.decode(ret, (uint256)) == 1;
+    (ok, ) = (viaVault ? vault : collection).call(data);
+    if (!ok) return 0;
   }
 }

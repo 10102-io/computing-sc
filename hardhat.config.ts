@@ -136,19 +136,16 @@ const config: HardhatUserConfig = {
     // the file's dependency closure, which is what verification submits
     // (scripts/check-clone-reproducible.ts). viaIR stays on: the clone does
     // not compile without it (stack too deep).
-    // The v3 clone optimizes for size (runs 1): at 200 runs it exceeds the
-    // 24,576-byte limit. Runs trade deploy size against call gas only.
+    // Both clones use the repo's settings; the v3 clone fits the 24,576-byte
+    // limit at 200 runs by trimming (runs 1 would save another ~70 bytes).
     overrides: Object.fromEntries(
-      [
-        ["contracts/forwarding/TransferLegacyEOAContract.sol", 200],
-        ["contracts/forwarding/TransferLegacyEOAContractV3.sol", 1],
-      ].map(([file, runs]) => [
-        file as string,
+      ["contracts/forwarding/TransferLegacyEOAContract.sol", "contracts/forwarding/TransferLegacyEOAContractV3.sol"].map((file) => [
+        file,
         {
           version: "0.8.35",
           settings: {
             evmVersion: "cancun",
-            optimizer: { enabled: true, runs: runs as number },
+            optimizer: { enabled: true, runs: 200 },
             viaIR: true,
             outputSelection: { "*": { "*": ["storageLayout"] } },
           },

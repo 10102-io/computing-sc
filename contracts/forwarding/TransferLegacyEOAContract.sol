@@ -459,15 +459,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   }
 
-  function setDelayLayer23(address sender_, uint256 delayLayer2_, uint256 delayLayer3_) external onlyRouter onlyOwner(sender_) isActiveLegacy {
-    if (!premiumSetting.isPremium(sender_)) revert NotPremium();
-    delayLayer2 = delayLayer2_;
-    delayLayer3 = delayLayer3_;
-    if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
-    _afterBeneficiariesChanged(false);
-    _lastTimestamp = block.timestamp;
-
-  }
+  // setDelayLayer23 removed in the 2026-11 train: it was router-only and no
+  // router ever called it (delays move through setDelayAndLayer23Distributions).
 
   /**
    * @dev set distributions[]
