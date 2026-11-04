@@ -31,10 +31,11 @@ async function main() {
     const artifact = JSON.parse(fs.readFileSync(file, "utf-8"));
     const deployed: any[] = artifact.storageLayout?.storage ?? [];
     const now: any[] = current[name];
-    const type = (t: string) => String(t).replace(/\)\d+/g, ")").replace(/(\w)\d+_/g, "$1_");
+    // A contract-typed slot and an address slot are the same 20-byte value.
+    const type = (t: string) => String(t).replace(/\)\d+/g, ")").replace(/(\w)\d+_/g, "$1_").replace(/^t_contract\([^)]*\)$/, "t_address");
     const same = (e: any, n: any) => n && n.slot === e.slot && n.offset === e.offset && type(n.type) === type(e.type);
     const broken = deployed.filter((e, i) => !same(e, now[i]));
-    const renamed = deployed.filter((e, i) => same(e, now[i]) && now[i].label !== e.label).map((e, i) => `${e.label}`);
+    const renamed = deployed.filter((e, i) => same(e, now[i]) && now[i].label !== e.label).map((e) => `${e.label}`);
     if (broken.length) failures++;
     console.log(
       `${name.padEnd(24)} artifact ${artifact.address}  deployed ${deployed.length} vars, source ${now.length}: ` +
