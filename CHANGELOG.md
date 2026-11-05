@@ -23,7 +23,8 @@ the headline story lives.
 
 ## 2026-11-04 — Contract train 2026-11, built and tested
 
-[Not deployed: on feat/train-2026-11]
+[Wave A live on Sepolia 2026-11-05; on mainnet scheduled through the
+UpgradeTimelock, executable from 2026-11-07 22:41 UTC. Wave B not deployed.]
 
 The checklist audit's four Mediums and every queued contract rider, in one
 timelock batch (wave A), plus legacy v3 (wave B), which deploys only after

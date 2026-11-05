@@ -14,7 +14,7 @@
     },
     "EIP712LegacyVerifier": {
       "address": "0x36e4A2f7d7c3Be6Bd8179FA110eFd9548E893442",
-      "implementation": "0xf47161Dd8404CD8DA8Bb57b7F5653a88eA4fF0D1"
+      "implementation": "0x61d35F8b54E164DFf2E6b988D402c6c1B5324339"
     },
     "LegacyDeployer": {
       "address": "0x0D33b36836d05549Cbd18379BC488D1Db90CEB07",
@@ -22,7 +22,7 @@
     },
     "PremiumSetting": {
       "address": "0xEA267a1F6D554dD416d26c60eFef9234ebfde95e",
-      "implementation": "0x90A3574a88FB5cbEb3E220a212d94Bf3D1abBA69"
+      "implementation": "0x6F8b4F324B13cdB4A57030B72C5bF9E1cB4083aD"
     },
     "MultisigLegacyRouter": {
       "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
@@ -30,11 +30,11 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0x580E53D243F4156B77A56c53093B6e7aa3B97eaF"
+      "implementation": "0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
-      "implementation": "0xDF08d4584aB77aDeD8db9B8082457E73fA2c9D32"
+      "implementation": "0x1610DC8D25475959D5ba9395c4CE02456B51EB59"
     },
     "PremiumAutomationManager": {
       "address": "0x5B2e634D1a22E74902408EA25D6E221B8A1DfcDE",
@@ -65,7 +65,7 @@
     },
     "TimeLockRouter": {
       "address": "0x04FB4160c519578E310ee9cC7b966B88291E5F20",
-      "implementation": "0x3eE4633a131ABDFA2B982bde116E6Cb4De09fBcD"
+      "implementation": "0x3B6c725a4aa94fc1C0F0F40F32154BA79A647c62"
     },
     "TimelockERC20": {
       "address": "0xB7860eA69109142Bcf7ff4BC0FE52460D96a29B8",
@@ -133,6 +133,10 @@
       "LegacyAgreement_v1": {
         "address": "0x92a76FE89644F6aA9b8cE64b5a6E57B91A653Afc",
         "note": "No current equivalent — feature removed or merged"
+      },
+      "TransferEOALegacyImpl_pre_2026_11_05": {
+        "address": "0x0600e9D8A2B5F6c896C56B7D06acF9F13A8e13ED",
+        "replacedBy": "TransferEOALegacyImpl"
       }
     },
     "_orphaned": {
@@ -193,7 +197,7 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0x0600e9D8A2B5F6c896C56B7D06acF9F13A8e13ED"
+      "address": "0x8f97EA3A48F00e76516fB60D528dC2C96bd32DD8"
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
@@ -202,7 +206,11 @@
       "address": "0xC8ab95d850Fb7fAf5192B4e01D46008E053952d3"
     },
     "LegacyPullVault": {
-      "address": "0x2FaB98a58211F7FF48F78E8880c0F0e6A5e6E5f3"
+      "address": "0x96bFC5e582D39453b280b9154d923895B02C21fa"
+    },
+    "LegacyPullVaultV1": {
+      "address": "0x2FaB98a58211F7FF48F78E8880c0F0e6A5e6E5f3",
+      "note": "Pull vault for legacies created before 2026-11-05; their clones pin it forever."
     },
     "UpgradeTimelock": {
       "address": "0xFE949165f70becE8EaeA9f39140F377aF47f0875"
@@ -327,7 +335,8 @@
     },
     "EIP712LegacyVerifier": {
       "address": "0x3d6cC3782EC0DF21B58c4C9F5ecf23e485e05F9e",
-      "implementation": "0x7bcA85C9fE3DD8FAE178640eaebbaB13f5DA97DE"
+      "implementation": "0x7bcA85C9fE3DD8FAE178640eaebbaB13f5DA97DE",
+      "pendingImplementation": "0xB3cE4476fddF5b57B937590a4436892c0Dc57220"
     },
     "LegacyDeployer": {
       "address": "0xdb6B6487e020479120dd3e596Ff5A530eD7C88a7",
@@ -335,7 +344,8 @@
     },
     "PremiumSetting": {
       "address": "0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f",
-      "implementation": "0xc5b3AF7d60856151951247Ee6C609d5102C58310"
+      "implementation": "0xc5b3AF7d60856151951247Ee6C609d5102C58310",
+      "pendingImplementation": "0x189FbDC1Ad7716960293130CFa3BE247b948c463"
     },
     "MultisigLegacyRouter": {
       "address": "0x7c7bf503DF70eBE3520f65Cc0Ff1aF093Fa85038",
@@ -343,7 +353,8 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0x355BBf74B91e021f18Cee0de191b295B4159E4A1"
+      "implementation": "0x355BBf74B91e021f18Cee0de191b295B4159E4A1",
+      "pendingImplementation": "0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -375,11 +386,13 @@
     },
     "PremiumRegistry": {
       "address": "0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27",
-      "implementation": "0xF4718bD87c91c05eEb38C550Bb40b47A4141FB66"
+      "implementation": "0xF4718bD87c91c05eEb38C550Bb40b47A4141FB66",
+      "pendingImplementation": "0x78502df1F231Fd50858832be5a3c035c8A504731"
     },
     "TimeLockRouter": {
       "address": "0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42",
-      "implementation": "0x82f3148cc4836f03110F9B7139588B0563AF5005"
+      "implementation": "0x82f3148cc4836f03110F9B7139588B0563AF5005",
+      "pendingImplementation": "0x0d23dEeE5b316b1ac6b49C7f123489e8E9c2111c"
     },
     "TimelockERC20": {
       "address": "0xe809Bbc14bCF4ADd37377547B652DaF70B5939BF",
@@ -442,6 +455,10 @@
     },
     "ShieldVaultV1": {
       "address": "0x83074f8519F54AF05f7C48911E432e0C44dBEE69"
+    },
+    "train202611": {
+      "TransferEOALegacyImpl": "0x2E2dE6475fcBE77E7930499981850d37b237924C",
+      "LegacyPullVaultV2": "0xC6640962618f9D729032487EC5DEf226BF6F43E3"
     }
   }
 }

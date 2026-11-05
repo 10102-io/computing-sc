@@ -371,7 +371,9 @@ function writeAbis(): void {
         return fs.statSync(p).isDirectory() && !name.startsWith('.');
       }) :
       [];
-  const network = deploymentDirs[0] ?? allDirs[0] ?? networks[0] ?? 'sepolia';
+  // One ABI per contract serves every chain, so it follows production: a
+  // Sepolia rehearsal must not ship ABIs mainnet does not run yet.
+  const network = deploymentDirs.includes('mainnet') ? 'mainnet' : deploymentDirs[0] ?? allDirs[0] ?? networks[0] ?? 'sepolia';
   for (const m of ABI_MAPPINGS) {
     writeAbiFile(network, m.artifact, m.outPath, m.exportName, m.style);
   }

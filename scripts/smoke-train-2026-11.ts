@@ -161,7 +161,8 @@ export async function runSmoke(ctx: SmokeContext): Promise<boolean> {
   const wallets = [owner, bene, buyer];
   console.log(`Fresh wallets: owner ${owner.address}, beneficiary ${bene.address}, buyer ${buyer.address}`);
   for (const w of wallets) {
-    const tx = await deployer.sendTransaction({ to: w.address, value: ctx.fund, gasLimit: 21000, ...overrides });
+    // A transfer that creates an account costs more than 21,000 gas under the current schedule.
+    const tx = await deployer.sendTransaction({ to: w.address, value: ctx.fund, ...overrides });
     (txs.setup ??= []).push(tx.hash);
     await tx.wait();
   }

@@ -105,6 +105,10 @@ const config: HardhatUserConfig = {
     mainnet: {
       url: process.env.MAINNET_RPC_URL ?? process.env.RPC ?? "https://ethereum-rpc.publicnode.com",
       chainId: 1,
+      // ethers v5 adds a fixed 1.5 gwei tip, about 10x the whole fee at a
+      // 0.1 gwei base fee; a 2026-11 train deploy is ~145M gas. Set
+      // MAINNET_GAS_PRICE_GWEI (base fee plus a small tip) for large deploys.
+      ...(process.env.MAINNET_GAS_PRICE_GWEI ? { gasPrice: Math.round(Number(process.env.MAINNET_GAS_PRICE_GWEI) * 1_000_000_000) } : {}),
       accounts: process.env.DEPLOYER_PRIVATE_KEY !== undefined ? [process.env.DEPLOYER_PRIVATE_KEY as string] : [],
     },
   },
