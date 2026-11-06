@@ -292,7 +292,9 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
 
   // ─── Per-share claims ─────────────────────────────────────────────────────
 
-  function _transferAssetToBeneficiaries(address[] calldata assets_, bool isETH_, address bene_) internal override {
+  /// @dev Under this legacy's own guard, shared with `claimNfts`: no token
+  /// claim runs inside another or inside an NFT move, whatever the router.
+  function _transferAssetToBeneficiaries(address[] calldata assets_, bool isETH_, address bene_) internal override nonReentrant {
     if (backupDelay == 0) {
       super._transferAssetToBeneficiaries(assets_, isETH_, bene_);
       return;
@@ -339,15 +341,14 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   ) private {
     if (available == 0) return;
     uint256 pot = available + totalReleased[token];
-    // The dues never sum above `available` (floor division).
-    uint256 amount = _dues(token, pot, shares, only, false);
+    uint256 amount = _dues(token, pot, shares, only, available, false);
     if (amount == 0) return;
     uint256 fee = (amount * adminFeePercent) / 10000;
     uint256 sent = token == address(0)
       ? _transferEthToBeneficiary(to, amount - fee)
       : _transferErc20ToBeneficiary(token, getLegacyOwner(), to, amount - fee, route, vault);
     if (sent == 0) return;
-    _dues(token, pot, shares, only, true);
+    _dues(token, pot, shares, only, available, true);
     totalReleased[token] += amount;
     if (fee > 0) {
       if (token == address(0)) {
@@ -363,16 +364,21 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   }
 
   /// @dev Sum of the dues in scope (one share, or every share its line never
-  /// claimed) at `pot`; with `record_`, marks each as received.
-  function _dues(address token, uint256 pot, address[] memory shares, address only, bool record_) private returns (uint256 amount) {
+  /// claimed) at `pot`, filled in share order up to `cap` (what is pullable
+  /// now); with `record_`, adds each to what its share received. The dues fit
+  /// under the cap unless the owner's wallet shrank since an earlier claim;
+  /// then a share gets what is there and the rest stays owed.
+  function _dues(address token, uint256 pot, address[] memory shares, address only, uint256 cap, bool record_) private returns (uint256 amount) {
     for (uint256 i; i < shares.length; ++i) {
       address share = shares[i];
       if (only != address(0) ? share != only : lineClaimed[share]) continue;
       uint256 entitled = (pot * _distributions[share]) / MAX_PERCENT;
       uint256 got = released[token][share];
       if (entitled <= got) continue;
-      amount += entitled - got;
-      if (record_) released[token][share] = entitled;
+      uint256 due = entitled - got;
+      if (due > cap - amount) due = cap - amount;
+      amount += due;
+      if (record_) released[token][share] = got + due;
     }
   }
 

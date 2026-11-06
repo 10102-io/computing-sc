@@ -228,6 +228,50 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       assert.equal((await usdc.balanceOf(owner.address)).toString(), "0");
     });
 
+    it("round 6: the wallet shrank after a claim: the next share gets what is there and the rest after an inflow", async function () {
+      const { bene, bene2, attacker, router, legacy, legacyId, usdc, owner } = await withLines();
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // A: 600 of 1,000
+      await usdc.connect(owner).transfer(attacker.address, 300_000_000); // 100 left, pot 700
+      // B is due 40% of 700 = 280; 100 is there. Before the fix nothing moved.
+      await router.connect(bene2).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(bene2.address)).toString(), "99750000", "100 gross, less the 25 bps fee");
+      assert.equal((await legacy.released(usdc.address, bene2.address)).toString(), "100000000");
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "0");
+      await usdc.mint(owner.address, 500_000_000); // pot 1,200: B is due 480 - 100 = 380
+      await router.connect(bene2).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await legacy.released(usdc.address, bene2.address)).toString(), "480000000");
+      assert.equal((await usdc.balanceOf(bene2.address)).toString(), String(99750000 + 379050000));
+      // A's 120 of the inflow is still A's.
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await legacy.released(usdc.address, bene.address)).toString(), "720000000");
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "0");
+    });
+
+    it("round 6: the legacy's own guard: no token claim runs inside an NFT move, whatever the router", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, router, usdc, nft721 } = f;
+      const heir = await (await ethers.getContractFactory("MockHostilePayee")).deploy();
+      const { legacy, legacyId } = await createV3(f, [
+        { user: bene.address, percent: 500000 },
+        { user: heir.address, percent: 500000 },
+      ]);
+      await legacy.connect(owner).setNftItems([item(nft721.address, ERC721, 0, 1, heir.address)]);
+      await nft721.connect(owner).setApprovalForAll(legacy.address, true);
+      await usdc.connect(owner).approve(legacy.address, MAX);
+      // On receiving the NFT the heir claims the tokens through the router.
+      await heir.arm(router.address, router.interface.encodeFunctionData("activeLegacy", [legacyId, [usdc.address], false]));
+      await increase(DAY + 1);
+      await legacy.connect(bene).claimNfts([0]);
+      assert.equal(await nft721.ownerOf(0), heir.address, "the NFT moved");
+      assert.equal((await heir.attempts()).toString(), "1");
+      assert.equal((await heir.reentrySucceeded()).toString(), "0", "the nested token claim was refused");
+      assert.equal((await usdc.balanceOf(heir.address)).toString(), "0");
+      // Outside the NFT move the token claim works as usual.
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(heir.address)).toString(), "498750000");
+    });
+
     it("the unswap claim is refused in per-share mode; an ETH-only claim leaves the token shares untouched", async function () {
       const f = await withLines();
       const { owner, bene, bene2, router, legacy, legacyId, usdc, uni } = f;
