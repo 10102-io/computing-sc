@@ -404,13 +404,13 @@ input and its artifact equals the mainnet code at
 
 | Evidence | Result | Where |
 |---|---|---|
-| Hardhat specs | 360 passing in the full suite; 34 for v3: 2 new in round 6 and 5 new in round 7 | `test/Train2026-11.v3.spec.ts` |
-| Slither 0.11.6 | 21 results in v3's own code, none open: one fixed in round 6 and still reported (the detector does not credit a guard on an internal override), five false positives, the rest Low or informational by design; 68 results in the inherited wave A code, triaged for the record; 2 on the allowlist, 2 on the vault (in imported interfaces) | `static-analysis.md`, "Legacy v3" |
+| Hardhat specs | 364 passing in the full suite; 38 for v3: 2 new in round 6, 5 in round 7, 5 in round 8 (one round 7 spec replaced), all failing on the code before their round | `test/Train2026-11.v3.spec.ts` |
+| Slither 0.11.6 | 24 results in v3's own code, none open: the reentrancy pattern fixed in round 6 and still reported in four instances (the detector does not credit a guard on an internal override), five false positives, the rest Low or informational by design; 67 results in the inherited wave A code, triaged for the record; 2 on the allowlist, 2 on the vault (in imported interfaces) | `static-analysis.md`, "Legacy v3" |
 | Aderyn | not run locally (no Windows build of a current release, section 8.7); since round 7 CI runs 0.6.8 on the three files, report only | `.github/workflows/security.yml` |
-| Foundry invariants | 7 invariant functions over a 17-entry handler with an independent model of the spec, including share ownership; CI profile and deep profile, 0 counterexamples (numbers in 8.5) | `test/foundry/LegacyV3.invariants.t.sol`, `LegacyV3Handler.sol` |
-| Foundry differential | v3 without backup lines against the wave A clone, call for call, twin owners and heirs; v3's extra refusals (round 7) sent to v3 alone; 0 differences | `test/foundry/LegacyV3WholeEstate.t.sol` |
+| Foundry invariants | 7 invariant functions over an 18-entry handler with an independent model of the spec, including share ownership, the router's combined setters and a hostile owner acting from transfer callbacks; CI profile and deep profile, 0 counterexamples (numbers in 8.5) | `test/foundry/LegacyV3.invariants.t.sol`, `LegacyV3Handler.sol` |
+| Foundry differential | v3 without backup lines against the wave A clone, call for call, twin owners and heirs, the combined setters included; 0 differences | `test/foundry/LegacyV3WholeEstate.t.sol` |
 | Foundry stateless fuzz | 6 properties of the per-share math, 2,000 runs each in CI and 20,000 in the deep profile, 0 counterexamples | `test/foundry/LegacyV3.fuzz.t.sol` |
-| Findings | round 6: one Medium liveness bug (fixed), one defensive guard (added); round 7, from two external read-only reviews: one High (share ownership) and one Medium (cross-layer and duplicate first lines), both fixed; the rest documented | section 8.6 |
+| Findings | round 6: one Medium liveness bug (fixed), one defensive guard (added); round 7, from two external read-only reviews: one High (share ownership) and one Medium (cross-layer and duplicate first lines), both fixed; round 8, from the re-reviews: two regressions (atomic edits, `claimNfts` state before the pull), both fixed; the rest documented | section 8.6 |
 
 Coverage was not measured for v3 in this round (the coverage job
 instruments ShieldVault and the registry only).
@@ -429,12 +429,16 @@ vault), ETH held by the legacy, and two ERC-721 and two ERC-1155 items.
 Payment takes 25 bps; the Uniswap router has no liquidity, so every fee
 reaches Payment as tokens and stays countable.
 
-The 17 entries: deposits (tokens to the owner, ETH from the owner or a
+The 18 entries: deposits (tokens to the owner, ETH from the owner or a
 third party), drains (the owner's wallet shrinks; the owner withdraws ETH
 while live), time warps (short steps to land in windows, long ones to reach
 deadlines), check-ins, every owner setting (`setBackupLines` from 13 sets,
 `setNftItems` from 10 item templates, first-line and second- or third-line
-edits through the router, `setExecutor`), attestations, token and ETH claims
+edits through the router, `setExecutor`), the router's two combined setters
+(since round 8: `setLegacyConfig` moving the second line into the first
+while naming a new second line, and `setBothLayer23Distributions` swapping
+the second and third lines, each modelled child call by child call against
+the intermediate state), attestations, token and ETH claims
 (two entries, two thirds of the claimants drawn from the current lines),
 NFT claims, NFT approval changes and transfers, the owner's M-1 `unbind`,
 strangers and the executor trying every direct route, and `die`, after
@@ -454,9 +458,13 @@ claim and to whom: the first payee of a share is recorded, every later
 payment from it must go to the same address, and a share that paid
 nothing (an empty, failed or refused claim) must keep its owner. The edit
 sets include a first line that repeats an address, one that names the
-second line, and the second line set to the third line's address, which
-v3 must refuse. A mismatch is counted in `violations`; the handler never
-reverts, and `fail_on_revert` is on.
+second line, and the second line set to the third line's address; since
+round 8 these are accepted in whole-estate mode and per-share mode must
+then be refused. One first-line heir (carol) is a contract whose ERC-721,
+ERC-1155 and ETH receipt callbacks have the owner try to delete the
+legacy, withdraw its ETH, check in, rewrite the first line and change the
+executor; every attempt must fail (round 8). A mismatch is counted in
+`violations`; the handler never reverts, and `fail_on_revert` is on.
 
 ### 8.3 The invariant functions (after every call)
 
@@ -484,61 +492,65 @@ reverts, and `fail_on_revert` is on.
 
 ### 8.5 Results
 
-Round 7 code (commit `8bb8573`). CI profile, run locally on 2026-11-05
+Round 8 code (commit `4f58e6b`). CI profile, run locally on 2026-11-05
 (forge 1.8.6), the whole `test/foundry/**` suite: 22 tests in 5 suites, 0
-failures, 10 min 0 s.
+failures, 10 min 32 s.
 
 - v3 invariants: 256 runs x depth 200 = 51,200 handler calls, 7 invariant
-  functions after each call. 0 counterexamples, 0 reverts. 319 s.
-- Differential: 256 runs x depth 200 = 51,200 calls; 12,761 claim pairs
-  compared, 3,229 accepted by both twins, 47 overlapping first-line edits
-  refused by v3 alone. 0 differences. 36 s.
+  functions after each call. 0 counterexamples, 0 reverts. 370 s.
+- Differential: 256 runs x depth 200 = 51,200 calls; 11,449 claim pairs
+  compared, 2,018 accepted by both twins; 5,549 combined edits compared,
+  2,699 accepted by both. 0 differences. 50 s.
 - Stateless: 6 tests x 2,000 runs. 0 counterexamples.
 
 Reach of the v3 invariant campaign (summed `FUZZ_SUMMARY` counts, CI profile):
 
 | Operation | Calls | Accepted by the legacy |
 |---|---|---|
-| `claim` (tokens and ETH, both entries) | 6,028 | 1,140 |
-| of which per-share / by a backup / second- or third-line sweep / with a capped due | | 799 / 135 / 223 / 38 |
-| share ownership: shares that got their first payee / first-line claims refused because someone else owns the share / sweeps that left an owned share untouched | | 421 / 449 / 446 |
-| `claimNfts` | 2,978 | 954 (149 item moves) |
-| `attest` | 3,048 | 87 |
-| `setLines` / `setItems` / `setLayers` / `setExecutor` / `setDistributions` | 811 / 772 / 844 / 875 / 295 | 443 / 477 / 560 / 501 / 178 |
-| `checkIn` / `unbind` | 791 / 879 | 775 / 7 |
-| `deposit` / `drain` / `nftApprovals` / `warp` / `die` | 2,984 / 2,973 / 3,014 / 3,039 / 2,994 | all, except drains with nothing to drain and `die` draws that keep the owner alive |
-| `stranger` (eve and the executor on every direct route) | 3,072 | 0, by design |
+| `claim` (tokens and ETH, both entries) | 5,552 | 1,162 |
+| of which per-share / by a backup / second- or third-line sweep / with a capped due | | 614 / 109 / 204 / 39 |
+| share ownership: shares that got their first payee / first-line claims refused because someone else owns the share / sweeps that left an owned share untouched | | 290 / 294 / 370 |
+| `claimNfts` | 2,877 | 753 (90 item moves) |
+| owner calls from inside a transfer callback (carol, round 8) | 52 | 0, by design: every one refused |
+| `combinedEdit` (router combined setters, round 8) | 826 | 530 |
+| `attest` | 2,843 | 73 |
+| `setLines` / `setItems` / `setLayers` / `setExecutor` / `setDistributions` | 776 / 824 / 779 / 777 / 284 | 368 / 504 / 456 / 462 / 255 |
+| `checkIn` / `unbind` | 792 / 821 | 781 / 7 |
+| `deposit` / `drain` / `nftApprovals` / `warp` / `die` | 2,990 / 2,837 / 2,966 / 2,832 / 2,836 | all, except drains with nothing to drain and `die` draws that keep the owner alive |
+| `stranger` (eve and the executor on every direct route) | 2,866 | 0, by design |
 
 (A refused call is a check too: the handler asserts the refusal was right.
 `unbind` succeeds only for a living owner after a claim, which is rare by
 construction. Backup claims are fewer than in round 6 because a primary
-that is paid first now owns the share and its backups are refused. The CI
-job prints the same counts in its `reach per operation` step.)
+that is paid first owns the share and its backups are refused. The CI job
+prints the same counts in its `reach per operation` step.)
 
 Deep profile (`FOUNDRY_PROFILE=deep`), same code, run locally on
-2026-11-05, `test/foundry/LegacyV3*`: 8 tests, 0 failures, 63 min 29 s.
+2026-11-05, `test/foundry/LegacyV3*`: 8 tests, 0 failures, 70 min 29 s.
 
 - v3 invariants: 2,048 runs x depth 300 = 614,400 handler calls, 7
   invariant functions after each call. 0 counterexamples, 0 reverts.
-  3,808 s single-threaded.
-- Differential: 2,048 runs x depth 300 = 614,400 calls; 153,082 claim
-  pairs compared, 51,994 accepted by both twins, 529 overlapping first-line
-  edits refused by v3 alone. 0 differences. 383 s.
+  4,228 s single-threaded.
+- Differential: 2,048 runs x depth 300 = 614,400 calls; 135,819 claim
+  pairs compared, 32,255 accepted by both twins; 67,836 combined edits
+  compared, 28,434 accepted by both. 0 differences. 440 s.
 - Stateless: 6 tests x 20,000 runs. 0 counterexamples.
 
-Reach of the deep invariant campaign: 72,138 claim calls, 20,617 accepted
-(14,572 per-share, 2,737 by a backup, 4,678 second- or third-line sweeps,
-1,018 with a capped due after a drain); share ownership: 4,350 shares got
-their first payee, 9,814 first-line claims were refused because someone
-else owned the share, 9,840 sweeps left an owned share untouched; 36,257
-NFT claim calls, 18,366 accepted, 1,742 item moves; 646 accepted
-attestations; 3,494 / 3,592 / 3,801 / 3,305 / 1,250 accepted backup-line,
-item, layer, executor and first-line edits; 0 of 36,165 stranger and
-executor attempts got through.
+Reach of the deep invariant campaign: 67,915 claim calls, 20,391 accepted
+(8,992 per-share, 1,685 by a backup, 2,889 second- or third-line sweeps,
+601 with a capped due after a drain); share ownership: 2,719 shares got
+their first payee, 5,668 first-line claims were refused because someone
+else owned the share, 5,737 sweeps left an owned share untouched; 34,265
+NFT claim calls, 14,526 accepted, 1,188 item moves; 964 owner calls from
+inside carol's transfer callbacks, all refused; 3,415 accepted combined
+edits; 667 accepted attestations; 2,545 / 3,438 / 3,410 / 3,307 / 1,818
+accepted backup-line, item, layer, executor and first-line edits; 0 of
+34,069 stranger and executor attempts got through.
 
-The round 6 code had passed the same profiles (614,400 calls per suite in
-the deep profile, 0 counterexamples) with the `lineClaimed` rule the round 7
-reviews showed to be wrong; see 8.6.
+Earlier rounds passed the same profiles (614,400 calls per suite in the deep
+profile, 0 counterexamples): round 6 with the `lineClaimed` rule the round 7
+reviews showed to be wrong, and round 7 with checks the round 8 re-reviews
+showed to block the router's combined setters; see 8.6.
 
 ### 8.6 What the campaign found
 
@@ -576,7 +588,20 @@ handler observes which shares actually paid and to whom, and requires every
 later payment from a share to go to its first payee, and the edit sets now
 include the stranding first lines. The differential suite also showed the
 new refusals at once (wave A accepts a first line that names the third
-line; v3 now refuses it), which is why such edits now go to v3 alone there.
+line; round 7's v3 refused it), so in round 7 such edits went to v3 alone
+there; since round 8 v3 accepts them in whole-estate mode again and the
+twins run every edit in lockstep.
+
+**Round 8: two regressions the suite could not see.** The re-reviews found
+that round 7's checks broke the router's combined setters (each child call
+was checked against a half-done state) and that `claimNfts` still set the
+legacy inactive only after the pull. The suite had neither the combined
+setters nor a contract owner acting from a callback; both are in it now, and
+the five new Hardhat specs fail on the round 7 code. Adding the combined
+setters immediately produced one counterexample in the harness, not in v3:
+after an earlier cross-line move the second line is the move's own new
+address, so the next move would put it on both lines, which wave A refuses
+and the model first did not.
 
 **Counterexamples and gaps found in the harness during development**, kept
 because each shows what the suite checks:

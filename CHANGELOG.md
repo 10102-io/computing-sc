@@ -71,7 +71,7 @@ and the router's live code admin before writing the batch; the verifier,
 multisig router and EOA router ABIs are now covered by `sync-ui --check`.
 The Hardhat 3 migration is not done: it changes every contract's metadata
 hash, so deployed bytecode would no longer be reproduced byte for byte.
-360 tests passing (263 before).
+364 tests passing (263 before).
 
 ## 2026-11-04 — Deployment artifacts match the chain again
 
