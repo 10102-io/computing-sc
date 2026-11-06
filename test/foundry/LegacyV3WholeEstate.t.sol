@@ -34,7 +34,8 @@ contract WholeEstateHandler is LegacyV3Base {
   string public lastViolation;
   uint256 public claimsCompared;
   uint256 public claimsAccepted;
-  uint256 public overlapsRefused;
+  uint256 public combinedCompared;
+  uint256 public combinedAccepted;
 
   constructor() {
     _deployStack();
@@ -174,23 +175,8 @@ contract WholeEstateHandler is LegacyV3Base {
 
   function setDistributions(uint256 seed) external {
     if (seed % 4 != 0) return;
-    // Round 7: v3 refuses a first line that shares an address with the second
-    // or third line (wave A accepts it). Such an edit goes to v3 alone, must be
-    // refused, and the twins stay in lockstep.
-    (, address l2, address l3) = a.getLegacyBeneficiaries();
-    TransferLegacyStruct.Distribution[] memory dA = _distSet(1, seed / 4);
-    bool overlaps;
-    for (uint256 i; i < dA.length; ++i) {
-      if ((l2 != address(0) && dA[i].user == l2) || (l3 != address(0) && dA[i].user == l3)) overlaps = true;
-    }
-    if (overlaps) {
-      try this.routerCall(0, abi.encodeCall(TransferEOALegacy.setLegacyDistributions, (owners[0], _distSet(0, seed / 4)))) {
-        _fail("v3 accepted a first line that overlaps the second or third line");
-      } catch {}
-      ++overlapsRefused;
-      _compareState();
-      return;
-    }
+    // Since round 8 v3 accepts in whole-estate mode exactly what wave A
+    // accepts, a first line overlapping the second or third included.
     bool[2] memory ok;
     for (uint256 s; s < 2; ++s) {
       try this.routerCall(s, abi.encodeCall(TransferEOALegacy.setLegacyDistributions, (owners[s], _distSet(s, seed / 4)))) {
@@ -223,6 +209,47 @@ contract WholeEstateHandler is LegacyV3Base {
     }
     if (ok[0] != ok[1]) _fail("layer edit accepted by one twin only");
     _compareState();
+  }
+
+  /// @dev The router's combined setters on both twins, child calls in the
+  /// router's order, each twin reverting as a whole: the second and third
+  /// lines swapped, and `setLegacyConfig` moving the second line into the
+  /// first line while naming a new second line.
+  function combined(uint256 seed) external {
+    bool[2] memory ok;
+    for (uint256 s; s < 2; ++s) {
+      (, address l2, address l3) = _legacy(s).getLegacyBeneficiaries();
+      bytes[] memory calls;
+      if (seed % 2 == 0) {
+        calls = new bytes[](2);
+        calls[0] = abi.encodeCall(TransferEOALegacy.setLayer23Distributions, (owners[s], uint8(2), _dist(l3, MAX_PERCENT)));
+        calls[1] = abi.encodeCall(TransferEOALegacy.setLayer23Distributions, (owners[s], uint8(3), _dist(l2, MAX_PERCENT)));
+      } else {
+        address x = l2 != address(0) ? l2 : people[s][1];
+        TransferLegacyStruct.Distribution[] memory d = new TransferLegacyStruct.Distribution[](2);
+        (d[0], d[1]) = (_dist(people[s][0], 500_000), _dist(x, 500_000));
+        address newL2 = x == people[s][4] ? people[s][3] : people[s][4];
+        calls = new bytes[](3);
+        calls[0] = abi.encodeCall(TransferEOALegacy.setLegacyDistributions, (owners[s], d));
+        calls[1] = abi.encodeCall(TransferEOALegacy.setActivationTrigger, (owners[s], TRIGGER));
+        calls[2] = abi.encodeCall(
+          TransferEOALegacy.setDelayAndLayer23Distributions,
+          (owners[s], uint256(180 days), uint256(90 days), _dist(newL2, MAX_PERCENT), _dist(people[s][5], MAX_PERCENT))
+        );
+      }
+      try this.routerMulti(s, calls) {
+        ok[s] = true;
+      } catch {}
+    }
+    ++combinedCompared;
+    if (ok[0]) ++combinedAccepted;
+    if (ok[0] != ok[1]) _fail("combined edit accepted by one twin only");
+    _compareState();
+  }
+
+  function routerMulti(uint256 s, bytes[] calldata calls) external {
+    require(msg.sender == address(this));
+    for (uint256 i; i < calls.length; ++i) this.routerCall(s, calls[i]);
   }
 
   function claim(uint256 who, uint256 mask, bool withEth) external {
@@ -272,7 +299,8 @@ contract LegacyV3WholeEstateDiff is Test {
     h = new WholeEstateHandler();
     h.boot();
     targetContract(address(h));
-    bytes4[] memory s = new bytes4[](8);
+    bytes4[] memory s = new bytes4[](9);
+    s[8] = h.combined.selector;
     s[0] = h.deposit.selector;
     s[1] = h.drain.selector;
     s[2] = h.warp.selector;
@@ -295,6 +323,6 @@ contract LegacyV3WholeEstateDiff is Test {
     vm.createDir("out", true);
     if (!vm.exists(path)) vm.writeFile(path, "");
     vm.writeLine(path, string.concat("v3.diff.claim ", vm.toString(h.claimsCompared()), " ", vm.toString(h.claimsAccepted())));
-    vm.writeLine(path, string.concat("v3.diff.overlapRefused ", vm.toString(h.overlapsRefused()), " ", vm.toString(h.overlapsRefused())));
+    vm.writeLine(path, string.concat("v3.diff.combined ", vm.toString(h.combinedCompared()), " ", vm.toString(h.combinedAccepted())));
   }
 }

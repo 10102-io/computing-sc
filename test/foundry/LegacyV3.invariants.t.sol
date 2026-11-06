@@ -30,7 +30,8 @@ contract LegacyV3Invariants is Test {
     h.boot();
     legacy = h.legacy();
     targetContract(address(h));
-    bytes4[] memory s = new bytes4[](17);
+    bytes4[] memory s = new bytes4[](18);
+    s[17] = h.combinedEdit.selector;
     s[15] = h.die.selector;
     s[16] = h.claimAgain.selector;
     s[0] = h.deposit.selector;
@@ -165,14 +166,22 @@ contract LegacyV3Invariants is Test {
     (uint256 deadline, , ) = legacy.getTriggerActivationTimestamp();
     assertEq(deadline, h.modelDeadline(), "activation deadline differs from the model");
     assertEq(legacy.backupDelay(), h.mBackupDelay(), "backupDelay differs from the model");
-    (address[] memory shares, , ) = legacy.getLegacyBeneficiaries();
+    (address[] memory shares, address l2, address l3) = legacy.getLegacyBeneficiaries();
     assertEq(shares.length, h.shareCount(), "first line differs from the model");
     uint256 sum;
     for (uint256 i; i < shares.length; ++i) {
       assertEq(shares[i], h.shareAt(i), "first-line order differs from the model");
       sum += legacy.getDistribution(1, shares[i]);
     }
-    assertEq(sum, 1_000_000, "first-line shares do not add up to 100%");
+    assertEq(l2, h.mL2(), "second line differs from the model");
+    assertEq(l3, h.mL3(), "third line differs from the model");
+    // Round 8: whole-estate mode may hold a repeated or cross-layer first line
+    // (as wave A does; every first-line claim pays everything). Per-share mode
+    // never does: nothing may strand there.
+    if (legacy.backupDelay() != 0) {
+      assertEq(sum, 1_000_000, "per-share mode with first-line shares not adding up to 100%");
+      assertEq(legacy.getDistribution(1, l2) + legacy.getDistribution(1, l3), 0, "per-share mode with a first-line primary on the second or third line");
+    }
   }
 
   function _bal(address token, address who) internal view returns (uint256) {

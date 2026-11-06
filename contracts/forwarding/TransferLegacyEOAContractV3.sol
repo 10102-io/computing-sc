@@ -60,10 +60,12 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   /// @notice The collection allowlist, fixed in this implementation's code.
   address public immutable nftAllowlist;
 
-  uint256 public constant DEATH_GRACE = 30 days;
-  uint256 public constant MIN_BACKUP_DELAY = 30 days;
-  uint256 public constant MAX_BACKUP_DELAY = 3650 days;
-  uint256 public constant MAX_NFT_ITEMS = 50;
+  // Fixed in code and documented (docs/plans/train-2026-11.md, wave B); not
+  // exposed as getters, for size.
+  uint256 internal constant DEATH_GRACE = 30 days;
+  uint256 internal constant MIN_BACKUP_DELAY = 30 days;
+  uint256 internal constant MAX_BACKUP_DELAY = 3650 days;
+  uint256 internal constant MAX_NFT_ITEMS = 50;
 
   struct BackupLine {
     address primary;
@@ -121,6 +123,7 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   error TooManyNftItems();
   error ShareOwned(address owner);
   error FirstLineInvalid();
+  error NothingClaimed();
 
   event ExecutorSet(address indexed executor);
   event DeathAttested(address indexed executor, uint256 deadline);
@@ -223,7 +226,7 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
       }
     }
     backupDelay = backupDelay_;
-    _checkConfig();
+    _checkConfig(true);
     emit BackupLinesSet(epoch, backupDelay_);
   }
 
@@ -237,16 +240,21 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     _primaryOf[epoch][backup] = primary;
   }
 
-  /// @dev Backups open before the second line sweeps (review L-4). No address
-  /// is on the first line and the second or third, the second and third
-  /// lines differ, and the first line sums to 100%: a first line created with
-  /// a repeated address keeps its last percentage only. Any of these would
-  /// leave part of the estate claimable by no one.
-  function _checkConfig() private view {
-    if (backupDelay != 0 && delayLayer2 != 0 && delayLayer2 < 2 * uint256(backupDelay)) revert BackupDelayInvalid();
-    address l2 = _layer2Beneficiary;
-    uint256 sum = _distributions[l2] + _distributions[_layer3Beneficiary];
-    if (sum != 0 || (l2 != address(0) && l2 == _layer3Beneficiary)) revert FirstLineInvalid();
+  /// @dev Per-share mode only (whole-estate claims pay every first-line
+  /// share, so nothing below can strand anything there). Backups open before
+  /// the second line sweeps (review L-4), and no first-line primary is the
+  /// second- or third-line beneficiary: such an address counts as first line
+  /// and could never sweep. With `full` (entering or changing per-share mode)
+  /// the first line must also sum to 100%: one created with a repeated
+  /// address keeps its last percentage only. A first-line edit leaves
+  /// per-share mode, so after one nothing is checked; this is also what lets
+  /// the router's combined setters pass through transient states.
+  function _checkConfig(bool full) private view {
+    if (backupDelay == 0) return;
+    if (delayLayer2 != 0 && delayLayer2 < 2 * uint256(backupDelay)) revert BackupDelayInvalid();
+    uint256 sum = _distributions[_layer2Beneficiary] + _distributions[_layer3Beneficiary];
+    if (sum != 0) revert FirstLineInvalid();
+    if (!full) return;
     address[] memory shares = _beneficiariesSet.values();
     for (uint256 i; i < shares.length; ++i) sum += _distributions[shares[i]];
     if (sum != MAX_PERCENT) revert FirstLineInvalid();
@@ -266,10 +274,10 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
   }
 
   /// @dev After any beneficiary or delay change: the executor and the backups
-  /// stay off every other line (review L-3), backups still open before the
-  /// second line, and a first-line change voids the backup lines (per-share
-  /// mode off) and the NFT items, with their events (they name first-line
-  /// addresses; the owner sets them again).
+  /// stay off every other line (review L-3), a first-line change voids the
+  /// backup lines (per-share mode off) and the NFT items, with their events
+  /// (they name first-line addresses; the owner sets them again), and a
+  /// legacy still in per-share mode passes `_checkConfig`.
   function _afterBeneficiariesChanged(bool layer1Changed_) internal override {
     uint256 epoch = _linesEpoch;
     if (
@@ -284,7 +292,7 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
       epoch = ++_nftEpoch;
       emit NftItemsSet(epoch, 0);
     }
-    _checkConfig();
+    _checkConfig(false);
   }
 
   function _isOnAnyLine(address who) private view returns (bool) {
@@ -457,6 +465,11 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     if (!(_checkActiveLegacy() && _isLive == 1)) revert NotEnoughContitionalActive();
     uint8 layer = getBeneficiaryLayer(msg.sender);
     if (layer == 0 || layer > getCurrentLayer()) revert NotBeneficiary();
+    // Claimed before any external call, so no transfer callback finds the
+    // legacy live (an owner contract could delete or edit it mid-claim). If
+    // nothing moves the call reverts, so the legacy is not activated (review L-2).
+    bool activates = getIsActiveLegacy() == 1;
+    if (activates) _setLegacyToInactive();
 
     uint256 epoch = _nftEpoch;
     NftItem[] storage list = _nftItems[epoch];
@@ -473,12 +486,10 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
       if (amount == 0) continue;
       ++moved;
       if (backupDelay != 0) shareOwner[item.beneficiary] = to;
-      if (getIsActiveLegacy() == 1) {
-        _setLegacyToInactive();
-        emit LegacyActivated(getLegacyId(), layer, block.timestamp);
-      }
+      if (activates && moved == 1) emit LegacyActivated(getLegacyId(), layer, block.timestamp);
       emit NftClaimed(index, item.collection, item.tokenId, amount, to);
     }
+    if (activates && moved == 0) revert NothingClaimed();
   }
 
   function _nftPayee(address primary, uint8 layer) private view returns (address) {

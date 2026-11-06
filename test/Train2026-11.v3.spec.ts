@@ -108,6 +108,58 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       assert.equal((await nft1155.balanceOf(bene2.address, 0)).toString(), "3");
     });
 
+    it("round 8: an owner contract cannot delete or edit the legacy from an NFT recipient's callback", async function () {
+      const f = await loadFixture(fixture);
+      const { dev, treasury, bene, router, verifierTerm, nft721 } = f;
+      // Tx-based consent (a contract cannot sign the agreement message).
+      await verifierTerm.connect(dev).setActiveTerms("2026-11", ethers.utils.id("terms 2026-11"));
+      await verifierTerm.connect(dev).setConsentRecorder(router.address, true);
+      const ownerC = await (await ethers.getContractFactory("MockContractOwner")).deploy();
+      const heir = await (await ethers.getContractFactory("MockHostilePayee")).deploy();
+      const predicted: string = await router.getNextLegacyAddress(ownerC.address);
+      const ts = (await ethers.provider.getBlock("latest")).timestamp;
+      const create = router.interface.encodeFunctionData("createLegacyV2", [
+        [
+          { user: bene.address, percent: 500000 },
+          { user: heir.address, percent: 500000 },
+        ],
+        { lackOfOutgoingTxRange: DAY, delayLayer2: 0, delayLayer3: 0 },
+        { user: ZERO, percent: 0 },
+        { user: ZERO, percent: 0 },
+        { permitBatch: { details: [], spender: ZERO, sigDeadline: 0 }, signature: "0x" },
+        ts,
+        "0x",
+      ]);
+      await ownerC.exec(router.address, create);
+      const legacy = await ethers.getContractAt("TransferEOALegacyV3", predicted);
+      const legacyId = (await legacy.getLegacyInfo())[0];
+      await nft721.mint(ownerC.address, 1); // id 2
+      await ownerC.exec(nft721.address, nft721.interface.encodeFunctionData("setApprovalForAll", [legacy.address, true]));
+      await ownerC.exec(legacy.address, legacy.interface.encodeFunctionData("setNftItems", [[item(nft721.address, ERC721, 2, 1, heir.address)]]));
+      await treasury.sendTransaction({ to: legacy.address, value: ethers.utils.parseEther("1") });
+      // On receiving the NFT, the heir has the owner contract delete the legacy (which would send it the ETH).
+      const del = ownerC.interface.encodeFunctionData("exec", [router.address, router.interface.encodeFunctionData("deleteLegacy", [legacyId])]);
+      await heir.arm(ownerC.address, del);
+      await increase(DAY + 1);
+      await legacy.connect(bene).claimNfts([0]);
+      assert.equal(await nft721.ownerOf(2), heir.address, "the NFT moved");
+      assert.equal((await heir.attempts()).toString(), "1");
+      assert.equal((await heir.reentrySucceeded()).toString(), "0", "the delete from the callback was refused");
+      assert.equal((await ethers.provider.getBalance(legacy.address)).toString(), ethers.utils.parseEther("1").toString(), "the heirs' ETH stayed");
+      assert.equal((await legacy.getIsActiveLegacy()).toString(), "2", "activated by the claim");
+      assert.equal((await ownerC.received()).toString(), "0", "the owner contract got nothing");
+    });
+
+    it("round 8: an NFT claim that would activate the legacy but moves nothing reverts", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, nft721 } = f;
+      const { legacy } = await createV3(f, sixtyForty(f));
+      await legacy.connect(owner).setNftItems([item(nft721.address, ERC721, 0, 1, bene.address)]); // no approval given
+      await increase(DAY + 1);
+      await expectRevert(legacy.connect(bene).claimNfts([0]), "NothingClaimed()");
+      assert.equal((await legacy.getIsActiveLegacy()).toString(), "1", "not activated");
+    });
+
     it("an ERC-1155 claim in parts keeps the remainder; direct rail; failures skipped; delisted collection still claimable", async function () {
       const f = await loadFixture(fixture);
       const { owner, dev, bene, nftAllowlist, nft721, nft1155 } = f;
@@ -418,31 +470,88 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       assert.equal((await usdc.balanceOf(owner.address)).toString(), "60000000", "A's 60 stays A's");
     });
 
-    it("round 7: no address on the first line and the second or third, second and third differ, the first line sums to 100%", async function () {
+    async function withLayers() {
       const f = await loadFixture(fixture);
-      const { owner, bene, bene2, bene3, other, router } = f;
       const { legacy, legacyId } = await createV3(f, sixtyForty(f), {
-        layer2: { user: other.address, percent: 1000000 },
-        layer3: { user: bene3.address, percent: 1000000 },
+        layer2: { user: f.other.address, percent: 1000000 },
+        layer3: { user: f.bene3.address, percent: 1000000 },
         delayLayer2: 60 * DAY,
         delayLayer3: 60 * DAY,
       });
-      const dists = (u: string) => [
-        { user: bene.address, percent: 500000 },
-        { user: u, percent: 500000 },
-      ];
-      await expectRevert(router.connect(owner).setLegacyDistributions(legacyId, ["", ""], dists(other.address)), "FirstLineInvalid()");
-      await expectRevert(router.connect(owner).setLegacyDistributions(legacyId, ["", ""], dists(bene3.address)), "FirstLineInvalid()");
-      // The wave A clone lets the second line take the third line's address.
-      await expectRevert(router.connect(owner).setLayer23Distributions(legacyId, 2, "", { user: bene3.address, percent: 1000000 }), "FirstLineInvalid()");
-      // A repeated first-line address: the router and wave A accept it.
-      const dup = [
+      return { ...f, legacy, legacyId };
+    }
+    const full = (user: string) => ({ user, percent: 1000000 });
+    const layersOf = async (legacy: any) => {
+      const [, l2, l3] = await legacy.getLegacyBeneficiaries();
+      return [l2, l3];
+    };
+    // setLegacyConfig: the current second line moves to the first line and a new second line is named, in one transaction.
+    const moveSecondIntoFirst = (f: any, legacyId: any) =>
+      f.router.connect(f.owner).setLegacyConfig(
+        legacyId,
+        { name: "", note: "", nickNames: ["", ""], distributions: [{ user: f.bene.address, percent: 500000 }, { user: f.other.address, percent: 500000 }] },
+        { lackOfOutgoingTxRange: DAY, delayLayer2: 60 * DAY, delayLayer3: 60 * DAY },
+        full(f.safe.address),
+        full(f.bene3.address),
+        "",
+        ""
+      );
+
+    it("round 8: the router's combined setters pass through transient states in whole-estate mode", async function () {
+      const f = await withLayers();
+      const { owner, other, bene3, safe, router, legacy, legacyId } = f;
+      // Second and third lines swapped: l2 == l3 between the two child calls.
+      await router.connect(owner).setBothLayer23Distributions(legacyId, "", full(bene3.address), "", full(other.address));
+      assert.deepEqual(await layersOf(legacy), [bene3.address, other.address]);
+      await router.connect(owner).setBothLayer23Distributions(legacyId, "", full(other.address), "", full(bene3.address));
+      // The second line moves into the first line while a new second line is named.
+      await moveSecondIntoFirst(f, legacyId);
+      assert.deepEqual(await layersOf(legacy), [safe.address, bene3.address]);
+      assert.equal(await legacy.getBeneficiaryLayer(other.address), 1);
+    });
+
+    it("round 8: in per-share mode the swap keeps the lines; the cross-line move leaves per-share mode", async function () {
+      const f = await withLayers();
+      const { owner, bene, other, bene2, bene3, safe, router, legacy, legacyId } = f;
+      await legacy.connect(owner).setBackupLines(30 * DAY, [{ primary: bene.address, second: f.attacker.address, third: ZERO }]);
+      await router.connect(owner).setBothLayer23Distributions(legacyId, "", full(bene3.address), "", full(other.address));
+      assert.deepEqual(await layersOf(legacy), [bene3.address, other.address]);
+      assert.equal((await legacy.backupDelay()).toString(), String(30 * DAY), "still per-share");
+      await router.connect(owner).setBothLayer23Distributions(legacyId, "", full(other.address), "", full(bene3.address));
+      await moveSecondIntoFirst(f, legacyId);
+      assert.deepEqual(await layersOf(legacy), [safe.address, bene3.address]);
+      assert.equal((await legacy.backupDelay()).toString(), "0", "a first-line edit leaves per-share mode");
+      assert.equal((await legacy.getBackupLine(bene.address))[0], ZERO);
+    });
+
+    it("round 8: per-share mode is refused for configurations that strand funds; the second line equal to the third is allowed", async function () {
+      const f = await withLayers();
+      const { owner, bene, bene2, bene3, other, attacker, router, legacy, legacyId, usdc } = f;
+      const line = [{ primary: bene.address, second: attacker.address, third: ZERO }];
+      // Whole-estate mode accepts a first line that names the second line (as wave A does)...
+      await router.connect(owner).setLegacyDistributions(legacyId, ["", ""], [{ user: bene.address, percent: 500000 }, { user: other.address, percent: 500000 }]);
+      // ...but such an address counts as first line and could never sweep: per-share mode is refused.
+      await expectRevert(legacy.connect(owner).setBackupLines(30 * DAY, line), "FirstLineInvalid()");
+      await router.connect(owner).setLegacyDistributions(legacyId, ["", ""], [{ user: bene.address, percent: 500000 }, { user: bene3.address, percent: 500000 }]);
+      await expectRevert(legacy.connect(owner).setBackupLines(30 * DAY, line), "FirstLineInvalid()");
+      // A repeated address sums below 100%: accepted whole-estate, refused per-share.
+      await router.connect(owner).setLegacyDistributions(legacyId, ["", "", ""], [
         { user: bene.address, percent: 300000 },
         { user: bene2.address, percent: 400000 },
         { user: bene.address, percent: 300000 },
-      ];
-      await expectRevert(router.connect(owner).setLegacyDistributions(legacyId, ["", "", ""], dup), "FirstLineInvalid()");
-      await router.connect(owner).setLegacyDistributions(legacyId, ["", ""], dists(bene2.address));
+      ]);
+      await expectRevert(legacy.connect(owner).setBackupLines(30 * DAY, line), "FirstLineInvalid()");
+      await router.connect(owner).setLegacyDistributions(legacyId, ["", ""], sixtyForty(f));
+      await legacy.connect(owner).setBackupLines(30 * DAY, line);
+      // In per-share mode a layer edit onto a first-line address is refused (wave A's own check).
+      await expectRevert(router.connect(owner).setLayer23Distributions(legacyId, 2, "", full(bene.address)), "AlreadyBeneficiary()");
+      // The second line equal to the third strands nothing: one address covers both periods.
+      await router.connect(owner).setLayer23Distributions(legacyId, 2, "", full(bene3.address));
+      assert.deepEqual(await layersOf(legacy), [bene3.address, bene3.address]);
+      await usdc.connect(owner).approve(legacy.address, MAX);
+      await increase(DAY + 121 * DAY); // the third line's period
+      await router.connect(bene3).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(bene3.address)).toString(), "997500000", "it sweeps every unowned share");
     });
 
     it("round 7: a legacy created with a repeated first-line address cannot turn on per-share mode; whole-estate claims still pay everything", async function () {
@@ -540,7 +649,7 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       await legacy.connect(owner).setNftItems([item(nft721.address, ERC721, 0, 1, bene.address)]);
       await nft721.connect(owner).setApprovalForAll(vault.address, true);
       await increase(DAY + 1);
-      await legacy.connect(bene3).claimNfts([0]);
+      await expectRevert(legacy.connect(bene3).claimNfts([0]), "NothingClaimed()"); // round 8: reverts instead of a no-op
       assert.equal((await legacy.getIsActiveLegacy()).toString(), "1", "still not activated");
       assert.equal(await nft721.ownerOf(0), owner.address);
       await increase(30 * DAY);

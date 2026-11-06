@@ -12,6 +12,36 @@ import {MockERC1155} from "../../contracts/mock/ERC1155Token.sol";
 import {MockPermit2} from "../../contracts/mock/MockPermit2.sol";
 import {LegacyV3Base} from "./LegacyV3Base.sol";
 
+interface IHostileHook {
+  function hostileOwner() external;
+}
+
+/// @dev A first-line heir (carol) whose transfer callbacks have the owner try
+/// to delete, withdraw from, check in on and edit the legacy (an owner that
+/// is a contract or an EIP-7702 account colluding with the heir). Every
+/// attempt must fail; the handler counts any that does not.
+contract HostileHeir {
+  IHostileHook internal immutable hook;
+
+  constructor(address hook_) {
+    hook = IHostileHook(hook_);
+  }
+
+  function onERC721Received(address, address, uint256, bytes calldata) external returns (bytes4) {
+    hook.hostileOwner();
+    return this.onERC721Received.selector;
+  }
+
+  function onERC1155Received(address, address, uint256, uint256, bytes calldata) external returns (bytes4) {
+    hook.hostileOwner();
+    return this.onERC1155Received.selector;
+  }
+
+  receive() external payable {
+    hook.hostileOwner();
+  }
+}
+
 /**
  * @dev Stateful handler for the TransferEOALegacyV3 invariant suite. One
  * legacy, created as the router creates it, with three first-line shares,
@@ -49,6 +79,7 @@ contract LegacyV3Handler is LegacyV3Base {
   address public eve;
   address public sink;
   address public funder;
+  address public newL2; // the second line named by the combined cross-line move
   address[] public actors;
   address[] public everShares;
   mapping(address => bool) internal isEverShare;
@@ -101,6 +132,8 @@ contract LegacyV3Handler is LegacyV3Base {
   uint256 public ownedRefused; // first-line claims refused because someone else owns the share
   uint256 public ownedSkipped; // sweeps that left a share someone else owns untouched
   uint256 public ownersSet; // shares that got their first payee
+  uint256 public hostileAttempts; // owner calls tried from inside a transfer callback
+  uint256 public combinedEdits; // accepted router combined setters (cross-line move, layer swap)
 
   bool public ownerDead;
 
@@ -116,7 +149,8 @@ contract LegacyV3Handler is LegacyV3Base {
     owner = makeAddr("owner");
     alice = makeAddr("alice");
     bob = makeAddr("bob");
-    carol = makeAddr("carol");
+    carol = address(new HostileHeir(address(this)));
+    newL2 = makeAddr("newL2");
     dave = makeAddr("dave");
     alice2 = makeAddr("alice2");
     alice3 = makeAddr("alice3");
@@ -128,7 +162,7 @@ contract LegacyV3Handler is LegacyV3Base {
     eve = makeAddr("eve");
     sink = makeAddr("sink");
     funder = makeAddr("funder");
-    address[13] memory a = [alice, bob, carol, dave, alice2, alice3, bob2, carol2, sam, tina, exe, eve, owner];
+    address[14] memory a = [alice, bob, carol, dave, alice2, alice3, bob2, carol2, sam, tina, exe, eve, owner, newL2];
     for (uint256 i; i < a.length; ++i) actors.push(a[i]);
 
     tokA = new ERC20Token("Token A", "A", 18);
@@ -354,11 +388,13 @@ contract LegacyV3Handler is LegacyV3Base {
     return mLines[primary][0] == claimant ? 1 : 2;
   }
 
+  /// @dev As the wave A clone writes a first line: a repeated address is added
+  /// once and keeps its last percentage.
   function _setModelShares(TransferLegacyStruct.Distribution[] memory d) internal {
     for (uint256 i; i < mShares.length; ++i) mPct[mShares[i]] = 0;
     delete mShares;
     for (uint256 i; i < d.length; ++i) {
-      mShares.push(d[i].user);
+      if (mPct[d[i].user] == 0) mShares.push(d[i].user);
       mPct[d[i].user] = d[i].percent;
       if (!isEverShare[d[i].user]) {
         isEverShare[d[i].user] = true;
@@ -419,7 +455,12 @@ contract LegacyV3Handler is LegacyV3Base {
       }
     }
     if (mDelay2 != 0 && mDelay2 < 2 * uint256(delay)) return false;
-    return true;
+    // Entering per-share mode: nothing may strand. No first-line primary on the
+    // second or third line, and the first line sums to 100%.
+    if ((mL2 != address(0) && mPct[mL2] != 0) || (mL3 != address(0) && mPct[mL3] != 0)) return false;
+    uint256 sum;
+    for (uint256 i; i < mShares.length; ++i) sum += mPct[mShares[i]];
+    return sum == MAX_PERCENT;
   }
 
   function _itemsAccepted(TransferEOALegacyV3.NftItem[] memory items) internal view returns (bool) {
@@ -462,7 +503,7 @@ contract LegacyV3Handler is LegacyV3Base {
       vm.writeLine(path, string.concat(opNames[i], " ", vm.toString(calls[opNames[i]]), " ", vm.toString(accepted[opNames[i]])));
     }
     // Reach: how often the states that matter were hit (count twice to keep the three-column format).
-    string[8] memory names = [
+    string[10] memory names = [
       "v3.reach.perShareClaim",
       "v3.reach.sweepClaim",
       "v3.reach.backupClaim",
@@ -470,10 +511,23 @@ contract LegacyV3Handler is LegacyV3Base {
       "v3.reach.nftMove",
       "v3.reach.shareOwned",
       "v3.reach.ownedRefused",
-      "v3.reach.ownedSkipped"
+      "v3.reach.ownedSkipped",
+      "v3.reach.hostileOwnerCall",
+      "v3.reach.combinedEdit"
     ];
-    uint256[8] memory counts = [perShareClaims, sweepClaims, backupClaims, cappedClaims, nftMoves, ownersSet, ownedRefused, ownedSkipped];
-    for (uint256 i; i < 8; ++i) vm.writeLine(path, string.concat(names[i], " ", vm.toString(counts[i]), " ", vm.toString(counts[i])));
+    uint256[10] memory counts = [
+      perShareClaims,
+      sweepClaims,
+      backupClaims,
+      cappedClaims,
+      nftMoves,
+      ownersSet,
+      ownedRefused,
+      ownedSkipped,
+      hostileAttempts,
+      combinedEdits
+    ];
+    for (uint256 i; i < 10; ++i) vm.writeLine(path, string.concat(names[i], " ", vm.toString(counts[i]), " ", vm.toString(counts[i])));
   }
 
   function _mint(uint256 t, uint256 amount) internal {
@@ -630,18 +684,11 @@ contract LegacyV3Handler is LegacyV3Base {
     seed /= 3;
     _op("v3.setDistributions");
     TransferLegacyStruct.Distribution[] memory d = _distSet(seed);
+    // Round 8: a first-line edit leaves per-share mode, so v3 adds no check
+    // of its own here; a repeated or cross-layer first line is accepted as
+    // on wave A and only refused when entering per-share mode again.
     bool expect = _mLive();
-    // What the first line would hold: a repeated address keeps its last percentage.
-    uint256 sum;
-    for (uint256 i; i < d.length; ++i) {
-      address u = d[i].user;
-      if (mExecutor != address(0) && u == mExecutor) expect = false;
-      if ((mL2 != address(0) && u == mL2) || (mL3 != address(0) && u == mL3)) expect = false;
-      bool repeatedLater;
-      for (uint256 j = i + 1; j < d.length; ++j) if (d[j].user == u) repeatedLater = true;
-      if (!repeatedLater) sum += d[i].percent;
-    }
-    if (sum != MAX_PERCENT) expect = false;
+    for (uint256 i; i < d.length; ++i) if (mExecutor != address(0) && d[i].user == mExecutor) expect = false;
     try this.routerSetDistributions(d) {
       _check(expect, "setLegacyDistributions accepted against the spec");
       _setModelShares(d);
@@ -669,12 +716,12 @@ contract LegacyV3Handler is LegacyV3Base {
     uint256 k = seed % 8;
     if (k == 7) {
       // The wave A clone's single-layer setter: tina as the second line, even
-      // while she is the third. v3 refuses the same address on both.
+      // while she is the third. Round 8: allowed, one address then covers
+      // both periods and nothing strands.
       bool ok2 = _mLive() &&
         mPct[tina] == 0 &&
         mDelay2 != 0 &&
         ((mDelay3 == 0 && mL3 == address(0)) || (mDelay3 != 0 && mL3 != address(0))) &&
-        tina != mL3 &&
         mExecutor != tina &&
         mPrimaryOf[tina] == address(0);
       try this.routerSetLayer2(tina) {
@@ -720,6 +767,108 @@ contract LegacyV3Handler is LegacyV3Base {
   function routerSetLayer2(address user) external {
     require(msg.sender == address(this));
     legacy.setLayer23Distributions(owner, 2, _dist(user, MAX_PERCENT));
+  }
+
+  /// @dev The router's combined setters, child calls in the router's order,
+  /// reverting as a whole (round 8): `setBothLayer23Distributions` swapping
+  /// the second and third lines, and `setLegacyConfig` moving the second
+  /// line into the first line while naming a new second line.
+  function combinedEdit(uint256 seed) external {
+    if (ownerDead) return;
+    _op("v3.combined");
+    if (seed % 2 == 0) {
+      (address l2, address l3) = (mL2, mL3);
+      bool expect = _mLive() &&
+        l2 != address(0) &&
+        l3 != address(0) &&
+        l2 != l3 &&
+        mDelay2 != 0 &&
+        mDelay3 != 0 &&
+        mPct[l2] == 0 &&
+        mPct[l3] == 0;
+      try this.routerSwapLayers(l3, l2) {
+        _check(expect, "setBothLayer23Distributions (swap) accepted against the spec");
+        (mL2, mL3) = (l3, l2);
+        mLast = block.timestamp;
+        ++combinedEdits;
+        _ok("v3.combined");
+      } catch {
+        _check(!expect, "setBothLayer23Distributions (swap) refused against the spec");
+      }
+      return;
+    }
+    address x = mL2 != address(0) && mL2 != alice ? mL2 : bob;
+    TransferLegacyStruct.Distribution[] memory d = new TransferLegacyStruct.Distribution[](2);
+    (d[0], d[1]) = (_dist(alice, 500_000), _dist(x, 500_000));
+    uint256 d2 = mDelay2 != 0 ? mDelay2 : DELAY2_DEFAULT;
+    address l3_ = mL3;
+    uint256 d3 = l3_ != address(0) ? mDelay3 : 0;
+    // Child 1 (first line) on the current state; child 3 (layers) on the
+    // state after it: lines voided, first line {alice, x}.
+    bool inD3 = l3_ == alice || l3_ == x;
+    bool expectCfg = _mLive() &&
+      x != newL2 && // after an earlier move the second line is newL2: it cannot be on both lines
+      (mExecutor == address(0) || (mExecutor != alice && mExecutor != x && mExecutor != newL2 && mExecutor != l3_)) &&
+      (l3_ == address(0) || (l3_ != newL2 && !inD3 && d2 != 0 && d3 != 0));
+    try this.routerSetLegacyConfig(d, d2, d3, newL2, l3_) {
+      _check(expectCfg, "setLegacyConfig (cross-line move) accepted against the spec");
+      _setModelShares(d);
+      _clearLines();
+      mBackupDelay = 0;
+      delete mItems;
+      delete mMoved;
+      (mDelay2, mDelay3, mL2, mL3) = (d2, d3, newL2, l3_);
+      mLast = block.timestamp;
+      ++combinedEdits;
+      _ok("v3.combined");
+    } catch {
+      _check(!expectCfg, "setLegacyConfig (cross-line move) refused against the spec");
+    }
+  }
+
+  function routerSwapLayers(address l2, address l3) external {
+    require(msg.sender == address(this));
+    // TransferEOALegacyRouter.setBothLayer23Distributions
+    legacy.setLayer23Distributions(owner, 2, _dist(l2, MAX_PERCENT));
+    legacy.setLayer23Distributions(owner, 3, _dist(l3, MAX_PERCENT));
+  }
+
+  function routerSetLegacyConfig(TransferLegacyStruct.Distribution[] calldata d, uint256 d2, uint256 d3, address l2, address l3) external {
+    require(msg.sender == address(this));
+    // TransferEOALegacyRouter.setLegacyConfig
+    legacy.setLegacyDistributions(owner, d);
+    legacy.setActivationTrigger(owner, TRIGGER);
+    legacy.setDelayAndLayer23Distributions(owner, d2, d3, _dist(l2, l2 == address(0) ? 0 : MAX_PERCENT), _dist(l3, l3 == address(0) ? 0 : MAX_PERCENT));
+  }
+
+  /// @dev Called from carol's transfer callbacks (HostileHeir): the owner
+  /// tries to delete, withdraw, check in and edit while a claim is moving
+  /// value. The legacy is claimed before any transfer, so all must fail.
+  function hostileOwner() external {
+    ++hostileAttempts;
+    bool got;
+    try this.routerDelete() {
+      got = true;
+    } catch {}
+    try this.routerWithdraw(1) {
+      got = true;
+    } catch {}
+    try this.routerCheckIn() {
+      got = true;
+    } catch {}
+    try this.routerSetDistributions(_distSet(0)) {
+      got = true;
+    } catch {}
+    vm.prank(owner);
+    try legacy.setExecutor(address(0)) {
+      got = true;
+    } catch {}
+    if (got) _fail("the owner acted on the legacy from inside a transfer callback");
+  }
+
+  function routerDelete() external {
+    require(msg.sender == address(this));
+    legacy.deleteLegacy(owner);
   }
 
   function routerSetLayers(uint256 d2, uint256 d3, address l2, address l3) external {
@@ -1101,6 +1250,9 @@ contract LegacyV3Handler is LegacyV3Base {
       if (units[k] > 0) ++expectedMoves;
       before[k] = it.kind == 1 ? 0 : MockERC1155(it.collection).balanceOf(payee, it.tokenId);
     }
+
+    // Round 8: a call that would activate the legacy but moves nothing reverts.
+    if (expect && !mActivated && expectedMoves == 0) expect = false;
 
     vm.prank(actor);
     try legacy.claimNfts(idx) returns (uint256 moved) {
