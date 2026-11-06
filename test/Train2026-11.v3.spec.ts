@@ -76,7 +76,7 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       await expectRevert(legacy.connect(owner).setNftItems(Array(51).fill(ok)), "TooManyNftItems()");
       await premiumSetting.connect(dev).resetPremium(owner.address);
       await legacy.connect(owner).setNftItems([ok]);
-      assert.equal((await legacy.nftItemCount()).toString(), "1");
+      assert.equal((await legacy.nftItem(0)).item.beneficiary, bene.address);
     });
 
     it("claim through the vault: each item reaches its named beneficiary, once; activation is evented", async function () {
@@ -204,8 +204,8 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       await increase(30 * DAY);
       await router.connect(bene3).activeLegacy(legacyId, [usdc.address], false);
       assert.equal((await usdc.balanceOf(bene3.address)).toString(), "598500000");
-      // A's share is settled; A gets nothing more, B nothing more.
-      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      // A's share is A2's now (round 7): A is refused; B gets nothing more.
+      await expectRevert(router.connect(bene).activeLegacy(legacyId, [usdc.address], false), "ShareOwned(address)");
       await router.connect(bene2).activeLegacy(legacyId, [usdc.address], false);
       assert.equal((await usdc.balanceOf(bene.address)).toString(), "0");
       assert.equal((await usdc.balanceOf(bene2.address)).toString(), "399000000");
@@ -340,8 +340,8 @@ describe("Train 2026-11 — wave B legacy v3", function () {
 
       await increase(DAY + 1);
       await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // A's line claims: 600
-      assert.equal(await legacy.lineClaimed(bene.address), true);
-      assert.equal(await legacy.lineClaimed(bene2.address), false);
+      assert.equal(await legacy.shareOwner(bene.address), bene.address);
+      assert.equal(await legacy.shareOwner(bene2.address), ZERO);
       await usdc.mint(owner.address, 100_000_000); // deposit after A's claim
 
       await increase(61 * DAY);
@@ -349,6 +349,7 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       // Only B's due: 40% of 1,100 = 440 gross. A's 60 of the deposit stays A's.
       assert.equal((await usdc.balanceOf(other.address)).toString(), "438900000");
       assert.equal((await usdc.balanceOf(owner.address)).toString(), "60000000");
+      assert.equal(await legacy.shareOwner(bene2.address), other.address, "the sweep owns the share it paid");
       await router.connect(other).activeLegacy(legacyId, [usdc.address], false);
       assert.equal((await usdc.balanceOf(owner.address)).toString(), "60000000", "a second sweep still leaves A's due");
       // NFTs follow the same rule: B's item to the second line, A's stays A's.
@@ -360,6 +361,106 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       assert.equal((await usdc.balanceOf(bene.address)).toString(), String(598500000 + 59850000));
       await legacy.connect(bene).claimNfts([0]);
       assert.equal(await nft721.ownerOf(0), bene.address);
+    });
+
+    it("round 7: a share belongs to the first address it pays: A's backup never takes A's later inflows or NFTs", async function () {
+      const f = await withLines();
+      const { owner, bene, bene3, router, legacy, legacyId, usdc, vault, nft721 } = f;
+      await legacy.connect(owner).setNftItems([item(nft721.address, ERC721, 0, 1, bene.address)]);
+      await nft721.connect(owner).setApprovalForAll(vault.address, true);
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // A: 600
+      await usdc.mint(owner.address, 100_000_000);
+      await increase(31 * DAY); // A2's window is open
+      await expectRevert(router.connect(bene3).activeLegacy(legacyId, [usdc.address], false), "ShareOwned(address)");
+      await expectRevert(router.connect(bene3).activeLegacy(legacyId, [], true), "ShareOwned(address)");
+      await legacy.connect(bene3).claimNfts([0]);
+      assert.equal(await nft721.ownerOf(0), owner.address, "A's NFT does not go to A2");
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // A's 60 of the inflow
+      assert.equal((await legacy.released(usdc.address, bene.address)).toString(), "660000000");
+      await legacy.connect(bene).claimNfts([0]);
+      assert.equal(await nft721.ownerOf(0), bene.address);
+    });
+
+    it("round 7: whoever of the line is paid first owns the share; an empty claim owns nothing", async function () {
+      const { bene, bene3, router, legacy, legacyId, usdc } = await withLines();
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [], true); // nothing to pay
+      assert.equal(await legacy.shareOwner(bene.address), ZERO, "an empty claim takes no ownership");
+      await increase(30 * DAY);
+      await router.connect(bene3).activeLegacy(legacyId, [usdc.address], false); // A2 is paid A's 600
+      assert.equal(await legacy.shareOwner(bene.address), bene3.address);
+      await expectRevert(router.connect(bene).activeLegacy(legacyId, [usdc.address], false), "ShareOwned(address)");
+    });
+
+    it("round 7: after the second line swept a share, its own line cannot come back, not even with an empty claim", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, other, router, usdc } = f;
+      const { legacy, legacyId } = await createV3(f, sixtyForty(f), {
+        layer2: { user: other.address, percent: 1000000 },
+        delayLayer2: 60 * DAY,
+      });
+      await legacy.connect(owner).setBackupLines(30 * DAY, []);
+      await usdc.connect(owner).approve(legacy.address, MAX);
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false); // A: 600
+      await increase(61 * DAY);
+      // B's empty claim before the sweep takes nothing and owns nothing.
+      await router.connect(bene2).activeLegacy(legacyId, [], true);
+      assert.equal(await legacy.shareOwner(bene2.address), ZERO);
+      await router.connect(other).activeLegacy(legacyId, [usdc.address], false); // sweeps B's 400
+      assert.equal(await legacy.shareOwner(bene2.address), other.address);
+      await usdc.mint(owner.address, 100_000_000);
+      await expectRevert(router.connect(bene2).activeLegacy(legacyId, [usdc.address], false), "ShareOwned(address)");
+      await expectRevert(router.connect(bene2).activeLegacy(legacyId, [], true), "ShareOwned(address)");
+      await router.connect(other).activeLegacy(legacyId, [usdc.address], false); // B's 40 of the inflow
+      assert.equal((await legacy.released(usdc.address, bene2.address)).toString(), "440000000");
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "60000000", "A's 60 stays A's");
+    });
+
+    it("round 7: no address on the first line and the second or third, second and third differ, the first line sums to 100%", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, bene3, other, router } = f;
+      const { legacy, legacyId } = await createV3(f, sixtyForty(f), {
+        layer2: { user: other.address, percent: 1000000 },
+        layer3: { user: bene3.address, percent: 1000000 },
+        delayLayer2: 60 * DAY,
+        delayLayer3: 60 * DAY,
+      });
+      const dists = (u: string) => [
+        { user: bene.address, percent: 500000 },
+        { user: u, percent: 500000 },
+      ];
+      await expectRevert(router.connect(owner).setLegacyDistributions(legacyId, ["", ""], dists(other.address)), "FirstLineInvalid()");
+      await expectRevert(router.connect(owner).setLegacyDistributions(legacyId, ["", ""], dists(bene3.address)), "FirstLineInvalid()");
+      // The wave A clone lets the second line take the third line's address.
+      await expectRevert(router.connect(owner).setLayer23Distributions(legacyId, 2, "", { user: bene3.address, percent: 1000000 }), "FirstLineInvalid()");
+      // A repeated first-line address: the router and wave A accept it.
+      const dup = [
+        { user: bene.address, percent: 300000 },
+        { user: bene2.address, percent: 400000 },
+        { user: bene.address, percent: 300000 },
+      ];
+      await expectRevert(router.connect(owner).setLegacyDistributions(legacyId, ["", "", ""], dup), "FirstLineInvalid()");
+      await router.connect(owner).setLegacyDistributions(legacyId, ["", ""], dists(bene2.address));
+    });
+
+    it("round 7: a legacy created with a repeated first-line address cannot turn on per-share mode; whole-estate claims still pay everything", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, bene3, router, usdc } = f;
+      const { legacy, legacyId } = await createV3(f, [
+        { user: bene.address, percent: 300000 },
+        { user: bene2.address, percent: 400000 },
+        { user: bene.address, percent: 300000 },
+      ]);
+      await expectRevert(
+        legacy.connect(owner).setBackupLines(30 * DAY, [{ primary: bene.address, second: bene3.address, third: ZERO }]),
+        "FirstLineInvalid()"
+      );
+      await usdc.connect(owner).approve(legacy.address, MAX);
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
+      assert.equal((await usdc.balanceOf(owner.address)).toString(), "0", "as on wave A, the last beneficiary takes the remainder");
     });
 
     it("round 3: without backup lines the whole-estate second line is unchanged (it takes everything pullable)", async function () {
@@ -431,7 +532,7 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       assert(names.includes("BackupLinesSet:0") && names.includes("NftItemsSet:0"), `got ${names}`);
       assert.equal((await legacy.backupDelay()).toString(), "0");
       assert.equal(await legacy.getBeneficiaryLayer(bene3.address), 0);
-      assert.equal((await legacy.nftItemCount()).toString(), "0");
+      await expectRevert(legacy.nftItem(0), "Panic(uint256)"); // no items in the new epoch
     });
 
     it("review L-2: a backup's NFT claim before its window moves nothing and does not activate the legacy", async function () {

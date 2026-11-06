@@ -106,12 +106,17 @@ contract LegacyV3Invariants is Test {
     }
   }
 
-  /// @dev V4: `lineClaimed` is the model's (set only by an in-window claim of
-  /// the share's own line, never cleared).
-  function invariant_lineClaimedMatchesModel() public view {
+  /// @dev V4 (round 7): a share belongs to the first address it paid, on any
+  /// line. `shareOwner` is the model's and equals the first payee the
+  /// handler observed; the handler also checks every later payment from the
+  /// share went to that address, and that an empty, failed or refused claim
+  /// changed no owner.
+  function invariant_shareOwnerIsFirstPayee() public view {
     for (uint256 i; i < h.everShareCount(); ++i) {
       address s = h.everShares(i);
-      assertEq(legacy.lineClaimed(s), h.mLineClaimed(s), "lineClaimed differs from the model");
+      address o = legacy.shareOwner(s);
+      assertEq(o, h.mShareOwner(s), "shareOwner differs from the model");
+      assertEq(o, h.ghostFirstPayee(s), "the owner is not the first address the share paid");
     }
   }
 
@@ -120,8 +125,8 @@ contract LegacyV3Invariants is Test {
     address x = legacy.executor();
     assertEq(x, h.mExecutor(), "executor differs from the model");
     if (x == address(0)) return;
-    assertEq(legacy.getBeneficiaryLayer(x), 0, "the executor is on a line");
-    assertEq(legacy.primaryOf(x), address(0), "the executor is a backup");
+    // v3's layer counts backups as first line, so 0 also means "not a backup".
+    assertEq(legacy.getBeneficiaryLayer(x), 0, "the executor is on a line or a backup");
     // The role only ever goes to `exe`. Unless a run made `exe` a share
     // before naming it executor (setExecutor then refuses it), it holds nothing.
     if (x == h.exe() && !h.wasShare(x)) {
@@ -136,8 +141,10 @@ contract LegacyV3Invariants is Test {
   /// model's; per ERC-1155 id, units are conserved across the owner, the
   /// drain sink and the claimants.
   function invariant_nftUnits() public view {
-    uint256 n = legacy.nftItemCount();
-    assertEq(n, h.itemCount(), "item count differs from the model");
+    uint256 n = h.itemCount();
+    try legacy.nftItem(n) {
+      revert("the legacy has more items than the model");
+    } catch {}
     for (uint256 i; i < n; ++i) {
       (TransferEOALegacyV3.NftItem memory item, uint256 moved) = legacy.nftItem(i);
       (, uint256 mMoved) = h.itemAt(i);

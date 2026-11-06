@@ -79,7 +79,7 @@ contract LegacyV3Handler is LegacyV3Base {
   address[] internal mBackups;
   TransferEOALegacyV3.NftItem[] internal mItems;
   uint256[] internal mMoved;
-  mapping(address => bool) public mLineClaimed;
+  mapping(address => address) public mShareOwner;
   mapping(address => mapping(address => uint256)) public mReleased;
   mapping(address => uint256) public mTotal;
 
@@ -94,6 +94,13 @@ contract LegacyV3Handler is LegacyV3Base {
   uint256 public backupClaims;
   uint256 public cappedClaims;
   uint256 public nftMoves;
+  /// @dev Observed, not modelled: the first address each share paid (tokens,
+  /// ETH or an NFT unit) in per-share mode. Every later payment from the
+  /// share must go to it.
+  mapping(address => address) public ghostFirstPayee;
+  uint256 public ownedRefused; // first-line claims refused because someone else owns the share
+  uint256 public ownedSkipped; // sweeps that left a share someone else owns untouched
+  uint256 public ownersSet; // shares that got their first payee
 
   bool public ownerDead;
 
@@ -189,7 +196,19 @@ contract LegacyV3Handler is LegacyV3Base {
   // ───────────── fixed option sets ─────────────
 
   function _distSet(uint256 k) internal view returns (TransferLegacyStruct.Distribution[] memory d) {
-    k %= 5;
+    k %= 7;
+    if (k == 5) {
+      // A repeated address: the router and wave A accept it, v3 must not.
+      d = new TransferLegacyStruct.Distribution[](3);
+      (d[0], d[1], d[2]) = (_dist(alice, 300_000), _dist(bob, 400_000), _dist(alice, 300_000));
+      return d;
+    }
+    if (k == 6) {
+      // The second-line beneficiary on the first line: refused while sam is on another line.
+      d = new TransferLegacyStruct.Distribution[](2);
+      (d[0], d[1]) = (_dist(alice, 500_000), _dist(sam, 500_000));
+      return d;
+    }
     if (k == 0) {
       d = new TransferLegacyStruct.Distribution[](3);
       (d[0], d[1], d[2]) = (_dist(alice, 500_000), _dist(bob, 300_000), _dist(carol, 200_000));
@@ -443,9 +462,18 @@ contract LegacyV3Handler is LegacyV3Base {
       vm.writeLine(path, string.concat(opNames[i], " ", vm.toString(calls[opNames[i]]), " ", vm.toString(accepted[opNames[i]])));
     }
     // Reach: how often the states that matter were hit (count twice to keep the three-column format).
-    string[5] memory names = ["v3.reach.perShareClaim", "v3.reach.sweepClaim", "v3.reach.backupClaim", "v3.reach.cappedDue", "v3.reach.nftMove"];
-    uint256[5] memory counts = [perShareClaims, sweepClaims, backupClaims, cappedClaims, nftMoves];
-    for (uint256 i; i < 5; ++i) vm.writeLine(path, string.concat(names[i], " ", vm.toString(counts[i]), " ", vm.toString(counts[i])));
+    string[8] memory names = [
+      "v3.reach.perShareClaim",
+      "v3.reach.sweepClaim",
+      "v3.reach.backupClaim",
+      "v3.reach.cappedDue",
+      "v3.reach.nftMove",
+      "v3.reach.shareOwned",
+      "v3.reach.ownedRefused",
+      "v3.reach.ownedSkipped"
+    ];
+    uint256[8] memory counts = [perShareClaims, sweepClaims, backupClaims, cappedClaims, nftMoves, ownersSet, ownedRefused, ownedSkipped];
+    for (uint256 i; i < 8; ++i) vm.writeLine(path, string.concat(names[i], " ", vm.toString(counts[i]), " ", vm.toString(counts[i])));
   }
 
   function _mint(uint256 t, uint256 amount) internal {
@@ -603,7 +631,17 @@ contract LegacyV3Handler is LegacyV3Base {
     _op("v3.setDistributions");
     TransferLegacyStruct.Distribution[] memory d = _distSet(seed);
     bool expect = _mLive();
-    for (uint256 i; i < d.length; ++i) if (mExecutor != address(0) && d[i].user == mExecutor) expect = false;
+    // What the first line would hold: a repeated address keeps its last percentage.
+    uint256 sum;
+    for (uint256 i; i < d.length; ++i) {
+      address u = d[i].user;
+      if (mExecutor != address(0) && u == mExecutor) expect = false;
+      if ((mL2 != address(0) && u == mL2) || (mL3 != address(0) && u == mL3)) expect = false;
+      bool repeatedLater;
+      for (uint256 j = i + 1; j < d.length; ++j) if (d[j].user == u) repeatedLater = true;
+      if (!repeatedLater) sum += d[i].percent;
+    }
+    if (sum != MAX_PERCENT) expect = false;
     try this.routerSetDistributions(d) {
       _check(expect, "setLegacyDistributions accepted against the spec");
       _setModelShares(d);
@@ -628,7 +666,27 @@ contract LegacyV3Handler is LegacyV3Base {
   function setLayers(uint256 seed) external {
     if (ownerDead) return;
     _op("v3.setLayers");
-    uint256 k = seed % 7;
+    uint256 k = seed % 8;
+    if (k == 7) {
+      // The wave A clone's single-layer setter: tina as the second line, even
+      // while she is the third. v3 refuses the same address on both.
+      bool ok2 = _mLive() &&
+        mPct[tina] == 0 &&
+        mDelay2 != 0 &&
+        ((mDelay3 == 0 && mL3 == address(0)) || (mDelay3 != 0 && mL3 != address(0))) &&
+        tina != mL3 &&
+        mExecutor != tina &&
+        mPrimaryOf[tina] == address(0);
+      try this.routerSetLayer2(tina) {
+        _check(ok2, "setLayer23Distributions accepted against the spec");
+        mL2 = tina;
+        mLast = block.timestamp;
+        _ok("v3.setLayers");
+      } catch {
+        _check(!ok2, "setLayer23Distributions refused against the spec");
+      }
+      return;
+    }
     (uint256 d2, uint256 d3, address l2, address l3) = k == 0
       ? (DELAY2_DEFAULT, DELAY3_DEFAULT, sam, tina)
       : k == 1
@@ -657,6 +715,11 @@ contract LegacyV3Handler is LegacyV3Base {
     } catch {
       _check(!expect, "setDelayAndLayer23Distributions refused against the spec");
     }
+  }
+
+  function routerSetLayer2(address user) external {
+    require(msg.sender == address(this));
+    legacy.setLayer23Distributions(owner, 2, _dist(user, MAX_PERCENT));
   }
 
   function routerSetLayers(uint256 d2, uint256 d3, address l2, address l3) external {
@@ -764,11 +827,15 @@ contract LegacyV3Handler is LegacyV3Base {
     if (block.timestamp < deadline || layer == 0 || layer > _mCurrentLayer()) expect = false;
     address only;
     bool early;
+    bool owned;
     if (expect && mBackupDelay != 0 && layer == 1) {
       only = mPct[actor] > 0 ? actor : mPrimaryOf[actor];
       if (block.timestamp < deadline + _mRank(only, actor) * uint256(mBackupDelay)) {
         expect = false;
         early = true;
+      } else if (mShareOwner[only] != address(0) && mShareOwner[only] != actor) {
+        expect = false;
+        owned = true;
       }
     }
 
@@ -791,21 +858,27 @@ contract LegacyV3Handler is LegacyV3Base {
     }
     uint256[4][] memory want = new uint256[4][](nw);
 
-    bool[] memory claimedBefore = new bool[](mShares.length);
-    for (uint256 i; i < mShares.length; ++i) claimedBefore[i] = mLineClaimed[mShares[i]];
+    address[] memory ownerBefore = new address[](mShares.length);
     uint256[4][] memory releasedBefore = new uint256[4][](mShares.length);
     for (uint256 i; i < mShares.length; ++i) {
+      ownerBefore[i] = legacy.shareOwner(mShares[i]);
       releasedBefore[i][0] = legacy.released(address(0), mShares[i]);
       for (uint256 t; t < 3; ++t) releasedBefore[i][t + 1] = legacy.released(tokens[t], mShares[i]);
     }
 
     try this.routerClaim(actor, assets, withEth) {
       if (!expect) {
-        _fail(early ? "a backup line claimed before its window" : "claim accepted against the spec");
+        _fail(
+          early ? "a backup line claimed before its window" : owned ? "a first-line claim took a share someone else owns" : "claim accepted against the spec"
+        );
         return;
       }
     } catch {
       _check(!expect, "claim refused against the spec");
+      if (owned) ++ownedRefused;
+      for (uint256 i; i < mShares.length; ++i) {
+        _check(legacy.shareOwner(mShares[i]) == ownerBefore[i], "a refused claim changed ownership");
+      }
       return;
     }
     _ok("v3.claim");
@@ -816,7 +889,6 @@ contract LegacyV3Handler is LegacyV3Base {
       ++perShareClaims;
       if (layer == 1) {
         if (actor != only) ++backupClaims;
-        mLineClaimed[only] = true;
       } else {
         ++sweepClaims;
       }
@@ -839,12 +911,16 @@ contract LegacyV3Handler is LegacyV3Base {
     if (mBackupDelay != 0) {
       for (uint256 i; i < mShares.length; ++i) {
         address s = mShares[i];
-        _check(legacy.lineClaimed(s) == mLineClaimed[s], "lineClaimed differs from the model");
-        if (layer != 1 && claimedBefore[i]) {
-          // A share its own line claimed is never paid to the second or third line.
-          bool same = legacy.released(address(0), s) == releasedBefore[i][0];
-          for (uint256 t; t < 3; ++t) same = same && legacy.released(tokens[t], s) == releasedBefore[i][t + 1];
-          _check(same, "a second- or third-line claim took a share its line had claimed");
+        _check(legacy.shareOwner(s) == mShareOwner[s], "shareOwner differs from the model");
+        // Observed payments: did this share pay anything in this claim?
+        bool paid = legacy.released(address(0), s) != releasedBefore[i][0];
+        for (uint256 t; t < 3; ++t) paid = paid || legacy.released(tokens[t], s) != releasedBefore[i][t + 1];
+        if (paid) {
+          _firstPayee(s, actor);
+        } else {
+          // An empty or failed payment changes no ownership.
+          _check(legacy.shareOwner(s) == ownerBefore[i], "ownership changed without a payment");
+          if (layer != 1 && ownerBefore[i] != address(0) && ownerBefore[i] != actor) ++ownedSkipped;
         }
         _check(legacy.released(address(0), s) == mReleased[address(0)][s], "released (ETH) differs from the model");
         for (uint256 t; t < 3; ++t) _check(legacy.released(tokens[t], s) == mReleased[tokens[t]][s], "released differs from the model");
@@ -865,6 +941,18 @@ contract LegacyV3Handler is LegacyV3Base {
     if (beneLayer == 0) revert("OnlyBeneficaries");
   }
 
+  /// @dev Records a payment from share `s` to `to`: the first one fixes the
+  /// share's payee, every later one must go to the same address.
+  function _firstPayee(address s, address to) internal {
+    address first = ghostFirstPayee[s];
+    if (first == address(0)) {
+      ghostFirstPayee[s] = to;
+      ++ownersSet;
+    } else {
+      _check(first == to, "a share paid a second address after its first payee");
+    }
+  }
+
   function _watch(address[] memory watch, uint256 nw, address who) internal pure returns (uint256) {
     for (uint256 i; i < nw; ++i) if (watch[i] == who) return nw;
     watch[nw] = who;
@@ -876,10 +964,12 @@ contract LegacyV3Handler is LegacyV3Base {
     revert("unwatched recipient");
   }
 
-  /// @dev Per-share settlement, written from the plan: each share in scope is
-  /// due its percentage of everything ever made available minus what it
-  /// received, filled in share order up to what is pullable (`available`,
-  /// taken before the call; assets in one claim are distinct).
+  /// @dev Per-share settlement, written from the plan: each share in scope
+  /// (the claimant's own share on the first line; on the second or third,
+  /// every share nobody else owns) is due its percentage of everything ever
+  /// made available minus what it received, filled in share order up to what
+  /// is pullable (`available`, taken before the call; assets in one claim are
+  /// distinct). A share that pays anything belongs to `to` from then on.
   function _expectSettle(
     address token,
     uint256 available,
@@ -896,7 +986,8 @@ contract LegacyV3Handler is LegacyV3Base {
     uint256[] memory due = new uint256[](mShares.length);
     for (uint256 i; i < mShares.length; ++i) {
       address s = mShares[i];
-      if (only != address(0) ? s != only : mLineClaimed[s]) continue;
+      address o = mShareOwner[s];
+      if (only != address(0) ? s != only : o != address(0) && o != to) continue;
       uint256 entitled = (pot * mPct[s]) / MAX_PERCENT;
       uint256 got = mReleased[token][s];
       if (entitled <= got) continue;
@@ -912,7 +1003,11 @@ contract LegacyV3Handler is LegacyV3Base {
     uint256 fee = _fee(amount);
     want[_slot(watch, nw, to)][col] += amount - fee;
     want[_slot(watch, nw, address(payment))][col] += fee;
-    for (uint256 i; i < mShares.length; ++i) mReleased[token][mShares[i]] += due[i];
+    for (uint256 i; i < mShares.length; ++i) {
+      if (due[i] == 0) continue;
+      mReleased[token][mShares[i]] += due[i];
+      mShareOwner[mShares[i]] = to;
+    }
     mTotal[token] += amount;
     ghostClaimedOut[token] += amount;
   }
@@ -949,8 +1044,10 @@ contract LegacyV3Handler is LegacyV3Base {
   // ───────────── NFT claims ─────────────
 
   function _nftPayee(address primary, uint8 layer, address actor) internal view returns (address) {
-    if (layer != 1) return mBackupDelay != 0 && mLineClaimed[primary] ? address(0) : actor;
-    if (mBackupDelay == 0) return primary;
+    if (mBackupDelay == 0) return layer == 1 ? primary : actor;
+    address o = mShareOwner[primary];
+    if (o != address(0) && o != actor) return address(0);
+    if (layer != 1) return actor;
     if (actor != primary && mPrimaryOf[actor] != primary) return address(0);
     return block.timestamp >= _mDeadline() + _mRank(primary, actor) * uint256(mBackupDelay) ? actor : address(0);
   }
@@ -1027,8 +1124,16 @@ contract LegacyV3Handler is LegacyV3Base {
       } else {
         _check(MockERC1155(it.collection).balanceOf(to[k], it.tokenId) == before[k] + units[k], "ERC-1155 units differ from the spec");
       }
-      if (layer == 1 && mBackupDelay != 0) mLineClaimed[it.beneficiary] = true;
+      if (mBackupDelay != 0) {
+        mShareOwner[it.beneficiary] = to[k];
+        _firstPayee(it.beneficiary, to[k]);
+      }
       mActivated = true;
+    }
+    if (mBackupDelay != 0) {
+      for (uint256 i; i < mShares.length; ++i) {
+        _check(legacy.shareOwner(mShares[i]) == mShareOwner[mShares[i]], "shareOwner differs from the model after an NFT claim");
+      }
     }
     for (uint256 i; i < len; ++i) {
       (, uint256 moved) = legacy.nftItem(i);

@@ -146,7 +146,7 @@ contract LegacyV3Fuzz is LegacyV3Base {
       legacy.activeLegacy(assets, false, backups[0]);
     } else {
       assertGt(_claim(backups[0]), 0, "a backup inside its window got nothing");
-      assertTrue(legacy.lineClaimed(bens[0]), "the share was not marked as its line's");
+      assertEq(legacy.shareOwner(bens[0]), backups[0], "the share does not belong to the backup it paid");
     }
   }
 

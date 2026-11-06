@@ -34,6 +34,7 @@ contract WholeEstateHandler is LegacyV3Base {
   string public lastViolation;
   uint256 public claimsCompared;
   uint256 public claimsAccepted;
+  uint256 public overlapsRefused;
 
   constructor() {
     _deployStack();
@@ -173,6 +174,23 @@ contract WholeEstateHandler is LegacyV3Base {
 
   function setDistributions(uint256 seed) external {
     if (seed % 4 != 0) return;
+    // Round 7: v3 refuses a first line that shares an address with the second
+    // or third line (wave A accepts it). Such an edit goes to v3 alone, must be
+    // refused, and the twins stay in lockstep.
+    (, address l2, address l3) = a.getLegacyBeneficiaries();
+    TransferLegacyStruct.Distribution[] memory dA = _distSet(1, seed / 4);
+    bool overlaps;
+    for (uint256 i; i < dA.length; ++i) {
+      if ((l2 != address(0) && dA[i].user == l2) || (l3 != address(0) && dA[i].user == l3)) overlaps = true;
+    }
+    if (overlaps) {
+      try this.routerCall(0, abi.encodeCall(TransferEOALegacy.setLegacyDistributions, (owners[0], _distSet(0, seed / 4)))) {
+        _fail("v3 accepted a first line that overlaps the second or third line");
+      } catch {}
+      ++overlapsRefused;
+      _compareState();
+      return;
+    }
     bool[2] memory ok;
     for (uint256 s; s < 2; ++s) {
       try this.routerCall(s, abi.encodeCall(TransferEOALegacy.setLegacyDistributions, (owners[s], _distSet(s, seed / 4)))) {
@@ -277,5 +295,6 @@ contract LegacyV3WholeEstateDiff is Test {
     vm.createDir("out", true);
     if (!vm.exists(path)) vm.writeFile(path, "");
     vm.writeLine(path, string.concat("v3.diff.claim ", vm.toString(h.claimsCompared()), " ", vm.toString(h.claimsAccepted())));
+    vm.writeLine(path, string.concat("v3.diff.overlapRefused ", vm.toString(h.overlapsRefused()), " ", vm.toString(h.overlapsRefused())));
   }
 }
