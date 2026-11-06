@@ -4,14 +4,15 @@
 ETH and now NFTs, and hands them over when the owner has been inactive for
 a chosen period. Version 3 of the per-owner legacy contract adds three
 optional features. This document is the scope for an external review before
-v3 goes to mainnet. Status: internally reviewed twice, tooling-verified (the
-evidence is in `tooling-report.md`, section 8, and `static-analysis.md`,
-"Legacy v3"), not independently audited.
+v3 goes to mainnet. Status: internally reviewed twice, then two independent
+read-only reviews by other model families (round 7, fixed below),
+tooling-verified (the evidence is in `tooling-report.md`, section 8, and
+`static-analysis.md`, "Legacy v3"), not independently audited.
 
-**Commit to audit:** `c9d66076053c4af5930ae8790baaeed876c69a33` on branch
-`feat/train-2026-11` of `computing-sc` (the round 6 fixes, `2dca935`, and
-the Foundry suite on top). Later commits on the branch touch documentation
-only, unless a fix list says otherwise.
+**Commit to audit:** `8bb85739652d379633ce8ec43fd5a897acfe2273` on branch `feat/train-2026-11` of
+`computing-sc` (the round 7 fixes and the updated Foundry suite). Later
+commits on the branch touch documentation only, unless a fix list says
+otherwise.
 
 ## Files in scope
 
@@ -19,13 +20,13 @@ nSLOC counted with `solidity-code-metrics` 0.0.28 (`npx solidity-code-metrics <f
 
 | File | nSLOC | Role |
 |---|---|---|
-| `contracts/forwarding/TransferLegacyEOAContractV3.sol` | 325 | the v3 clone implementation (new) |
+| `contracts/forwarding/TransferLegacyEOAContractV3.sol` | 332 | the v3 clone implementation (new) |
 | `contracts/whitelist/NftCollectionWhiteList.sol` | 59 | the allowlist of NFT collections (new) |
 | `contracts/common/LegacyPullVaultV2.sol` | 82 | the pull vault: in scope for its NFT rails (`pullERC721`, `pullERC1155`) and the implementation allowlist; deployed with wave A |
 | `contracts/forwarding/TransferLegacyEOAContract.sol` | 587 | the wave A clone, which v3 inherits; in scope as v3's behaviour, not as a standalone contract (it is deployed and will not change) |
 | `contracts/common/GenericLegacy.sol` | 83 | the shared base of both clones; same terms |
 
-New code: 466 nSLOC. With the inherited code a reviewer must read: 1,136.
+New code: 473 nSLOC. With the inherited code a reviewer must read: 1,143.
 The router's claim paths (`TransferLegacyEOAContractRouter.sol`,
 `_runActiveLegacy` and `activeLegacyAndUnswap`) are context: they decide who
 may claim when, and the clone trusts them (K-1).
@@ -47,8 +48,10 @@ all off by default:
    becomes its own account per token. A claim pays the share its percentage
    of everything that token ever made available, minus what it already
    received. The share's own beneficiary may claim from the deadline, its
-   backups after one and two backup delays. A second- or third-line claim
-   takes only shares whose own line never claimed.
+   backups after one and two backup delays. A share belongs to the first
+   address that receives anything from it (tokens, ETH or an NFT unit), on
+   whatever line; from then on only that address receives from it. A
+   second- or third-line claim takes only shares nobody else owns.
 3. **An executor (Premium).** An address that is never a beneficiary may
    attest the owner's death after half the trigger of silence; claims then
    open 30 days later unless the owner shows any activity.
@@ -59,10 +62,12 @@ all off by default:
   check-in or ETH sent to the legacy counts as activity and resets the
   deadline. Cannot act once a claim has activated the legacy.
 - **First-line beneficiaries and their backups:** claim their own share in
-  their window, never another's. Backups can never be the owner, a
-  beneficiary on any line, the executor, or on two lines.
+  their window while nobody else owns it, never another's. Backups can
+  never be the owner, a beneficiary on any line, the executor, or on two
+  lines. No address is on the first line and the second or third, the
+  second and third differ, and the first line sums to 100%.
 - **Second and third lines:** in their period, take the shares (and items)
-  whose own line never claimed.
+  nobody else owns, and own each share they are paid from.
 - **Executor:** can only shorten the wait as described; never receives
   anything. The owner alert email on `DeathAttested` is a deploy
   precondition.
@@ -91,14 +96,18 @@ From the Foundry suite (`test/foundry/LegacyV3*`), checked after every call:
   keep nothing; shares' `released` sum to `totalReleased`.
 - V3. No share ever receives more than its percentage of everything its
   token brought in.
-- V4. A share claimed by its own line is never paid to the second or third
-  line (`lineClaimed`).
+- V4. Once a share has paid an address, every later payment from it (later
+  inflows, other tokens, ETH, its NFTs) goes to that address: a second or
+  third line never receives from a share someone else owns, nor does a
+  first-line member. `shareOwner` is the first payee observed, and an empty,
+  failed or refused claim changes no owner.
 - V5. No backup claims tokens or NFTs before its window.
 - V6. The executor is never on a line, holds nothing and cannot move funds;
   strangers cannot either.
 - V7. NFT units moved never exceed the units named, and units are conserved.
 - V8. The deadline (with an attestation), per-share mode and the first line
-  match the model; shares sum to 100%.
+  match the model; shares sum to 100% after every accepted edit (repeated
+  and cross-layer first lines are attempted and must be refused).
 - V9. Without backup lines, v3 behaves call for call as the wave A clone
   (a differential suite).
 
@@ -118,28 +127,67 @@ From the Foundry suite (`test/foundry/LegacyV3*`), checked after every call:
   before, such a claim paid nothing.
 - **K-4. `pot * percentage` overflows** for a token whose amounts approach
   2^236; such claims revert. No real token is affected.
-- **K-5. Duplicate first-line addresses.** The wave A initializer accepts a
-  first line that lists an address twice; the address keeps its last
-  percentage. Wave A gives the remainder to the last beneficiary; in v3
-  per-share mode the shares sum below 100% and the rest stays in the owner's
-  wallet. The router and the app never send duplicates; a check in v3 does
-  not fit the size budget.
+- **K-5. A first line created with a repeated address** (the wave A
+  initializer accepts it and keeps the address's last percentage) stays in
+  whole-estate mode, where, as on wave A, the last beneficiary takes the
+  remainder. v3 refuses to turn per-share mode on for it and refuses any
+  edit that would create one (round 7, `FirstLineInvalid`).
 - **K-6. The claim fee is swapped to ETH with a zero minimum** (wave A
   `_swapAdminFee`): at most 50 bps of a claim is exposed.
 - **K-7. Windows do not close.** Once the second line's period opens, it
-  races a share's own line for an unclaimed share; the first claim decides.
-- **K-8. Size.** 24,457 of 24,576 bytes at 200 runs: a fix must fit in 119
-  bytes or trim (the `primaryOf` and `nftItemCount` views first).
-- **K-9. Static analysis.** Slither is triaged in `static-analysis.md`;
-  Aderyn was not run on v3, and CI runs neither tool on these files yet.
+  races a share's own line for an unowned share; the first payment decides
+  who owns it.
+- **K-8. Size.** 24,423 of 24,576 bytes at 200 runs (153 spare). If a fix
+  needs more, `_pullNft` (about 600 bytes) moves into a linked library
+  first; the optimizer runs last.
+- **K-9. Static analysis.** Slither is triaged in `static-analysis.md`. CI
+  runs Slither and Aderyn on the three files on every PR, report only
+  (Slither's ids for one v3 result are not stable across runs, so it cannot
+  gate). Aderyn was not run locally (no Windows build).
+- **K-10. Executor and auto-renew (deploy precondition).** An attestation
+  sets the deadline to 30 days later, which is exactly the router's
+  `AUTO_RENEW_WINDOW`, so the worker's auto-renew attestor (trusted,
+  off-chain) could cancel it with owner activity from before the
+  attestation. The router is deployed and stays as it is; the worker must,
+  for a v3 legacy with `deathAttestedAt() > getLastTimestamp()`, submit
+  `recordActivity` only for a nonce increase in a block after the
+  attestation's block (`eth_getTransactionCount(owner, attestationBlock)`
+  below the current nonce).
+- **K-11. Rounding.** Each share's entitlement is floored on its own, so up
+  to one unit per share per token can stay in the owner's wallet until the
+  pot grows. Cumulative rounding (floors that always sum to the pot) is not
+  used because with running totals it can make a share's entitlement fall
+  as the pot grows (a share between cumulative bounds 0.5 and 0.6 is due 1
+  of a pot of 5 and 0 of a pot of 6), which would over-distribute.
+- **K-12. Fee-on-transfer and rebasing tokens.** Recorded amounts are
+  nominal. Such tokens are not admitted to the token allowlist the app
+  offers; a claimant who names one directly gets nominal accounting (a
+  negative rebase behaves like a shrunk wallet, K-3). stETH's 1 to 2 wei
+  transfer rounding is accepted.
+- **K-13. A fee that fails to arrive is still counted as released.** Only
+  the protocol fee is lost: it stays in the owner's wallet and flows back
+  into the heirs' pot.
+- **K-14. `activeLegacyAndUnswap` reads only the direct allowance**
+  (inherited from the deployed wave A clone; refused in per-share mode).
+  With a Permit2 or vault approval nothing is swapped and nothing is lost:
+  the heir takes the token claim, as the app does when there is nothing to
+  swap.
+- **K-15. NFT callback re-entry.** A recipient's ERC-721 or ERC-1155
+  callback that calls `router.activeLegacy` re-enters the clone through the
+  router; v3's guard, shared by token and NFT claims, refuses it (spec "the
+  legacy's own guard: no token claim runs inside an NFT move, whatever the
+  router").
 
 Fixed before this review, for context (`docs/plans/train-2026-11.md`,
-review rounds 1 to 3): H-1 (the last claimer of a round took later inflows;
-replaced by running totals), L-1 to L-5 (attestation timing, an early NFT
-claim activating the legacy, backups becoming second-line beneficiaries,
-backup windows after the second line, NFT activation events). Round 6
-(2026-11-05) added K-3's fix and v3's own reentrancy guard, shared by token
-and NFT claims.
+review rounds 1 to 3, 6 and 7): H-1 (the last claimer of a round took later
+inflows; replaced by running totals), L-1 to L-5 (attestation timing, an
+early NFT claim activating the legacy, backups becoming second-line
+beneficiaries, backup windows after the second line, NFT activation
+events). Round 6: K-3's fix and v3's own reentrancy guard. Round 7: share
+ownership replaces `lineClaimed` (a backup could take its primary's later
+inflows, and a share's own line could come back after the second line swept
+it and lock the sweep out, even with an empty claim); the cross-layer,
+second-equals-third and 100% checks.
 
 ## Out of scope
 
