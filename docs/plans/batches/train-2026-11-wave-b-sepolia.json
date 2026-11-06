@@ -1,0 +1,12 @@
+[
+  {
+    "target": "0x96bFC5e582D39453b280b9154d923895B02C21fa",
+    "data": "0x38572b1d000000000000000000000000057cc6baf9b8d5ee11246c10f602b26bb5fc3993",
+    "label": "vault2.allowImplementation(0x057cc6baf9b8d5Ee11246C10F602b26Bb5fc3993)"
+  },
+  {
+    "target": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
+    "data": "0x120f8b80000000000000000000000000057cc6baf9b8d5ee11246c10f602b26bb5fc3993",
+    "label": "router.setLegacyImplementation(0x057cc6baf9b8d5Ee11246C10F602b26Bb5fc3993)"
+  }
+]

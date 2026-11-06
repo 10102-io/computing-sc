@@ -101,6 +101,9 @@ async function main() {
   const routerProxy = need(net.TransferEOALegacyRouter?.address, "TransferEOALegacyRouter proxy");
   const timelock = need(net.UpgradeTimelock?.address, "UpgradeTimelock");
   const train = net.train202611 ?? {};
+  // After wave A's A8 the vault is the recorded LegacyPullVault; the batch
+  // still checks that it runs the compiled LegacyPullVaultV2.
+  const vault2 = train.LegacyPullVaultV2 ?? (train.TransferEOALegacyImpl ? undefined : net.LegacyPullVault?.address);
 
   if (action === "deploy") {
     const [deployer] = await ethers.getSigners();
@@ -111,7 +114,7 @@ async function main() {
       const vault = await deployAndVerify("LegacyPullVaultV2", [routerProxy, timelock, impl]);
       record("LegacyPullVaultV2", vault);
     } else {
-      need(train.LegacyPullVaultV2, "train202611.LegacyPullVaultV2 (wave A first)");
+      need(vault2, "LegacyPullVaultV2 (wave A first)");
       const list = await deployAndVerify("NftCollectionWhiteList", [deployer.address]);
       record("NftCollectionWhiteList", list);
       const v3 = await deployAndVerify("TransferEOALegacyV3", [list]);
@@ -150,7 +153,7 @@ async function main() {
     wave === "a" ? "initializer counter is 3 or 4 (initializeV4 is reinitializer 5)" : "initializer counter is 5 (wave A executed)"
   );
 
-  const vaultAddr = need(train.LegacyPullVaultV2, "train202611.LegacyPullVaultV2");
+  const vaultAddr = need(vault2, "LegacyPullVaultV2");
   const vault = V.attach(vaultAddr);
   const proxyAdmin = new ethers.Contract(
     need(net.DefaultProxyAdmin?.address, "DefaultProxyAdmin"),

@@ -59,6 +59,9 @@
     "TokenWhiteList": {
       "address": "0xE7e5011263e862f964F608C26654edAD25497B8F"
     },
+    "NftCollectionWhiteList": {
+      "address": "0x0d9B2E96B225f5329841605363E02f35fb50f73B"
+    },
     "Banner": {
       "address": "0x9055140Be419cC91e3C48EA005658D1D11C245b7",
       "implementation": "0xD4099787c0491eE85CFbb6f1D8C7f07aF8BdA84f"
@@ -137,6 +140,10 @@
       "TransferEOALegacyImpl_pre_2026_11_05": {
         "address": "0x0600e9D8A2B5F6c896C56B7D06acF9F13A8e13ED",
         "replacedBy": "TransferEOALegacyImpl"
+      },
+      "TransferEOALegacyImpl_pre_2026_11_06": {
+        "address": "0x8f97EA3A48F00e76516fB60D528dC2C96bd32DD8",
+        "replacedBy": "TransferEOALegacyImpl"
       }
     },
     "_orphaned": {
@@ -197,7 +204,7 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0x8f97EA3A48F00e76516fB60D528dC2C96bd32DD8"
+      "address": "0x057cc6baf9b8d5Ee11246C10F602b26Bb5fc3993"
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
