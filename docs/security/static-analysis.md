@@ -1,4 +1,6 @@
-# Static analysis: ShieldVault v2 and QuantumRecoveryRegistry
+# Static analysis: ShieldVault v2, QuantumRecoveryRegistry and legacy v3
+
+The legacy v3 (wave B) results are in the last section, "Legacy v3".
 
 Run on 2026-10-27 against the working tree at the `v2026.09.29` source of
 `contracts/shield/ShieldVault.sol` (unchanged since the mainnet deployment
@@ -112,3 +114,84 @@ subject of the fuzz and invariant suite under `test/foundry/` and of the
 unit specs; see `tooling-report.md`. Neither tool models the external
 tokens' behaviour (blacklists, pauses, fee-on-transfer, hooks), which the
 suite approximates with `MockAwkwardERC20` and `MockReentrantShieldToken`.
+
+## Legacy v3 (wave B): TransferEOALegacyV3, NftCollectionWhiteList, LegacyPullVaultV2
+
+Run on 2026-11-05 on `feat/train-2026-11`, after the round 6 fixes to
+`TransferLegacyEOAContractV3.sol` (below). Status: internally reviewed,
+tooling-verified, not independently audited; the external review is the
+next step (`wave-b-audit-scope.md`). `LegacyPullVaultV2.sol` and the wave A
+clone it inherits from are deployed and were analysed for the record only;
+neither was changed.
+
+| Tool | Version | Invocation |
+|---|---|---|
+| Slither | 0.11.6 (crytic-compile 0.4.2), Python 3.11.0 venv | the ShieldVault command above, on each of the three files |
+| solc for Slither | 0.8.35 via `solc-select` 1.2.0 | same settings as `hardhat.config.ts` |
+| Aderyn | **not run** | no Windows build of any 0.4+ release exists (the latest, 0.6.8, ships Linux and macOS only); the last Windows build, 0.3.4 (it reports 0.3.3), panics on solc 0.8.35 (`SvmError(ChecksumMismatch)` in its compiler manager); no WSL distribution or Rust toolchain is installed to run or build 0.6.8. CI's Aderyn job covers ShieldVault and the registry only; adding the three files there is a follow-up (`.github/workflows/security.yml`, one `-i` list) |
+
+Slither on `TransferLegacyEOAContractV3.sol` analyses the whole inheritance
+chain, so 68 of its 90 results are in the wave A clone
+(`TransferLegacyEOAContract.sol`), `GenericLegacy.sol` or shared interfaces.
+Those are triaged for the record (they describe code that is live on
+mainnet and cannot change); the 22 in v3 itself are triaged one by one.
+`NftCollectionWhiteList.sol`: 2 results. `LegacyPullVaultV2.sol`: 2
+results, both in interfaces it imports.
+
+### Verdict
+
+No open vulnerability. One true positive in v3, in pattern rather than in
+reach, was fixed in round 6: v3's per-share settlement paid the claimant
+before recording what the shares received, and relied on the router's
+reentrancy guard for that. v3 now runs every token claim under its own
+guard, shared with `claimNfts` (spec: "the legacy's own guard"). Slither
+still reports the two reentrancy-eth results (W1, W2): its detector does
+not credit a guard placed on an internal override, and the triage below
+says why both are now unreachable. Separately, while modelling the spec for
+the invariant suite, a liveness bug was found and fixed in the same
+function (tooling report, section 8.6); Slither does not detect that kind
+of bug.
+
+The Medium and High results are **not** added to `slither.db.json`. The
+reentrancy-eth result on v3's `_transferAssetToBeneficiaries` gets a
+different id on two identical runs (its description lists the external
+calls in a varying order), so a triage entry cannot reliably hide it, and
+each entry embeds the full source maps (the 19 would add about 90,000
+lines). CI does not run Slither on these files today; when it does, run it
+without `--fail-medium` for v3 or exclude the triaged detectors by name.
+
+### Slither: results in TransferEOALegacyV3 (22)
+
+| # | Detector | Slither severity | Where | Triage | Reason |
+|---|---|---|---|---|---|
+| W1 | `reentrancy-eth` | High / Medium | `_settle` (lines 333-364): `released` and `totalReleased` written after the payout call | **Fixed in round 6 (defensive); now a false positive** | Before round 6 the only protection was the router: every router path into a clone claim (`activeLegacy`, `activeLegacyFor`, `activeLegacyAndUnswap`) is `nonReentrant`, so a payee could not start a second settlement during its payout. The clone pins its router forever, so v3 now also runs `_transferAssetToBeneficiaries` under its own `ReentrancyGuardTransient` guard, the one `claimNfts` uses. During a payout, every other state-changing entry point is closed: the owner setters and router edits need a live legacy (activation happens before any payout), `attestDeath` needs a live legacy, and `receive()` records activity only from the owner while live. Spec: a payee that re-enters from its NFT callback is refused and gets its tokens normally afterwards. The invariant suite checks `released`/`totalReleased` against an independent model after every call. |
+| W2 | `reentrancy-eth` | High / Medium | `_transferAssetToBeneficiaries` (lines 297-324), the same writes reached through it | **Same as W1** | Same call path and guard. |
+| W3 | `uninitialized-state` | High / High | `_nftItems` (line 104) | **False positive** | A `mapping(uint256 => NftItem[])` written through a storage pointer (`list.push(item)` in `setNftItems`); the detector does not follow storage references (same pattern as ShieldVault S1). |
+| W4 | `reentrancy-no-eth` | Medium / Medium | `claimNfts` (lines 437-463): the activation flag and `lineClaimed` written after `_pullNft` | **False positive since round 6** | `claimNfts` is `nonReentrant`, so a nested `claimNfts` is refused, and since round 6 a nested token claim is refused too (the shared guard). The units are also reserved (`_nftMoved += left`) before the call and corrected after it. Before round 6, a member of a share's line could, from its NFT callback, let a colluding second-line beneficiary sweep that share before `lineClaimed` was set. That member could already take the share for itself, so it gained nothing new. |
+| W5 | `incorrect-equality` | Medium / High | `_settle`: `available == 0` (line 342) | **False positive** | An early exit when nothing is pullable. No attacker-controlled balance is compared for equality; a dust donation only makes the settlement run. |
+| W6 | `uninitialized-local` | Medium / Medium | `only` in `_transferAssetToBeneficiaries` (line 306) | **False positive, by design** | `address(0)` means "every share whose line never claimed" (a second- or third-line claim); a first-line claim sets it to the share. |
+| W7 | `missing-zero-check` | Low / Medium | constructor `nftAllowlist_` (line 140) | **By design** | Zero is the documented "NFTs disabled" setting (`setNftItems` reverts `NftsDisabled`). The deploy script (`train-2026-11.ts`, wave B) asserts the recorded allowlist. |
+| W8-W15 | `calls-loop` (8) | Low / Medium | `_pullNft` (5: `isApprovedForAll`, `balanceOf`, `boundLegacy`, the two moves), `_transferAssetToBeneficiaries` (2: `balanceOf` per token), `setNftItems` (`kindOf` per item) | **Informational, bounded** | At most 50 items and `MAX_TRANSFER` (100) tokens per claim. Every NFT call is a low-level call whose failure skips that item (`amount == 0`), so a hostile collection cannot block the others. `kindOf` and `boundLegacy` go to the allowlist and the vault, both fixed in code. |
+| W16 | `reentrancy-events` | Low / Medium | `_settle`: `ShareClaimed` after the fee transfer | **Informational** | The event follows the transfers it describes, within the guard. |
+| W17-W20 | `timestamp` (4) | Low / Medium | `_transferAssetToBeneficiaries` (backup window), `_nftPayee`, `attestDeath`, `_activationDeadline` | **By design** | Windows are 30 days to 10 years, the grace period 30 days, the attestation threshold half the trigger. A proposer's few seconds of skew are irrelevant at that scale. The fuzz test `testFuzz_backupWindowToTheSecond` pins each window to the second. |
+| W21, W22 | `low-level-calls`, `too-many-digits` | Informational / High | `_pullNft`; `MAX_PERCENT = 1000000` (GenericLegacy) | **Informational** | The low-level calls are what keeps a bad collection from blocking a claim. `MAX_PERCENT` is wave A's constant. |
+
+### Slither: inherited wave A code, for the record (68)
+
+| # | Detector | Slither severity | Where | Triage | Reason |
+|---|---|---|---|---|---|
+| A-W1 | `arbitrary-send-erc20` | High / High | `unswap` (line 187): `safeTransferFrom(sender_, ...)` | **False positive** | `sender_` is the owner, checked by `onlyOwner(sender_)` behind `onlyRouter`; the owner moves their own tokens with their own approval. |
+| A-W2 | `arbitrary-send-erc20` | High / High | `activeLegacyAndUnswap` (line 646): `from` = the legacy owner | **By design** | Pulling the owner's tokens on a claim is the product; it needs the owner's allowance to the clone, and the claim conditions (deadline, layer) hold. |
+| A-W3 | `arbitrary-send-eth` | High / Medium | `_sendEth` (lines 599-602) | **False positive** | Its only callers (`withdraw`, `deleteLegacy`, `unswap`) pay the checked owner. |
+| A-W4 | `reentrancy-eth` | High / Medium | whole-estate `_transferAssetToBeneficiaries` (lines 750-862): `eoaStorageToken` cleared inside the token loop | **Accepted (router guard)** | The live clone relies on the router's `nonReentrant` on all three claim paths. In v3 the same code runs under v3's guard as well. |
+| A-W5 | `reentrancy-no-eth` | Medium / Medium | `activeLegacyAndUnswap`: `eoaStorageToken` cleared after the WETH unwrap or the Uniswap swap | **Accepted** | The external calls go to WETH and the Uniswap router recorded at create; the router guard applies. Refused in v3 per-share mode (`UnswapNotInPerShareMode`). |
+| A-W6-A-W13 | `unused-return` (8) | Medium / Medium | `autoSwap`, `unswap`, `_swapAdminFee`, `activeLegacyAndUnswap` (swap amount arrays), `_permit2Allowance`, `_vaultAllowance` (Permit2 nonce), `_setDistributions`, `_clearDistributions` (`EnumerableSet` booleans) | **By design, with one observation** | The swaps enforce their minimum inside Uniswap; the Permit2 nonce is irrelevant to an allowance read. The ignored `add` boolean in `_setDistributions` means a first line that lists an address twice is accepted and keeps that address's last percentage. Wave A then gives the remainder to the last listed beneficiary; in v3 per-share mode the shares would add up to less than 100% and the rest would stay in the owner's wallet. Neither the router nor the app sends duplicates. A v3-side check in `setBackupLines` costs 109 bytes, which v3 does not have to spare (24,457 of 24,576), so it is a known issue for the auditor (K-5 in `wave-b-audit-scope.md`), not a change. |
+| A-W14-A-W68 | `calls-loop` (28), `timestamp` (5), `missing-zero-check` (4), `events-maths` (2), `reentrancy-benign` (2), `naming-convention` (6), `dead-code` (3), `low-level-calls` (2), `costly-loop`, `cyclomatic-complexity`, `unindexed-event-address` | Low and Informational | wave A clone, `GenericLegacy`, interfaces | **Informational** | Bounded loops over at most 32 beneficiaries and `MAX_TRANSFER` tokens. Day-scale time checks. Initializer addresses supplied by the router. Interface names that match the external ABIs (`WETH()`, `DOMAIN_SEPARATOR()`). `GenericLegacy` helpers kept for storage-layout compatibility. |
+
+### Slither: NftCollectionWhiteList.sol (2) and LegacyPullVaultV2.sol (2)
+
+| # | Detector | Severity | Where | Triage |
+|---|---|---|---|---|
+| N1 | `assembly` | Informational | `getCollections`: `mstore(allowed, count)` | **By design**: a memory-safe shrink of the returned array to the allowed entries, in a view. |
+| N2 | `cache-array-length` | Optimization | `getCollections` loop | **Informational**: a view over an admin-curated list; no change. |
+| V1, V2 | `naming-convention` | Informational | `IPremiumLegacy.LEGACY_TYPE()`, `IAllowanceTransfer.DOMAIN_SEPARATOR()` | **Informational**: interface names fixed by the contracts they describe. Nothing in the vault itself. |
