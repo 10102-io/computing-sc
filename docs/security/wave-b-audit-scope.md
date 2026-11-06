@@ -5,9 +5,13 @@ ETH and now NFTs, and hands them over when the owner has been inactive for
 a chosen period. Version 3 of the per-owner legacy contract adds three
 optional features. This document is the scope for an external review before
 v3 goes to mainnet. Status: internally reviewed twice, then two independent
-read-only reviews by other model families (round 7, fixed below),
-tooling-verified (the evidence is in `tooling-report.md`, section 8, and
-`static-analysis.md`, "Legacy v3"), not independently audited.
+read-only reviews by other model families (a GPT-family and a
+Gemini-family reviewer). Their first pass at `88838a4` found one High, two
+Mediums and several Lows, fixed in rounds 7 and 8 or listed below; both
+re-checked the fixes at `8bb8573`, and the Gemini reviewer confirmed the
+round 8 diff at `4f58e6b` with no regressions. Tooling-verified (the
+evidence is in `tooling-report.md`, section 8, and `static-analysis.md`,
+"Legacy v3"). Not independently audited: that is what this document is for.
 
 **Commit to audit:** `4f58e6b82fc24d0ca317ecf572dd6fe6e1f3bd0f` on branch `feat/train-2026-11` of
 `computing-sc` (the round 8 fixes and the updated Foundry suite). Later
