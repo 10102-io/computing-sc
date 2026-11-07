@@ -45,7 +45,7 @@ function revertedWith(err: any, signature: string): boolean {
 describe("LegacyPullVault — verified singleton Permit2 spender", function () {
   this.timeout(150000);
 
-  // `withFee`: nonzero admin claim fee (1%) + a working MockUniswapV2Router,
+  // `withFee`: nonzero admin claim fee (0.5%, the clone's 50 bps cap) + a working MockUniswapV2Router,
   // to exercise the fee-pull rails (the default fixture's fee is 0, which the
   // security review flagged as an untested path).
   async function fixtureCore(withFee: boolean) {
@@ -69,7 +69,7 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
       const mockUni = await MockRouter.deploy(weth);
       uniswapRouterAddr = mockUni.address;
       await payment.grantRole(await payment.OPERATOR(), treasury.address);
-      await payment.connect(treasury).setClaimFee(100, true); // 1%
+      await payment.connect(treasury).setClaimFee(50, true); // 0.5%: new clones refuse more than 50 bps
     }
 
     const premiumRegistry = await deployProxy(
@@ -97,8 +97,8 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
       payment.address,
       uniswapRouterAddr,
       weth,
-    ]);
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    ], "initialize", undefined, [dev.address]);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
 
     const multisigLegacyRouter = await deployProxy("MultisigLegacyRouter", [
       legacyDeployer.address,
@@ -403,11 +403,11 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
     await increase(86400 + 1);
     await transferEOALegacyRouter.connect(bene).activeLegacy(legacyId, [usdt.address], false);
 
-    // 1% of 1,000 USDT. The mock swap has no ETH to pay out, so
+    // 0.5% of 1,000 USDT. The mock swap has no ETH to pay out, so
     // _swapAdminFee's fallback delivers the fee as tokens to Payment —
     // either way the fee must not silently vanish or brick the claim.
-    assert.equal((await usdt.balanceOf(payment.address)).toString(), "10000000", "fee lands at the payment contract");
-    assert.equal((await usdt.balanceOf(bene.address)).toString(), "990000000", "beneficiary gets the remainder");
+    assert.equal((await usdt.balanceOf(payment.address)).toString(), "5000000", "fee lands at the payment contract");
+    assert.equal((await usdt.balanceOf(bene.address)).toString(), "995000000", "beneficiary gets the remainder");
     assert.equal((await usdt.balanceOf(owner.address)).toString(), "0");
   });
 
@@ -431,8 +431,8 @@ describe("LegacyPullVault — verified singleton Permit2 spender", function () {
 
     assert.equal((await usdt.balanceOf(owner.address)).toString(), "1000000000", "sabotaged token stays with the owner");
     assert.equal((await usdt.balanceOf(bene.address)).toString(), "0");
-    assert.equal((await usdc.balanceOf(payment.address)).toString(), "5000000", "1% USDC fee still collected");
-    assert.equal((await usdc.balanceOf(bene.address)).toString(), "495000000", "USDC still distributed");
+    assert.equal((await usdc.balanceOf(payment.address)).toString(), "2500000", "0.5% USDC fee still collected");
+    assert.equal((await usdc.balanceOf(bene.address)).toString(), "497500000", "USDC still distributed");
   });
 
   it("ERC-777-style re-entry into activeLegacy is blocked and distribution happens exactly once", async function () {

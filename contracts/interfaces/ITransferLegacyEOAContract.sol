@@ -9,6 +9,8 @@ interface ITransferEOALegacy {
 
   function delayLayer3() external view returns (uint256);
 
+  function adminFeePercent() external view returns (uint256);
+
   // Create-flow v2 PII strip (§5.1): nickname / name params removed from the
   // clone surface — that metadata lives in the off-chain metadata API.
   function initialize(
@@ -63,8 +65,6 @@ interface ITransferEOALegacy {
     TransferLegacyStruct.Distribution calldata distribution_
   ) external;
 
-  function setDelayLayer23(address sender_, uint256 delayLayer2_, uint256 delayLayer3_) external;
-
   function getBeneficiaryLayer(address beneficiary) external view returns (uint8);
 
   function getLayer() external view returns (uint8);
@@ -72,6 +72,8 @@ interface ITransferEOALegacy {
   //function setSwapSettings(address _router, address _weth,address _paymentContract) external ;
 
   function eoaStorageToken() external view returns (address);
+
+  function getBeneficiaries(address bene_) external view returns (address[] memory);
 
   function autoSwap(
     address sender_,

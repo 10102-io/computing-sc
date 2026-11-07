@@ -3,6 +3,11 @@
   "abi": [
     {
       "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
       "name": "CreationPaused",
       "type": "error"
     },
@@ -14,6 +19,16 @@
     {
       "inputs": [],
       "name": "DuplicateTokenAddresses",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DurationWithUnlockAt",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EmptyTimelock",
       "type": "error"
     },
     {
@@ -141,7 +156,17 @@
     },
     {
       "inputs": [],
+      "name": "UnlockAtInvalid",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "ZeroAmount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ZeroAmountOutMin",
       "type": "error"
     },
     {
@@ -686,6 +711,114 @@
         }
       ],
       "name": "createTimelock",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "storageToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amountOutMin",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "deadline",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockETHSwapInputData",
+              "name": "timelockETHSwap",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC20InputData[]",
+              "name": "timelockERC20",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC721InputData[]",
+              "name": "timelockERC721",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "tokenAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "id",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct TimeLockRouter.TimelockERC1155InputData[]",
+              "name": "timelockERC1155",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "duration",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct TimeLockRouter.TimelockRegular",
+          "name": "timelockRegular",
+          "type": "tuple"
+        },
+        {
+          "internalType": "uint64",
+          "name": "unlockAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "createTimelockUntil",
       "outputs": [],
       "stateMutability": "payable",
       "type": "function"
@@ -1667,7 +1800,7 @@
       "0x974763b760d566154B1767534cF9537CEe2f886f"
     ]
   },
-  "implementation": "0x3eE4633a131ABDFA2B982bde116E6Cb4De09fBcD",
+  "implementation": "0x3B6c725a4aa94fc1C0F0F40F32154BA79A647c62",
   "devdoc": {
     "details": "This contract implements a proxy that is upgradeable by an admin. To avoid https://medium.com/nomic-labs-blog/malicious-backdoors-in-ethereum-proxies-62629adf3357[proxy selector clashing], which can potentially be used in an attack, this contract uses the https://blog.openzeppelin.com/the-transparent-proxy-pattern/[transparent proxy pattern]. This pattern implies two things that go hand in hand: 1. If any account other than the admin calls the proxy, the call will be forwarded to the implementation, even if that call matches one of the admin functions exposed by the proxy itself. 2. If the admin calls the proxy, it can access the admin functions, but its calls will never be forwarded to the implementation. If the admin tries to call a function on the implementation it will fail with an error that says \"admin cannot fallback to proxy target\". These properties mean that the admin account can only be used for admin actions like upgrading the proxy or changing the admin, so it's best if it's a dedicated account that is not used for anything else. This will avoid headaches due to sudden errors when trying to call a function from the proxy implementation. Our recommendation is for the dedicated account to be an instance of the {ProxyAdmin} contract. If set up this way, you should think of the `ProxyAdmin` instance as the real administrative interface of your proxy.",
     "kind": "dev",

@@ -88,7 +88,7 @@ describe("Premium Setting", async function () {
       payment.address,
       "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008", // Uniswap router (Sepolia)
       weth,
-    ], "initialize", dev);
+    ], "initialize", dev, [dev.address]);
 
     const multisignLegacyRouter = await deployProxy(
       "MultisigLegacyRouter",
@@ -112,7 +112,7 @@ describe("Premium Setting", async function () {
     });
 
     // Required for CREATE2 EOA legacy deployments in tests
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
     // 16M, not 20M: EIP-7825 (Fusaka) caps any single tx at 16,777,216 gas.
     await transferEOALegacyRouter.connect(dev).setLegacyCreationCode(eoaLegacyCreationCode, { gasLimit: 16_000_000 });

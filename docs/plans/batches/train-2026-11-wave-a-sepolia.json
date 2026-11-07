@@ -1,0 +1,37 @@
+[
+  {
+    "proxy": "TransferEOALegacyRouter",
+    "impl": "0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9"
+  },
+  {
+    "target": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
+    "data": "0x3a3ec5b000000000000000000000000060b3da49f05e21a1fcd7e210075a23b75939c3ea000000000000000000000000d4bf99da7fbcb0a2fd80754cb5cc9c7cdc9e8d78",
+    "label": "router.initializeV4(0x60B3da49f05E21a1fcD7e210075A23b75939C3eA, 0xd4bf99da7fBcb0A2Fd80754cB5CC9c7CDc9e8D78)"
+  },
+  {
+    "target": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
+    "data": "0x120f8b800000000000000000000000008f97ea3a48f00e76516fb60d528dc2c96bd32dd8",
+    "label": "router.setLegacyImplementation(0x8f97EA3A48F00e76516fB60D528dC2C96bd32DD8)"
+  },
+  {
+    "target": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
+    "data": "0x57afef4d00000000000000000000000096bfc5e582d39453b280b9154d923895b02c21fa",
+    "label": "router.setPullVault(0x96bFC5e582D39453b280b9154d923895B02C21fa)"
+  },
+  {
+    "proxy": "TimeLockRouter",
+    "impl": "0x3B6c725a4aa94fc1C0F0F40F32154BA79A647c62"
+  },
+  {
+    "proxy": "PremiumRegistry",
+    "impl": "0x1610DC8D25475959D5ba9395c4CE02456B51EB59"
+  },
+  {
+    "proxy": "PremiumSetting",
+    "impl": "0x6F8b4F324B13cdB4A57030B72C5bF9E1cB4083aD"
+  },
+  {
+    "proxy": "EIP712LegacyVerifier",
+    "impl": "0x61d35F8b54E164DFf2E6b988D402c6c1B5324339"
+  }
+]

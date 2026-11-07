@@ -29,6 +29,9 @@ const PROXIED_CONTRACTS = [
   // Clone implementations — not proxies, but their storage must stay aligned
   // with pre-v2 clones for reads through GenericLegacy getters.
   "TransferEOALegacy",
+  // The v3 clone (2026-11 train, wave B) inherits TransferEOALegacy: its
+  // layout must be that one's plus appended slots.
+  "TransferEOALegacyV3",
   "MultisigLegacy",
 ];
 

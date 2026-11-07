@@ -142,6 +142,9 @@ you add is still the whole safety net for that path.
 - `docs/security/tooling-report.md`, `docs/security/static-analysis.md`:
   coverage, fuzz and static-analysis evidence for ShieldVault and the
   registry, with every triaged finding.
+- `docs/security/wave-b-audit-scope.md`: the external review scope for
+ legacy v3 (wave B); its tooling evidence is `tooling-report.md` section 8
+ and the Foundry suite `test/foundry/LegacyV3*`.
 - `docs/security/checklist-audit-2026-11.md`: the checklist audit of the
   unaudited riders, with each finding's status; its "Left" column is the
   input to the next contract train.

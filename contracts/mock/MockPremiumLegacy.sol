@@ -36,6 +36,8 @@ contract MockPremiumLegacy is IPremiumLegacy {
   function setLegacyType(uint128 _t) external { legacyTypeVal = _t; }
   function setLive(bool _live) external { liveVal = _live; }
   function setLayer(uint8 _layer) external { layer = _layer; }
+  uint256 public legacyIdVal;
+  function setLegacyId(uint256 _id) external { legacyIdVal = _id; }
 
   // ── reads the triggers actually use ──────────────────────────────────────
   function creator() external view returns (address) { return creatorAddr; }
@@ -50,9 +52,9 @@ contract MockPremiumLegacy is IPremiumLegacy {
   function getBeneNickname(address) external view returns (string memory) { return ""; }
 
   // ── interface filler (unused by the notify path) ─────────────────────────
-  function getLegacyInfo() external view returns (uint256, address, uint128) { return (0, address(this), 0); }
+  function getLegacyInfo() external view returns (uint256, address, uint128) { return (legacyIdVal, address(this), 0); }
   function getActivationTrigger() external pure returns (uint128) { return 0; }
-  function getLegacyId() external pure returns (uint256) { return 0; }
+  function getLegacyId() external view returns (uint256) { return legacyIdVal; }
   function LEGACY_TYPE() external view returns (uint128) { return legacyTypeVal; }
   function delayLayer2() external pure returns (uint256) { return 0; }
   function delayLayer3() external pure returns (uint256) { return 0; }

@@ -2,9 +2,10 @@
  * Gives the governance Safe (`contract-addresses.json` `governance.safe`)
  * the power to take back the operational contracts if the deployer key ever
  * leaks, without changing day-to-day work:
- *   PremiumRegistry, Banner, TokenWhiteList: grant DEFAULT_ADMIN_ROLE to the
- *     Safe (the deployer keeps its roles: plan prices and Premium grants,
- *     banner text, token list). The Safe can then revoke the deployer.
+ *   PremiumRegistry, Banner, TokenWhiteList, NftCollectionWhiteList: grant
+ *     DEFAULT_ADMIN_ROLE to the Safe (the deployer keeps its roles: plan
+ *     prices and Premium grants, banner text, token and NFT lists). The Safe
+ *     can then revoke the deployer.
  *   PremiumSetting (single owner: setParams, resetPremium): ownership moves
  *     to the Safe; none of it is routine.
  * Idempotent.
@@ -29,8 +30,8 @@ async function main() {
   const admin = ethers.constants.HashZero;
   console.log(`Network ${network.name}, deployer ${deployer.address}, Safe ${safe}`);
 
-  for (const name of ["PremiumRegistry", "Banner", "TokenWhiteList"]) {
-    const address: string | undefined = book[name]?.address;
+  for (const name of ["PremiumRegistry", "Banner", "TokenWhiteList", "NftCollectionWhiteList"]) {
+    const address: string | undefined = book[name]?.address ?? book.train202611?.[name];
     if (!address) {
       console.log(`  ${name}: not in the book, skipped`);
       continue;

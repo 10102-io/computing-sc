@@ -21,6 +21,73 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-07 — Contract train 2026-11: wave A live on mainnet
+
+[Wave A executed on mainnet 2026-11-07 through the UpgradeTimelock
+(`0x1868…cd8f`), on Sepolia 2026-11-05. Wave B (legacy v3) runs on Sepolia
+since 2026-11-06 and reaches mainnet only after its external review.]
+
+| Contract | Proxy | New implementation |
+|---|---|---|
+| `TransferEOALegacyRouter` | `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b` | `0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1` |
+| `TimeLockRouter` | `0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42` | `0x0d23dEeE5b316b1ac6b49C7f123489e8E9c2111c` |
+| `PremiumRegistry` | `0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27` | `0x78502df1F231Fd50858832be5a3c035c8A504731` |
+| `PremiumSetting` | `0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f` | `0x189FbDC1Ad7716960293130CFa3BE247b948c463` |
+| `EIP712LegacyVerifier` | `0x3d6cC3782EC0DF21B58c4C9F5ecf23e485e05F9e` | `0xB3cE4476fddF5b57B937590a4436892c0Dc57220` |
+| `TransferEOALegacy` (clone target, new legacies) | — | `0x2E2dE6475fcBE77E7930499981850d37b237924C` |
+| `LegacyPullVaultV2` (new legacies; v1 stays for older ones) | — | `0xC6640962618f9D729032487EC5DEf226BF6F43E3` |
+
+All Etherscan-verified with proxy records re-linked; `verify-governance.ts`
+31/31 after execution (the router's code admin is the governance Safe, its
+levers wait 48 hours, initializer counter 5).
+
+The checklist audit's four Mediums and every queued contract rider, in one
+timelock batch (wave A), plus legacy v3 (wave B), which deploys only after
+an independent audit. Plan, layouts, runbooks, the follow-up list for the
+app, admin panel and subgraph, and the review round 1 mapping:
+`docs/plans/train-2026-11.md`. Neither wave is independently audited; two
+internal read-only reviews were applied the same day.
+
+Wave A, for new EOA legacies (a new clone implementation; existing legacies
+keep theirs): direct USDT allowances pay out on the claim path (SafeERC20,
+audit M-2); a non-WETH unswap needs a nonzero minimum and a sole recipient,
+so no co-beneficiary picks the minimum for others (M-4); the owner's WETH
+unswap unwraps instead of reverting; a claim fee above 0.5% is refused and
+the create can bind the fee the creator saw; ETH reaches owners that are
+smart accounts. LegacyPullVaultV2 lets an owner unbind an activated legacy
+before signing for the next one (M-1) and admits further clone
+implementations only through the timelock. For every legacy: the EOA
+router's rotation levers (implementation, vault, attestor, creation code)
+move behind the 48-hour timelock, the pause and the attestor kill switch
+move to the governance Safe (M-3), the old ungated reinitializers are gone;
+auto-renew baselines are per attestor; zero-minimum swaps into non-WETH
+tokens are refused, and existing clones' unswap claims get the same
+minimum and sole-recipient rules at the router. Timelocks: an absolute unlock date
+(`createTimelockUntil`, for autopilot) and no more empty or zero-minimum
+creates. Premium: coupon codes and automatic referral shares. Notifications:
+the legacy's Safe can manage them, and a contract posing as a legacy can no
+longer forge them. Terms: a user can record consent to the active terms for
+a reference such as a ShieldVault position, with no change to ShieldVault.
+
+Wave B, legacy v3 (a separate clone implementation, all features off by
+default): NFTs from an allowlisted set of collections, per-beneficiary
+backup lines (A, then A2, then A3), where each share is its own running
+account so no heir's claim takes from another's, a share belongs to the
+first address it pays, and the second and third lines take only shares
+nobody else owns; and an optional executor
+who can bring claims forward to a 30-day grace (after the owner has been
+silent for half the trigger) that any owner activity cancels, and who can
+never benefit or hold anything. Backup lines and the executor are Premium.
+
+Tooling: clone implementations compile in their own job and reproduce byte
+for byte from the input Etherscan verifies; the train's deploy and batch
+script, which checks every address it schedules against the compiled code
+and the router's live code admin before writing the batch; the verifier,
+multisig router and EOA router ABIs are now covered by `sync-ui --check`.
+The Hardhat 3 migration is not done: it changes every contract's metadata
+hash, so deployed bytecode would no longer be reproduced byte for byte.
+364 tests passing (263 before).
+
 ## 2026-11-04 — Deployment artifacts match the chain again
 
 [No contract or on-chain change.]

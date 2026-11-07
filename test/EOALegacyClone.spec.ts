@@ -63,8 +63,8 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
       payment.address,
       router,
       weth,
-    ]);
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    ], "initialize", undefined, [dev.address]);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
 
     const eoaLegacyCreationCode = (await ethers.getContractFactory("TransferEOALegacy")).bytecode;
     await transferEOALegacyRouter
@@ -156,7 +156,7 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
     return { predicted, receipt, args };
   }
 
-  it("setLegacyImplementation is gated by the code admin", async function () {
+  it("setLegacyImplementation is gated by the UpgradeTimelock", async function () {
     const { transferEOALegacyRouter, user1, legacyImpl } = await loadFixture(deployFixture);
     let caught: any;
     try {
@@ -164,8 +164,8 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
     } catch (e) {
       caught = e;
     }
-    assert(caught, "expected NotCodeAdmin revert");
-    assert(revertedWith(caught, "NotCodeAdmin()"), `expected NotCodeAdmin, got: ${caught?.message}`);
+    assert(caught, "expected NotUpgradeTimelock revert");
+    assert(revertedWith(caught, "NotUpgradeTimelock()"), `expected NotUpgradeTimelock, got: ${caught?.message}`);
   });
 
   it("getNextLegacyAddress uses clone prediction when impl is set", async function () {
@@ -322,8 +322,8 @@ describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
       payment.address,
       router,
       weth,
-    ]);
-    await transferEOALegacyRouter.connect(dev).initializeV2(dev.address);
+    ], "initialize", undefined, [dev.address]);
+    await transferEOALegacyRouter.connect(dev).initializeV4(dev.address, ethers.constants.AddressZero);
 
     const eoaImpl = await (await ethers.getContractFactory("TransferEOALegacy")).deploy();
     await transferEOALegacyRouter.connect(dev).setLegacyImplementation(eoaImpl.address);

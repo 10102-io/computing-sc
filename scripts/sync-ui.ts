@@ -279,17 +279,18 @@ function writeAdminAddresses(): void {
   console.log('Wrote', path.relative(CONTRACTS_ROOT, outPath));
 }
 
-type AbiExportStyle = 'const_as_const' | 'default_export';
+type AbiExportStyle = 'const_as_const' | 'default_export' | 'default_export_as_const';
 
 /** Artifact names with this prefix resolve under artifacts/contracts/. */
 const COMPILED_PREFIX = 'compiled:';
 
 /**
- * `ui: false` mappings are generated into output/ for reference only: the
- * frontend keeps hand-maintained modules for those contracts under other
- * names (legacyVerifier.ts, multisigRouterAbi.ts, transferLegacyEOA.ts) and
- * imports nothing at these paths. Repointing them is a frontend refactor
- * (computing/docs/DEFERRED.md `abi-sync-legacy-modules`), not a sync step.
+ * Each mapping writes the module the frontend imports, under the app's own
+ * file and export name, so `--check` catches any ABI drift there. Since the
+ * 2026-11 train that includes the verifier, the multisig router and the EOA
+ * router, which the app had kept hand-maintained (DEFERRED
+ * `abi-sync-legacy-modules`). `ui: false` = generated into output/ only (the
+ * sunset Safe-source transfer router).
  */
 const ABI_MAPPINGS: Array<{
   artifact: string;
@@ -302,11 +303,12 @@ const ABI_MAPPINGS: Array<{
     { artifact: 'PremiumRegistry_Implementation.json', outPath: 'configs/abis/premiumRegistry.ts', exportName: 'PremiumRegistryABI', style: 'default_export' },
     { artifact: 'PremiumSetting_Implementation.json', outPath: 'configs/abis/premiumSetting.ts', exportName: 'PremiumSettingABI', style: 'default_export' },
     { artifact: 'TimeLockRouter_Implementation.json', outPath: 'configs/abis/timelockAbi.ts', exportName: 'TimelockABI', style: 'default_export' },
-    { artifact: 'EIP712LegacyVerifier_Implementation.json', outPath: 'configs/abis/legacyAgreement.ts', exportName: 'LegacyAgreementAbi', style: 'default_export', ui: false },
+    { artifact: 'EIP712LegacyVerifier_Implementation.json', outPath: 'configs/abis/legacyVerifier.ts', exportName: 'LegacyVerifierAbi', style: 'default_export_as_const' },
     { artifact: 'TimelockERC20_Implementation.json', outPath: 'constants/erc20TimelockAbi.ts', exportName: 'erc20TimelockAbi', style: 'const_as_const' },
     { artifact: 'TimelockERC721_Implementation.json', outPath: 'constants/erc721TimelockAbi.ts', exportName: 'erc721TimelockAbi', style: 'const_as_const' },
     { artifact: 'TimelockERC1155_Implementation.json', outPath: 'constants/erc1155TimelockAbi.ts', exportName: 'erc1155TimelockAbi', style: 'const_as_const' },
-    { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyAbi.ts', exportName: 'LegacyAbi', style: 'default_export', ui: false },
+    { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/multisigRouterAbi.ts', exportName: 'MultisigRouterAbi', style: 'default_export' },
+    { artifact: 'TransferEOALegacyRouter_Implementation.json', outPath: 'configs/abis/transferLegacyEOA.ts', exportName: 'TransferLegacyEoaABI', style: 'default_export_as_const' },
     { artifact: 'TransferLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyRouterAbi.ts', exportName: 'LegacyRouterAbi', style: 'default_export', ui: false },
     // Non-upgradeable, script-deployed contracts have no deployments/
     // artifact; their ABI is the compiled one (same code on every network).
@@ -345,6 +347,8 @@ function writeAbiFile(
   let body: string;
   if (style === 'const_as_const') {
     body = `export const ${exportName} = ${abiJson} as const;\n`;
+  } else if (style === 'default_export_as_const') {
+    body = `const ${exportName} = ${abiJson} as const;\n\nexport default ${exportName};\n`;
   } else {
     body = `const ${exportName} = ${abiJson};\n\nexport default ${exportName};\n`;
   }
@@ -367,7 +371,9 @@ function writeAbis(): void {
         return fs.statSync(p).isDirectory() && !name.startsWith('.');
       }) :
       [];
-  const network = deploymentDirs[0] ?? allDirs[0] ?? networks[0] ?? 'sepolia';
+  // One ABI per contract serves every chain, so it follows production: a
+  // Sepolia rehearsal must not ship ABIs mainnet does not run yet.
+  const network = deploymentDirs.includes('mainnet') ? 'mainnet' : deploymentDirs[0] ?? allDirs[0] ?? networks[0] ?? 'sepolia';
   for (const m of ABI_MAPPINGS) {
     writeAbiFile(network, m.artifact, m.outPath, m.exportName, m.style);
   }

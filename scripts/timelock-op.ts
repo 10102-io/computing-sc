@@ -41,7 +41,9 @@
  *
  * The salt is derived deterministically from the (target, data) list, so
  * schedule / status / execute recompute the same operation id from the same
- * inputs. Predecessor is always zero and values are always zero.
+ * inputs. Predecessor is always zero and values are always zero. To repeat
+ * an operation that already executed, set TL_SALT_TAG (any text, the same
+ * for schedule and execute); unset, ids are unchanged.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -125,8 +127,9 @@ async function main() {
   const targets = calls.map((c) => c.target);
   const values = calls.map(() => 0);
   const datas = calls.map((c) => c.data);
+  const saltTag = process.env.TL_SALT_TAG ? `#${process.env.TL_SALT_TAG}` : "";
   const salt = ethers.utils.keccak256(
-    ethers.utils.toUtf8Bytes(calls.map((c) => `${c.target}:${c.data}`).join("|"))
+    ethers.utils.toUtf8Bytes(calls.map((c) => `${c.target}:${c.data}`).join("|") + saltTag)
   );
   const id: string = isBatch
     ? await timelock.hashOperationBatch(targets, values, datas, ZERO32, salt)

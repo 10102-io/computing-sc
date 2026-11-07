@@ -28,6 +28,7 @@ import * as path from "path";
 import * as hre from "hardhat";
 import { ethers } from "hardhat";
 import { getContracts } from "./utils";
+import { compileAgainstLive, IMPL_SLOT } from "./utils/live-code";
 
 // deployment name -> compiled artifact name
 const KNOWN: Record<string, string> = {
@@ -41,23 +42,6 @@ const KNOWN: Record<string, string> = {
   PremiumRegistry: "PremiumRegistry",
   PremiumSetting: "PremiumSetting",
 };
-const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
-
-async function compileAgainstLive(contractName: string, live: string) {
-  const artifact = await hre.artifacts.readArtifact(contractName);
-  const build = await hre.artifacts.getBuildInfo(`${artifact.sourceName}:${artifact.contractName}`);
-  const output: any = build?.output.contracts[artifact.sourceName][artifact.contractName];
-  const refs: Record<string, { start: number; length: number }[]> = output?.evm.deployedBytecode.immutableReferences ?? {};
-  let onChain = (await ethers.provider.getCode(live)).slice(2).toLowerCase();
-  const compiled = artifact.deployedBytecode.slice(2).toLowerCase();
-  for (const ranges of Object.values(refs)) {
-    for (const { start, length } of ranges) {
-      onChain = onChain.slice(0, start * 2) + "0".repeat(length * 2) + onChain.slice((start + length) * 2);
-    }
-  }
-  return { matches: onChain === compiled, storageLayout: output?.storageLayout };
-}
-
 async function main() {
   const network = hre.network.name;
   const book = getContracts();

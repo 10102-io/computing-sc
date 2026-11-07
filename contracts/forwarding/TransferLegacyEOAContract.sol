@@ -47,9 +47,19 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   error DelayAndDistributionInvalid();
   error SwapFailed();
   error InvalidPaymentContract();
+  error ZeroAmountOutMin();
+  error AdminFeeAboveCap(uint256 fee);
+  error SwapExpired();
+  error EthTransferFailed();
+  error UnswapNeedsSoleRecipient();
+  error TooManyBeneficiaries();
 
   /* State variable */
   uint128 public constant LEGACY_TYPE = 3;
+  /// @dev Highest claim fee (basis points of 10,000) a new legacy accepts at
+  /// initialize. `Payment.setClaimFee` allows up to 99.99%; this caps what a
+  /// legacy can ever be charged, whoever controls `Payment`.
+  uint256 public constant MAX_ADMIN_FEE_BPS = 50;
   // Per-tx state-changing transfer budget. Activation pagination divides this
   // across (#beneficiaries × #assets [+ #beneficiaries for ETH]). Matches the
   // documented "~100 transfers per batch" cap and gives strict headroom
@@ -61,17 +71,19 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   address public uniswapRouter; // Uniswap router address for swapping
   address public weth; // WETH address for swapping
 
-  uint256 private _lastTimestamp;
+  // `internal` (not `private`) so the v3 clone, which inherits this contract,
+  // can read them; visibility does not change the storage layout or the code.
+  uint256 internal _lastTimestamp;
   // NOTE: do NOT rely on an inline initializer here. Clones deployed via EIP-1167
   // never run creation code, so this slot must be written explicitly in initialize().
-  uint256 private _isLive;
+  uint256 internal _isLive;
 
-  EnumerableSet.AddressSet private _beneficiariesSet;
-  mapping(address beneficiaries => uint256) private _distributions;
-  address private _layer2Beneficiary;
-  uint256 private _layer2Distribution;
-  address private _layer3Beneficiary;
-  uint256 private _layer3Distribution;
+  EnumerableSet.AddressSet internal _beneficiariesSet;
+  mapping(address beneficiaries => uint256) internal _distributions;
+  address internal _layer2Beneficiary;
+  uint256 internal _layer2Distribution;
+  address internal _layer3Beneficiary;
+  uint256 internal _layer3Distribution;
 
   uint256 public delayLayer2;
   uint256 public delayLayer3;
@@ -155,8 +167,9 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   /**
    * @dev Owner reverses a previous autoSwap: pulls storage token from owner's wallet
-   * (requires prior ERC-20 approval), swaps back to ETH via Uniswap V2, sends ETH to owner.
-   * Clears eoaStorageToken on completion.
+   * (requires prior ERC-20 approval) and sends ETH to the owner. WETH unwraps
+   * 1:1 (a Uniswap path [WETH, WETH] reverts); any other token swaps through
+   * Uniswap V2 and needs a nonzero minimum. Clears eoaStorageToken on completion.
    */
   function unswap(
     address sender_,
@@ -164,26 +177,35 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     uint256 amountOutMin_,
     uint256 deadline_
   ) external onlyRouter onlyLive onlyOwner(sender_) {
-    if (eoaStorageToken == address(0)) revert AssetInvalid();
+    address token = eoaStorageToken;
+    if (token == address(0)) revert AssetInvalid();
     if (amountIn_ == 0) revert AssetInvalid();
-
-    IERC20(eoaStorageToken).safeTransferFrom(sender_, address(this), amountIn_);
-    IERC20(eoaStorageToken).forceApprove(uniswapRouter, amountIn_);
-
-    address[] memory path = new address[](2);
-    path[0] = eoaStorageToken;
-    path[1] = weth;
-
-    IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
-      amountIn_,
-      amountOutMin_,
-      path,
-      sender_,
-      deadline_
-    );
-
+    // State first: nothing below may run with the swap still recorded.
     eoaStorageToken = address(0);
     _lastTimestamp = block.timestamp;
+
+    IERC20(token).safeTransferFrom(sender_, address(this), amountIn_);
+
+    if (token == weth) {
+      if (block.timestamp > deadline_) revert SwapExpired();
+      IWETH(weth).withdraw(amountIn_);
+      _sendEth(sender_, amountIn_);
+    } else {
+      if (amountOutMin_ == 0) revert ZeroAmountOutMin();
+      IERC20(token).forceApprove(uniswapRouter, amountIn_);
+
+      address[] memory path = new address[](2);
+      path[0] = token;
+      path[1] = weth;
+
+      IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
+        amountIn_,
+        amountOutMin_,
+        path,
+        sender_,
+        deadline_
+      );
+    }
   }
 
   /* View functions to support premium */
@@ -191,9 +213,25 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     return (_isLive == 1) && (getIsActiveLegacy() == 1);
   }
 
+  /// @dev When layer-1 beneficiaries may first claim. The v3 clone overrides
+  /// it to apply an executor's death attestation.
+  function _activationDeadline() internal view virtual returns (uint256) {
+    return _lastTimestamp + getActivationTrigger();
+  }
+
+  /// @dev Runs after any change to the beneficiaries or the line delays
+  /// (`layer1Changed_` when the first-line set itself changed). No-op here;
+  /// the v3 clone uses it to keep its executor and backups off every other
+  /// line, to order backups before the second line, and to void stale backup
+  /// lines and NFT items.
+  function _afterBeneficiariesChanged(bool layer1Changed_) internal virtual {}
+
+  /// @dev Runs before an unswap claim. No-op here; the v3 clone refuses the
+  /// unswap claim in per-share mode.
+  function _checkUnswapClaim() internal view virtual {}
+
   function getTriggerActivationTimestamp() public view override returns (uint256, uint256, uint256) {
-    uint256 lackOfOutgoingTxRange = uint256(getActivationTrigger());
-    uint256 beneficiariesTrigger = _lastTimestamp + lackOfOutgoingTxRange;
+    uint256 beneficiariesTrigger = _activationDeadline();
     uint256 layer2Trigger = beneficiariesTrigger + delayLayer2;
     uint256 layer3Trigger = layer2Trigger + delayLayer3;
     return (beneficiariesTrigger, layer2Trigger, layer3Trigger);
@@ -251,7 +289,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    * @param beneficiary The address of the beneficiary
    * @return uint8 The layer of the beneficiary (1 for First-line, 2 for Second-line, 3 for Third-line, 0 if not a beneficiary)
    */
-  function getBeneficiaryLayer(address beneficiary) public view returns (uint8) {
+  function getBeneficiaryLayer(address beneficiary) public view virtual returns (uint8) {
     if (_distributions[beneficiary] > 0) {
       return 1;
     } else if (beneficiary == _layer2Beneficiary && _layer2Distribution > 0) {
@@ -264,8 +302,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
   function getCurrentLayer() internal view returns (uint8) {
     uint256 ts = block.timestamp;
-    uint256 lackOfOutgoingTxRange = getActivationTrigger();
-    uint256 base = (_lastTimestamp + lackOfOutgoingTxRange);
+    uint256 base = _activationDeadline();
     if (ts >= base + delayLayer2 + delayLayer3 && delayLayer3 != 0) {
       return 3;
     } else if (ts >= base + delayLayer2 && delayLayer2 != 0) {
@@ -317,7 +354,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     premiumSetting = IPremiumSetting(_premiumSetting);
     paymentContract = _paymentContract;
     adminFeePercent = IPayment(paymentContract).getFee();
-    if (adminFeePercent > 10000) revert PercentInvalid();
+    if (adminFeePercent > MAX_ADMIN_FEE_BPS) revert AdminFeeAboveCap(adminFeePercent);
     creator = owner_;
 
     // Check duplicates across layers BEFORE setting anything
@@ -417,18 +454,13 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
 
     _setLayer23Distributions(layer_, distribution_);
     if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
+    _afterBeneficiariesChanged(false);
     _lastTimestamp = block.timestamp;
 
   }
 
-  function setDelayLayer23(address sender_, uint256 delayLayer2_, uint256 delayLayer3_) external onlyRouter onlyOwner(sender_) isActiveLegacy {
-    if (!premiumSetting.isPremium(sender_)) revert NotPremium();
-    delayLayer2 = delayLayer2_;
-    delayLayer3 = delayLayer3_;
-    if (!_checkDelayAndDistribution()) revert DelayAndDistributionInvalid();
-    _lastTimestamp = block.timestamp;
-
-  }
+  // setDelayLayer23 removed in the 2026-11 train: it was router-only and no
+  // router ever called it (delays move through setDelayAndLayer23Distributions).
 
   /**
    * @dev set distributions[]
@@ -441,6 +473,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   ) external onlyRouter onlyLive onlyOwner(sender_) isActiveLegacy returns (uint256 numberOfBeneficiaries) {
     _clearDistributions();
     numberOfBeneficiaries = _setDistributions(sender_, distributions_);
+    _afterBeneficiariesChanged(true);
 
     _lastTimestamp = block.timestamp;
   }
@@ -493,6 +526,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     if (!skipCheck && !_checkDelayAndDistribution()) {
       revert DelayAndDistributionInvalid();
     }
+    _afterBeneficiariesChanged(false);
 
     _lastTimestamp = block.timestamp;
   }
@@ -529,7 +563,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       try ILegacyPullVault(vault).release(sender_) {} catch {}
     }
 
-    payable(sender_).transfer(address(this).balance);
+    uint256 balance = address(this).balance;
+    if (balance > 0) _sendEth(sender_, balance);
   }
 
   receive() external payable {
@@ -555,7 +590,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       revert NotEnoughETH();
     }
     _lastTimestamp = block.timestamp;
-    payable(sender_).transfer(amount_);
+    _sendEth(sender_, amount_);
+  }
+
+  /// @dev A checked call, not `transfer`: an owner that is a contract or an
+  /// EIP-7702 account may need more than 2,300 gas to receive. Only the owner
+  /// is ever paid here, after every state change, so re-entry gains nothing.
+  function _sendEth(address to_, uint256 amount_) private {
+    (bool sent, ) = payable(to_).call{value: amount_}("");
+    if (!sent) revert EthTransferFailed();
   }
 
   /**
@@ -580,7 +623,9 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    * to all beneficiaries by the existing _transferAssetToBeneficiaries logic.
    * @param assets_       ERC-20 token addresses to distribute from the owner's wallet
    * @param bene_         The beneficiary address (caller, forwarded from router)
-   * @param amountOutMin_ Minimum ETH out from the swap (0 = no slippage check, acceptable at claim time)
+   * @param amountOutMin_ Minimum ETH out from the swap. Must be nonzero when a non-WETH token is
+   *                      actually swapped (a zero minimum is a free sandwich); ignored for WETH,
+   *                      which unwraps 1:1, and when nothing is pullable.
    * @param deadline_     Uniswap swap deadline (unix timestamp)
    */
   function activeLegacyAndUnswap(
@@ -590,6 +635,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
     uint256 deadline_
   ) external onlyRouter {
     if (!(_checkActiveLegacy() && _isLive == 1)) revert NotEnoughContitionalActive();
+    _checkUnswapClaim();
 
     if (eoaStorageToken != address(0)) {
       address ownerAddress = getLegacyOwner();
@@ -602,6 +648,12 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           // WETH→ETH is 1:1 unwrap; bypass Uniswap
           IWETH(weth).withdraw(pullAmount);
         } else {
+          if (amountOutMin_ == 0) revert ZeroAmountOutMin();
+          // The caller picks the minimum for a swap of everyone's share: with
+          // co-recipients they could set a token minimum, sandwich it, and bear
+          // only their part of the loss. Only a sole recipient may swap; others
+          // claim the token itself (`activeLegacy`).
+          if (getBeneficiaries(bene_).length != 1) revert UnswapNeedsSoleRecipient();
           IERC20(eoaStorageToken).forceApprove(uniswapRouter, pullAmount);
           address[] memory path = new address[](2);
           path[0] = eoaStorageToken;
@@ -635,9 +687,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    * @dev Check activation conditions
    * @return bool true if eligible for activation, false otherwise
    */
-  function _checkActiveLegacy() private view returns (bool) {
-    uint256 lackOfOutgoingTxRange = getActivationTrigger();
-    if (_lastTimestamp + lackOfOutgoingTxRange > block.timestamp) {
+  function _checkActiveLegacy() internal view returns (bool) {
+    if (_activationDeadline() > block.timestamp) {
       return false;
     }
     return true;
@@ -696,7 +747,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   /**
    * @dev transfer asset to beneficiaries
    */
-  function _transferAssetToBeneficiaries(address[] calldata assets_, bool isETH_, address bene_) private {
+  function _transferAssetToBeneficiaries(address[] calldata assets_, bool isETH_, address bene_) internal virtual {
     address ownerAddress = getLegacyOwner();
     address[] memory beneficiaries = getBeneficiaries(bene_);
     uint8 beneLayer = getBeneficiaryLayer(bene_);
@@ -709,7 +760,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       // independently this guard turns a silent underflow panic into an
       // explicit revert with a reason string. Surfaced at activation
       // time so off-chain tooling can route around it.
-      require(beneficiaries.length < maxTransfer, "Too many beneficiaries for ETH activation");
+      if (beneficiaries.length >= maxTransfer) revert TooManyBeneficiaries();
       maxTransfer = maxTransfer - beneficiaries.length;
     }
     //actual number of assets claimed in this tranasaction
@@ -767,20 +818,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       // legacy-pull-vault.md). Per token, pull through whichever grants most
       // — a single deterministic path per token keeps the accounting simple
       // and matches the original min(balance, allowance) semantics exactly.
-      PullRoute route = PullRoute.DirectErc20;
-      uint256 effectiveAllowance = IERC20(token).allowance(ownerAddress, address(this));
-      {
-        uint256 permit2AllowanceAmount = _permit2Allowance(ownerAddress, token);
-        if (permit2AllowanceAmount > effectiveAllowance) {
-          effectiveAllowance = permit2AllowanceAmount;
-          route = PullRoute.Permit2Clone;
-        }
-      }
-      (uint256 vaultAllowanceAmount, address vault) = _vaultAllowance(ownerAddress, token);
-      if (vaultAllowanceAmount > effectiveAllowance) {
-        effectiveAllowance = vaultAllowanceAmount;
-        route = PullRoute.Vault;
-      }
+      (PullRoute route, uint256 effectiveAllowance, address vault) = _route(ownerAddress, token);
       uint256 balanceAmountErc20 = IERC20(token).balanceOf(ownerAddress);
       uint256 totalAmount = balanceAmountErc20 > effectiveAllowance ? effectiveAllowance : balanceAmountErc20;
       if (totalAmount > 0) {
@@ -830,7 +868,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    * the allowance is expired, or when none was ever granted. View-only; the
    * actual pull (`PERMIT2.transferFrom`) re-checks expiry and amount.
    */
-  function _permit2Allowance(address owner_, address token_) private view returns (uint256) {
+  function _permit2Allowance(address owner_, address token_) internal view returns (uint256) {
     if (address(PERMIT2).code.length == 0) return 0;
     (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, address(this));
     if (block.timestamp > expiration) return 0;
@@ -846,13 +884,31 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    * already-signed permits. Degrades to "no allowance" when the legacy has
    * no vault, Permit2 is absent, the binding moved, or the grant expired.
    */
-  function _vaultAllowance(address owner_, address token_) private view returns (uint256, address) {
+  function _vaultAllowance(address owner_, address token_) internal view returns (uint256, address) {
     address vault = pullVault;
     if (vault == address(0) || address(PERMIT2).code.length == 0) return (0, address(0));
     if (ILegacyPullVault(vault).boundLegacy(owner_) != address(this)) return (0, address(0));
     (uint160 amount, uint48 expiration, ) = PERMIT2.allowance(owner_, token_, vault);
     if (block.timestamp > expiration) return (0, address(0));
     return (amount, vault);
+  }
+
+  /// @dev The rail granting the most for (owner_, token_): the direct ERC-20
+  /// allowance, Permit2 with this clone as spender, or Permit2 through the
+  /// pinned vault. `vault` is set only on the vault rail.
+  function _route(address owner_, address token_) internal view returns (PullRoute route, uint256 allowance_, address vault) {
+    allowance_ = IERC20(token_).allowance(owner_, address(this));
+    uint256 permit2Amount = _permit2Allowance(owner_, token_);
+    if (permit2Amount > allowance_) {
+      allowance_ = permit2Amount;
+      route = PullRoute.Permit2Clone;
+    }
+    (uint256 vaultAmount, address vault_) = _vaultAllowance(owner_, token_);
+    if (vaultAmount > allowance_) {
+      allowance_ = vaultAmount;
+      route = PullRoute.Vault;
+      vault = vault_;
+    }
   }
 
   /// @dev Which authorization rail a token is pulled through at claim time.
@@ -872,7 +928,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
    *        clone as spender / Permit2 via the LegacyPullVault)
    * @param vault_ the vault address when route_ == Vault (unused otherwise)
    */
-  function _transferErc20ToBeneficiary(address erc20Address_, address from_, address to_, uint256 amount_, PullRoute route_, address vault_) private returns(uint256 amountSent) {
+  function _transferErc20ToBeneficiary(address erc20Address_, address from_, address to_, uint256 amount_, PullRoute route_, address vault_) internal returns(uint256 amountSent) {
     if (route_ == PullRoute.Vault) {
       // amount_ <= totalAmount <= the Permit2 allowance (uint160): no truncation.
       try ILegacyPullVault(vault_).pull(from_, erc20Address_, to_, uint160(amount_)) {
@@ -889,12 +945,11 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
         return 0;
       }
     }
-    try 
-    IERC20(erc20Address_).transferFrom(from_, to_, amount_) {
-      return amount_;
-    } catch {
-      return 0;
-    }
+    // SafeERC20's try variant: tokens that return nothing (mainnet USDT) count
+    // as success, a `false` return or a revert counts as a failed transfer
+    // (0, never a claim-wide revert). A bare `try IERC20.transferFrom` reverted
+    // the whole claim on USDT at the bool decode (checklist audit M-2).
+    return IERC20(erc20Address_).trySafeTransferFrom(from_, to_, amount_) ? amount_ : 0;
   }
 
  /**
@@ -904,7 +959,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
  * @return amountSent amount actually sent (0 if failed)
  */
 function _transferEthToBeneficiary(address to_, uint256 amount_) 
-    private 
+    internal 
     returns (uint256 amountSent) 
 {
     (bool success, ) = payable(to_).call{value: amount_}("");

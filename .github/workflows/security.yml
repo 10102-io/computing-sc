@@ -138,6 +138,30 @@ jobs:
             -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol \
             -o aderyn-report.md
           grep -q "| High | 0 |" aderyn-report.md || { echo "Aderyn reports a High"; exit 1; }
+      # Legacy v3 (wave B) and the files it relies on, report only: every
+      # result is triaged in docs/security/static-analysis.md ("Legacy v3"),
+      # and one of v3's Slither ids changes between identical runs, so a
+      # triage database cannot gate it. A new result shows in the uploaded
+      # reports and is triaged there; nothing here fails the job.
+      - name: slither (legacy v3, report only)
+        if: always()
+        run: |
+          for f in contracts/forwarding/TransferLegacyEOAContractV3.sol contracts/whitelist/NftCollectionWhiteList.sol contracts/common/LegacyPullVaultV2.sol; do
+            slither "$f" \
+              --compile-force-framework solc \
+              --solc-remaps "@openzeppelin=node_modules/@openzeppelin" \
+              --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" \
+              --filter-paths "node_modules" \
+              --fail-none \
+              --json "slither-v3-$(basename "$f" .sol).json" 2>&1 | tee -a slither-v3.txt
+          done
+      - name: aderyn (legacy v3, report only)
+        if: always()
+        run: |
+          export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
+          aderyn . -s contracts \
+            -i contracts/forwarding/TransferLegacyEOAContractV3.sol,contracts/whitelist/NftCollectionWhiteList.sol,contracts/common/LegacyPullVaultV2.sol \
+            -o aderyn-v3-report.md || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -146,6 +170,8 @@ jobs:
             slither.txt
             slither-*.json
             aderyn-report.md
+            slither-v3.txt
+            aderyn-v3-report.md
           retention-days: 30
 
   fuzz:
