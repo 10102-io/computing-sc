@@ -342,8 +342,7 @@
     },
     "EIP712LegacyVerifier": {
       "address": "0x3d6cC3782EC0DF21B58c4C9F5ecf23e485e05F9e",
-      "implementation": "0x7bcA85C9fE3DD8FAE178640eaebbaB13f5DA97DE",
-      "pendingImplementation": "0xB3cE4476fddF5b57B937590a4436892c0Dc57220"
+      "implementation": "0xB3cE4476fddF5b57B937590a4436892c0Dc57220"
     },
     "LegacyDeployer": {
       "address": "0xdb6B6487e020479120dd3e596Ff5A530eD7C88a7",
@@ -351,8 +350,7 @@
     },
     "PremiumSetting": {
       "address": "0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f",
-      "implementation": "0xc5b3AF7d60856151951247Ee6C609d5102C58310",
-      "pendingImplementation": "0x189FbDC1Ad7716960293130CFa3BE247b948c463"
+      "implementation": "0x189FbDC1Ad7716960293130CFa3BE247b948c463"
     },
     "MultisigLegacyRouter": {
       "address": "0x7c7bf503DF70eBE3520f65Cc0Ff1aF093Fa85038",
@@ -360,8 +358,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0x355BBf74B91e021f18Cee0de191b295B4159E4A1",
-      "pendingImplementation": "0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1"
+      "implementation": "0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -393,13 +390,11 @@
     },
     "PremiumRegistry": {
       "address": "0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27",
-      "implementation": "0xF4718bD87c91c05eEb38C550Bb40b47A4141FB66",
-      "pendingImplementation": "0x78502df1F231Fd50858832be5a3c035c8A504731"
+      "implementation": "0x78502df1F231Fd50858832be5a3c035c8A504731"
     },
     "TimeLockRouter": {
       "address": "0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42",
-      "implementation": "0x82f3148cc4836f03110F9B7139588B0563AF5005",
-      "pendingImplementation": "0x0d23dEeE5b316b1ac6b49C7f123489e8E9c2111c"
+      "implementation": "0x0d23dEeE5b316b1ac6b49C7f123489e8E9c2111c"
     },
     "TimelockERC20": {
       "address": "0xe809Bbc14bCF4ADd37377547B652DaF70B5939BF",
@@ -414,7 +409,7 @@
       "implementation": "0x497DaDFf357fAA825ceE310E473f628Db03C0F5A"
     },
     "TransferEOALegacyImpl": {
-      "address": "0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3"
+      "address": "0x2E2dE6475fcBE77E7930499981850d37b237924C"
     },
     "_deprecated": {
       "_note": "Replaced or superseded contracts kept for historical reference.",
@@ -427,6 +422,10 @@
         "address": "0xD5bA2799fc2e5bc250a50251896A6d7E1c792200",
         "replacedBy": "TransferEOALegacyImpl",
         "note": "Pre-Phase-A EOA legacy clone implementation. MAX_TRANSFER was 10 and processedAmount tracked scheduled (not delivered) amounts. Existing clones already deployed against this impl are unaffected (impl is baked into clone bytecode); only new createLegacy calls switch to the new impl."
+      },
+      "TransferEOALegacyImpl_pre_2026_11_07": {
+        "address": "0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3",
+        "replacedBy": "TransferEOALegacyImpl"
       }
     },
     "PremiumReminderView": {
@@ -438,7 +437,11 @@
       }
     },
     "LegacyPullVault": {
-      "address": "0x95F0981026C7e804fD6ba8bE738cA7c380C7f978"
+      "address": "0xC6640962618f9D729032487EC5DEf226BF6F43E3"
+    },
+    "LegacyPullVaultV1": {
+      "address": "0x95F0981026C7e804fD6ba8bE738cA7c380C7f978",
+      "note": "Pull vault for legacies created before 2026-11-07; their clones pin it forever."
     },
     "UpgradeTimelock": {
       "address": "0xc0Fee69ffAA1d62D701Bb277031CEc0d98AFA4Ad"
@@ -462,10 +465,6 @@
     },
     "ShieldVaultV1": {
       "address": "0x83074f8519F54AF05f7C48911E432e0C44dBEE69"
-    },
-    "train202611": {
-      "TransferEOALegacyImpl": "0x2E2dE6475fcBE77E7930499981850d37b237924C",
-      "LegacyPullVaultV2": "0xC6640962618f9D729032487EC5DEf226BF6F43E3"
     }
   }
 }

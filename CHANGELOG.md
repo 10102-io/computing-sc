@@ -21,10 +21,25 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
-## 2026-11-04 — Contract train 2026-11, built and tested
+## 2026-11-07 — Contract train 2026-11: wave A live on mainnet
 
-[Wave A live on Sepolia 2026-11-05; on mainnet scheduled through the
-UpgradeTimelock, executable from 2026-11-07 22:41 UTC. Wave B not deployed.]
+[Wave A executed on mainnet 2026-11-07 through the UpgradeTimelock
+(`0x1868…cd8f`), on Sepolia 2026-11-05. Wave B (legacy v3) runs on Sepolia
+since 2026-11-06 and reaches mainnet only after its external review.]
+
+| Contract | Proxy | New implementation |
+|---|---|---|
+| `TransferEOALegacyRouter` | `0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b` | `0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1` |
+| `TimeLockRouter` | `0x2B947E3c348c81409f8e8fc5ef8F65d9dFf76A42` | `0x0d23dEeE5b316b1ac6b49C7f123489e8E9c2111c` |
+| `PremiumRegistry` | `0x44Ae934Ef4a30FF11f9665174dDFa9F0c93bEA27` | `0x78502df1F231Fd50858832be5a3c035c8A504731` |
+| `PremiumSetting` | `0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f` | `0x189FbDC1Ad7716960293130CFa3BE247b948c463` |
+| `EIP712LegacyVerifier` | `0x3d6cC3782EC0DF21B58c4C9F5ecf23e485e05F9e` | `0xB3cE4476fddF5b57B937590a4436892c0Dc57220` |
+| `TransferEOALegacy` (clone target, new legacies) | — | `0x2E2dE6475fcBE77E7930499981850d37b237924C` |
+| `LegacyPullVaultV2` (new legacies; v1 stays for older ones) | — | `0xC6640962618f9D729032487EC5DEf226BF6F43E3` |
+
+All Etherscan-verified with proxy records re-linked; `verify-governance.ts`
+31/31 after execution (the router's code admin is the governance Safe, its
+levers wait 48 hours, initializer counter 5).
 
 The checklist audit's four Mediums and every queued contract rider, in one
 timelock batch (wave A), plus legacy v3 (wave B), which deploys only after
