@@ -12,7 +12,7 @@
  * Nothing here holds a key: the signer comes from Hardhat's configured
  * account (DEPLOYER_PRIVATE_KEY in .env).
  */
-import { BigNumber, Contract, Signer, ethers as ethersLib } from "ethers";
+import { BigNumber, Contract, Signer, ethers as ethersLib, providers } from "ethers";
 
 const SAFE_ABI = [
   "function getOwners() view returns (address[])",
@@ -27,8 +27,8 @@ export interface SafeState {
   threshold: number;
 }
 
-export async function readSafe(signer: Signer, safeAddress: string): Promise<SafeState> {
-  const safe = new Contract(safeAddress, SAFE_ABI, signer);
+export async function readSafe(signerOrProvider: Signer | providers.Provider, safeAddress: string): Promise<SafeState> {
+  const safe = new Contract(safeAddress, SAFE_ABI, signerOrProvider);
   const [owners, threshold] = await Promise.all([safe.getOwners(), safe.getThreshold()]);
   return { owners: owners.map((o: string) => o.toLowerCase()), threshold: BigNumber.from(threshold).toNumber() };
 }

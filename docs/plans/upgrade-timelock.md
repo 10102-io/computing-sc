@@ -62,7 +62,7 @@ Who owns what, after the same day:
 | `DefaultProxyAdmin` | `UpgradeTimelock` | every implementation swap is queued |
 | `TimelockERC20/721/1155` | `UpgradeTimelock` | `setUniswapRouter`, `setRouterAddresses` are queued |
 | `TimeLockRouter` | governance Safe | `setCreatePaused`, `setUniswapRouter`, `setTimelock`, `setTokenWhitelist`, `setConsentVerifier` run from the Safe |
-| `TransferEOALegacyRouter` codeAdmin | maintainer EOA | unchanged: `_codeAdmin` has no setter, only a reinitializer; moving it rides the next EOA-router upgrade (`upgradeAndCall` + `initializeV4`) |
+| `TransferEOALegacyRouter` codeAdmin | governance Safe (since 2026-11-07, `initializeV4`) | instant from the Safe: `setCreatePaused` and `setActivityAttestor(address(0))`; through the UpgradeTimelock: `setLegacyImplementation`, `setPullVault`, a non-zero attestor |
 | `TokenWhiteList`, `Payment`, premium stack, `EIP712LegacyVerifier`, `LegacyDeployer` | maintainer EOA | unchanged this round; move to the Safe once it is 2-of-3 and the ops scripts drive it |
 
 While the Safe has threshold 1 and the EOA is an owner, scripts act
@@ -80,13 +80,18 @@ banner…) and `changeProxyAdmin` / `transferOwnership` of the admin itself.
 This is the big blast radius: an implementation swap can change behavior for
 EXISTING user state.
 
+Also timelocked since 2026-11-07: the EOA router's rotation levers
+(`setLegacyImplementation`, `setPullVault`, a non-zero
+`setActivityAttestor`), which decide the code and the Permit2 spender of
+NEW legacies.
+
 **Not timelocked** (deliberately):
 
-- The EOA router's `codeAdmin` levers: `setPullVault`,
-  `setLegacyImplementation`, `setActivityAttestor`, `setCreatePaused`.
-  `setCreatePaused` is an emergency circuit breaker — it must work in
-  minutes, not 48 hours; and the rotation levers only affect NEW creates
-  (existing clones pin their implementation and vault at create time).
+- Emergency stops, from the governance Safe (`scripts/safe-call.ts`
+  presets): the EOA router's `setCreatePaused` and attestor kill switch
+  (`setActivityAttestor(address(0))`), and the TimeLockRouter's
+  `setCreatePaused`. They must work in minutes, not 48 hours, and they can
+  only stop things: no claim, check-in, delete or withdrawal depends on them.
 - Ownable operational setters on the proxies (whitelists, plan config,
   banner text, watcher config…).
 
@@ -96,22 +101,23 @@ operational key cannot trap existing users' assets, and any change to
 existing-legacy behavior needs an implementation swap, which is now
 publicly visible for 48h first.
 
-What a compromised code admin key CAN do to new users (checklist audit
-2026-11-02, M-3): `setPullVault` makes its own contract the spender that
-new creators sign unlimited Permit2 permits for, and
-`setLegacyImplementation` makes new legacies clones of its code. Since
-2026-11-02 the app pins the vault from `contract-addresses.json` and
-refuses to sign for any other; `verify-governance.ts` fails when either
-value differs from the record; the worker's timelock watch alerts on
-`PullVaultSet` and `ActivityAttestorSet` and on an implementation change.
-Moving the rotation levers behind the timelock (keeping `setCreatePaused`
-fast) is queued for the next EOA-router upgrade.
+What a compromised code admin could do to new users before 2026-11-07
+(checklist audit 2026-11-02, M-3): `setPullVault` and
+`setLegacyImplementation` at once, choosing the spender of new creators'
+permits and the code of new legacies. Since the 2026-11 train both wait
+48 hours in the UpgradeTimelock, visible to the guardian and the worker's
+timelock watch; the app still pins the known vaults and implementations,
+and `verify-governance.ts` still fails on any value that differs from the
+record. Instantly, the Safe can now only pause new creates or stop
+renewals.
 
 ## Honest limit
 
 This is a transparency window, not multi-party control. A compromised
-maintainer key can still QUEUE a malicious upgrade — but it cannot land it
-silently or instantly. The 48h window is the time for us (canceller) and for
+maintainer key can still QUEUE a malicious upgrade, and while the Safe is
+threshold 1 it can also pause creates or stop renewals at once (an
+annoyance, never a loss: neither touches claims or withdrawals) — but it
+cannot land an upgrade or a lever change silently or instantly. The 48h window is the time for us (canceller) and for
 users (exit paths) to react. The reminder-worker's timelock watch
 (`services/reminder-worker/src/timelock-watch.ts` in the `computing` repo)
 alerts on every `CallScheduled` / `CallExecuted` / `Cancelled` /
@@ -214,9 +220,15 @@ too).
   Treat such an operation exactly like a hostile implementation swap:
   the guardian cancels unless it was announced. `verify-governance.ts`
   asserts both values.
-- Exploit in progress via NEW creates: `setCreatePaused(true)` (instant;
-  EOA router: codeAdmin key; timelock router: the Safe — deliberately not
-  timelocked).
+- Exploit in progress via NEW creates: pause them from the Safe, instant
+  and deliberately not timelocked: `$env:SAFE_CALL="pause-eoa"` or
+  `"pause-timelock"`, `npx hardhat run scripts/safe-call.ts --network
+  mainnet` prints the call for Safe{Wallet} (`SAFE_ACTION=send` executes it
+  on the threshold-1 Safe from a configured owner key).
+- A misbehaving or leaked attestor key: `SAFE_CALL="stop-renewals"` (the
+  kill switch). A new attestor is then installed through the timelock
+  (`timelock-op.ts`, `TL_TARGET` = EOA router, `TL_DATA` =
+  `setActivityAttestor(new)`; `TL_SALT_TAG` if the same call ran before).
 - Exploit in EXISTING clones: clones are immutable; the fix ships as a new
   implementation for new creates + user comms to delete/exit affected
   legacies. The timelock does not slow this down materially because existing

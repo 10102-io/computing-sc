@@ -150,6 +150,8 @@ you add is still the whole safety net for that path.
   input to the next contract train.
 - `docs/plans/round-2026-09.md`: the current round (governance, destination
  wallet, the trains behind them) with its execution log at the top.
+- `scripts/safe-call.ts`: the Safe's instant emergency stops (pause new
+  creates, stop renewals), printed for Safe{Wallet} or sent at threshold 1.
 - `scripts/timelock-op.ts`, `scripts/harden-governance.ts`,
  `scripts/verify-governance.ts`, `scripts/deploy-impl.ts`,
  `scripts/dump-storage-layouts.ts`, `scripts/refresh-impl-artifacts.ts`,
