@@ -53,7 +53,7 @@ No Critical or High. Severity is the reviewer's, confirmed here.
 | L-1 (vault) | Delete revokes only the ERC-20 approvals, never the Permit2 allowance to the vault, which the owner's next legacy inherits. | | | app: Permit2 `lockdown` per (token, vault) on delete |
 | L-2 | A ready timelock operation never expires and anyone may execute it; `verify-governance.ts` reported pending ones as fine. | None open | Script fails on a ready, unexecuted operation | cancel superseded operations as a rule (runbook) |
 | SV-L1 | ShieldVault's listing rule did not require a truthful transfer return value; a token that moves funds but returns `false` would be paid twice through `owed`. | Not with wstETH, USDC, USDT, WETH | Listing rule in `shield-vault.md` | none |
-| QR-L | The dashboard counted ShieldVault veto digests (same registry, scheme 5) as the account's quantum recovery path. | Any ShieldVault user with a sheet | App counts only commitments not registered by a ShieldVault (v1 or v2), tested | document that scheme 5 carries two preimage formats |
+| QR-L | The dashboard counted ShieldVault veto digests (same registry, scheme 5) as the account's quantum recovery path. | Any ShieldVault user with a sheet | App counts only commitments not registered by a ShieldVault (v1 or v2), tested | none: the two scheme-5 preimage formats are documented (2026-11-09) in `docs/CONTRACTS_REFERENCE.md` (QuantumRecoveryRegistry) and `computing-docs/architecture/quantum-readiness.md` |
 
 Info items, recorded and not acted on: ShieldVault trusts ERC-1271
 signatures completely (a wallet that accepts anything harms only its own
