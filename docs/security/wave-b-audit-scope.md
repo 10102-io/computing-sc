@@ -18,7 +18,7 @@ tooling, no external review yet. Tooling-verified (the evidence is in
 `tooling-report.md`, section 8, and `static-analysis.md`, "Legacy v3").
 Not independently audited: that is what this document is for.
 
-**Commit to audit:** `COMMIT_TO_AUDIT` on branch `feat/wave-b-final` of
+**Commit to audit:** `55ecbe25f931ffba1e99c63bae57f886eabe8c25` on branch `feat/wave-b-final` of
 `computing-sc` (round 10 on top of `dev` `15bd140`, whose contracts equal
 `4f58e6b`). Later commits on the branch touch documentation only, unless a
 fix list says otherwise. ShieldVault v3 joins the scope from its own
