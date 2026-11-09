@@ -1,6 +1,6 @@
 # Phase B — Chainlink retirement + off-chain email worker
 
-**Status**: ✅ Shipped — landed on mainnet + Sepolia and released to `main` on 2026-06-08 (single lean end-state upgrade; see §10). Remaining: one-time operational teardown (cancel Automation upkeep, close Functions subscription, withdraw LINK).
+**Status**: ✅ Shipped — landed on mainnet + Sepolia and released to `main` on 2026-06-08 (single lean end-state upgrade; see §10). Operational teardown done on mainnet, verified on chain 2026-11-09: the three per-user Automation upkeeps (KeeperRegistry 2.1 `0x6593c7De001fC8542bB1703532EE1E5aA0D458fD`) were cancelled on 2026-06-02 and hold 0 LINK, `PremiumAutomationManager` holds 0 LINK, and Functions subscription 141 no longer exists on the Functions router `0x65Dcc24F8ff9e51F10DCc7Ed1e4e2A61e6E14bd6`.
 **Priority**: Next `computing-sc` milestone (carries three 2nd-round audit follow-ups)
 **Created**: 2026-05-29
 **Target networks**: mainnet + Sepolia

@@ -726,6 +726,9 @@ were retired.
   **Chainlink Functions subscription**, and **withdraw remaining LINK**
   (via `PremiumAutomationManager.withdrawLINK` and the Chainlink UI). The
   contracts are inert, but the LINK is still parked until this is done.
+  **Done** (verified on chain 2026-11-09): the three upkeeps were cancelled
+  on 2026-06-02 and hold 0 LINK, the manager holds 0 LINK, and Functions
+  subscription 141 no longer exists.
 
 ## 2026-05-04 — EOA receive() 2300-gas fix + create-flag self-service + EIP-1167 cutover
 
