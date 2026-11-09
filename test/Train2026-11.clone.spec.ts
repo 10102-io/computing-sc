@@ -51,9 +51,11 @@ describe("Train 2026-11 — wave A clone (TransferEOALegacy)", function () {
       assert.equal((await usdt.balanceOf(bene2.address)).toString(), String(net - Math.floor((net * 6) / 10)));
       assert.equal((await usdt.balanceOf(owner.address)).toString(), "0");
       assert.equal((await usdc.balanceOf(bene.address)).toString(), String(Math.floor((net * 6) / 10)));
-      // Both fees were pulled and swapped to ETH for Payment.
-      const paymentEthAfter = await ethers.provider.getBalance(payment.address);
-      assert.equal(paymentEthAfter.sub(paymentEthBefore).toString(), String(2 * fee));
+      // Both fees reach Payment as the tokens themselves, never swapped.
+      assert.equal((await usdt.balanceOf(payment.address)).toString(), String(fee));
+      assert.equal((await usdc.balanceOf(payment.address)).toString(), String(fee));
+      assert.equal((await usdt.balanceOf(legacy.address)).toString(), "0");
+      assert((await ethers.provider.getBalance(payment.address)).eq(paymentEthBefore), "no fee swapped to ETH");
     });
 
     it("a token that returns false moves nothing, counts as failed, and never bricks the batch", async function () {
@@ -145,6 +147,26 @@ describe("Train 2026-11 — wave A clone (TransferEOALegacy)", function () {
       await expectRevert(router.connect(bene).activeLegacyAndUnswap(legacyId, [], 1, now + 7200), "UnswapNeedsSoleRecipient()");
       await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
       assert((await usdc.balanceOf(bene2.address)).gt(0), "each co-recipient gets the token itself");
+    });
+
+    it("claim with unswap: with only a vault approval nothing converts, so co-recipients pass with a zero minimum and get the token", async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, bene2, router, usdc, uni, permit2, vault } = f;
+      const { legacy, legacyId } = await createLegacyV2(router, owner, [
+        { user: bene.address, percent: 500000 },
+        { user: bene2.address, percent: 500000 },
+      ]);
+      await usdc.mint(uni.address, ethers.utils.parseUnits("1000000", 6));
+      const now = await currentTime();
+      await router.connect(owner).autoSwap(legacyId, { storageToken: usdc.address, amountOutMin: 1, deadline: now + 3600 }, { value: 1_000_000_000 });
+      await usdc.connect(owner).approve(permit2.address, ethers.constants.MaxUint256);
+      await permit2.connect(owner).approve(usdc.address, vault.address, ethers.BigNumber.from(2).pow(160).sub(1), now + 365 * DAY);
+      const uniUsdc = await usdc.balanceOf(uni.address);
+      await increase(DAY + 1);
+      await router.connect(bene).activeLegacyAndUnswap(legacyId, [usdc.address], 0, now + 7200 + DAY);
+      assert.equal(await legacy.eoaStorageToken(), ethers.constants.AddressZero);
+      assert((await usdc.balanceOf(uni.address)).eq(uniUsdc), "nothing swapped");
+      assert((await usdc.balanceOf(bene.address)).gt(0) && (await usdc.balanceOf(bene2.address)).gt(0), "both receive the token");
     });
 
     it("claim with unswap: WETH unwraps 1:1 and needs no minimum", async function () {

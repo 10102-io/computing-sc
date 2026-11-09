@@ -46,6 +46,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   error AlreadyBeneficiary();
   error DelayAndDistributionInvalid();
   error SwapFailed();
+  /// @dev Never thrown since the fee stopped being swapped; kept in the ABI
+  /// because deployed clones still revert with it.
   error InvalidPaymentContract();
   error ZeroAmountOutMin();
   error AdminFeeAboveCap(uint256 fee);
@@ -105,31 +107,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       revert LegacyIsDeleted();
     }
     _;
-  }
-
-  function _swapAdminFee(address token, uint256 amountIn) internal {
-    if (uniswapRouter == address(0) || weth == address(0) || paymentContract == address(0)) {
-      revert InvalidPaymentContract();
-    }
-
-    // Approve token for router
-    IERC20(token).forceApprove(uniswapRouter, amountIn);
-
-    address[] memory path = new address[](2);
-    path[0] = token;
-    path[1] = weth;
-
-    try
-      IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
-        amountIn,
-        0, // accept any amount of ETH
-        path,
-        paymentContract,
-        block.timestamp + 300
-      )
-    {} catch {
-      IERC20(token).safeTransfer(paymentContract, amountIn);
-    }
   }
 
   /**
@@ -826,17 +803,11 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
         uint256 distributable = totalAmount - fee;
       
         if (fee > 0) {
-          uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-          // The fee pull rides the same guarded rail helper as beneficiary
-          // transfers: a non-pullable fee (revoked underlying approval,
-          // stale rail, quirky token) forfeits the fee for this token
-          // instead of reverting — and thereby bricking — the whole claim
-          // batch. Actual receipts are measured, never assumed.
-          _transferErc20ToBeneficiary(token, ownerAddress, address(this), fee, route, vault);
-          uint256 actualFeeReceived =  IERC20(token).balanceOf(address(this)) - balanceBefore;
-          if (actualFeeReceived > 0) {
-            _swapAdminFee(token, actualFeeReceived);
-          }
+          // The fee goes from the owner's wallet to Payment as it is, never
+          // swapped, on the rail the payout uses. A fee that cannot be
+          // pulled (reverting or blocklisting token, revoked approval) is
+          // not collected and never reverts the claim; it is not owed later.
+          _transferErc20ToBeneficiary(token, ownerAddress, paymentContract, fee, route, vault);
         }
         
         uint256 processedAmountERC20 = 0;

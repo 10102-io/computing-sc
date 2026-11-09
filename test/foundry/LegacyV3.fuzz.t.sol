@@ -4,6 +4,7 @@ pragma solidity 0.8.35;
 import {TransferEOALegacyV3} from "../../contracts/forwarding/TransferLegacyEOAContractV3.sol";
 import {TransferLegacyStruct} from "../../contracts/libraries/TransferLegacyStruct.sol";
 import {ERC20Token} from "../../contracts/mock/ERC20Token.sol";
+import {MockAwkwardERC20} from "../../contracts/mock/MockAwkwardERC20.sol";
 import {LegacyV3Base} from "./LegacyV3Base.sol";
 
 /**
@@ -128,6 +129,44 @@ contract LegacyV3Fuzz is LegacyV3Base {
     assertLe(legacy.released(address(tok), bens[1]), (everIn * 300_000) / MAX_PERCENT, "above the running-total entitlement");
     assertLe(legacy.released(address(tok), bens[1]), (pot * 300_000) / MAX_PERCENT + 1, "above the entitlement at the current pot");
     assertLe(legacy.totalReleased(address(tok)), everIn - drained, "released more than the wallet ever had");
+  }
+
+  /// @dev A fee that cannot reach Payment (the token blocklists it) still
+  /// pays the share its due minus the fee. The fee is not collected and
+  /// stays in the owner's wallet, where the running totals hand it to the
+  /// shares (K-13): funds are conserved, the records exceed the inflows by
+  /// at most the uncollected fees, and a later round with Payment reachable
+  /// leaves at most rounding dust in the wallet.
+  function testFuzz_refusedFeeStaysInThePot(uint256 deposit, uint256 refusedMask, uint256 a, uint256 b) public {
+    MockAwkwardERC20 awk = new MockAwkwardERC20();
+    tok = ERC20Token(address(awk));
+    uint256[3] memory p = _pcts(a, b);
+    _new(p, 30 days);
+    deposit = bound(deposit, 1e6, 1e27);
+    tok.mint(owner, deposit);
+    _toDeadline();
+
+    uint256 uncollected;
+    uint256 fees;
+    for (uint256 i; i < 3; ++i) {
+      bool refuse = refusedMask & (1 << i) != 0;
+      awk.setBlocked(address(payment), refuse);
+      uint256 r0 = legacy.released(address(tok), bens[i]);
+      uint256 net = _claim(bens[i]);
+      uint256 due = legacy.released(address(tok), bens[i]) - r0;
+      assertEq(net, due - _fee(due), "a refused fee changed the share's payout");
+      if (refuse) uncollected += _fee(due);
+      else fees += _fee(due);
+    }
+    assertEq(tok.balanceOf(address(payment)), fees, "Payment received a refused fee");
+    assertLe(legacy.totalReleased(address(tok)), deposit + uncollected, "records above inflows plus uncollected fees");
+
+    awk.setBlocked(address(payment), false);
+    for (uint256 i; i < 3; ++i) _claim(bens[i]);
+    uint256 held = tok.balanceOf(owner) + tok.balanceOf(address(payment));
+    for (uint256 i; i < 3; ++i) held += tok.balanceOf(bens[i]);
+    assertEq(held, deposit, "tokens appeared or vanished");
+    assertLe(tok.balanceOf(owner), 2, "uncollected fees stranded in the wallet");
   }
 
   /// @dev A backup's window opens exactly `backupDelay` after the deadline;

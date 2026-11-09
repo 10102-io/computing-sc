@@ -360,23 +360,21 @@ contract TransferEOALegacyV3 is TransferEOALegacy, ReentrancyGuardTransient {
     uint256 amount = _dues(token, pot, shares, only, to, available, false);
     if (amount == 0) return;
     uint256 fee = (amount * adminFeePercent) / 10000;
-    uint256 sent = token == address(0)
-      ? _transferEthToBeneficiary(to, amount - fee)
-      : _transferErc20ToBeneficiary(token, getLegacyOwner(), to, amount - fee, route, vault);
-    if (sent == 0) return;
+    if (_pay(token, to, amount - fee, route, vault) == 0) return;
     _dues(token, pot, shares, only, to, available, true);
     totalReleased[token] += amount;
-    if (fee > 0) {
-      if (token == address(0)) {
-        _transferEthToBeneficiary(paymentContract, fee);
-      } else {
-        uint256 before = IERC20(token).balanceOf(address(this));
-        _transferErc20ToBeneficiary(token, getLegacyOwner(), address(this), fee, route, vault);
-        uint256 received = IERC20(token).balanceOf(address(this)) - before;
-        if (received > 0) _swapAdminFee(token, received);
-      }
-    }
+    // The fee goes to Payment as it is (ETH as ETH, a token from the owner's
+    // wallet on the payout's rail). A failed fee is not collected, never
+    // reverts the claim and is not owed: it stays in the pot (K-13).
+    if (fee > 0) _pay(token, paymentContract, fee, route, vault);
     emit ShareClaimed(token, to, only, amount);
+  }
+
+  /// @dev ETH from this legacy, a token from the owner's wallet; 0 on failure.
+  function _pay(address token, address to, uint256 amount, PullRoute route, address vault) private returns (uint256) {
+    return token == address(0)
+      ? _transferEthToBeneficiary(to, amount)
+      : _transferErc20ToBeneficiary(token, getLegacyOwner(), to, amount, route, vault);
   }
 
   /// @dev Sum of the dues in scope (one share, or every share owned by nobody

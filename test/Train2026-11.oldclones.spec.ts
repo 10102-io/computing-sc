@@ -75,6 +75,26 @@ describe("Train 2026-11 — the new router guards existing clones' unswap claim"
     assert((await ethers.provider.getBalance(bene.address)).add(gas).gt(before), "swapped ETH received");
   });
 
+  // Round 10: the guard applies only when the clone would convert something,
+  // computed with the rule every clone vintage uses: min(owner's balance,
+  // owner's direct allowance to the clone).
+  for (const empty of ["balance", "allowance"] as const) {
+    it(`nothing to convert (zero ${empty}): a co-beneficiary's unswap claim with a zero minimum passes and swaps nothing`, async function () {
+      const f = await loadFixture(fixture);
+      const { owner, bene, other, router, usdc, uni } = f;
+      const { legacy, legacyId, deadline } = await oldLegacy(f, halves(f), "usdc");
+      if (empty === "balance") await usdc.connect(owner).transfer(other.address, await usdc.balanceOf(owner.address));
+      else await usdc.connect(owner).approve(legacy.address, 0);
+      const ownerUsdc = await usdc.balanceOf(owner.address);
+      const uniUsdc = await usdc.balanceOf(uni.address);
+      await router.connect(bene).activeLegacyAndUnswap(legacyId, [], 0, deadline);
+      assert.equal(await legacy.eoaStorageToken(), ethers.constants.AddressZero);
+      assert.equal((await legacy.getIsActiveLegacy()).toString(), "2", "claimed");
+      assert((await usdc.balanceOf(owner.address)).eq(ownerUsdc), "nothing pulled");
+      assert((await usdc.balanceOf(uni.address)).eq(uniUsdc), "nothing swapped");
+    });
+  }
+
   it("a WETH storage token needs neither guard: co-beneficiaries unwrap with a zero minimum", async function () {
     const f = await loadFixture(fixture);
     const { bene, bene2, router } = f;

@@ -404,7 +404,7 @@ input and its artifact equals the mainnet code at
 
 | Evidence | Result | Where |
 |---|---|---|
-| Hardhat specs | 364 passing in the full suite; 38 for v3: 2 new in round 6, 5 in round 7, 5 in round 8 (one round 7 spec replaced), all failing on the code before their round | `test/Train2026-11.v3.spec.ts` |
+| Hardhat specs | 386 passing in the full suite since round 10 (364 before); 38 for v3: 2 new in round 6, 5 in round 7, 5 in round 8 (one round 7 spec replaced), all failing on the code before their round; round 10: 19 fee specs and 3 router-guard specs (section 8.9) | `test/Train2026-11.v3.spec.ts`, `Train2026-11.fee.spec.ts` |
 | Slither 0.11.6 | 24 results in v3's own code, none open: the reentrancy pattern fixed in round 6 and still reported in four instances (the detector does not credit a guard on an internal override), five false positives, the rest Low or informational by design; 67 results in the inherited wave A code, triaged for the record; 2 on the allowlist, 2 on the vault (in imported interfaces) | `static-analysis.md`, "Legacy v3" |
 | Aderyn | not run locally (no Windows build of a current release, section 8.7); since round 7 CI runs 0.6.8 on the three files, report only | `.github/workflows/security.yml` |
 | Foundry invariants | 7 invariant functions over an 18-entry handler with an independent model of the spec, including share ownership, the router's combined setters and a hostile owner acting from transfer callbacks; CI profile and deep profile, 0 counterexamples (numbers in 8.5) | `test/foundry/LegacyV3.invariants.t.sol`, `LegacyV3Handler.sol` |
@@ -426,8 +426,10 @@ backup lines (a two-backup and a one-backup line), a second and a third
 line, an executor, three tokens on the three pull rails (a direct
 allowance, a USDT-like token that returns nothing, and Permit2 through the
 vault), ETH held by the legacy, and two ERC-721 and two ERC-1155 items.
-Payment takes 25 bps; the Uniswap router has no liquidity, so every fee
-reaches Payment as tokens and stays countable.
+Payment takes 25 bps, as the token itself (since round 10 the fee is never
+swapped; the Uniswap router has no liquidity and no suite calls it). Since
+round 10 the vault-rail token can blocklist Payment and Payment can refuse
+ETH (the `feeRefusal` entry, section 8.9).
 
 The 18 entries: deposits (tokens to the owner, ETH from the owner or a
 third party), drains (the owner's wallet shrinks; the owner withdraws ETH
@@ -632,11 +634,14 @@ because each shows what the suite checks:
 - One legacy per run, at most three shares, fixed option sets for lines,
   items and layers. Larger first lines and item lists are not exercised
   here.
-- Tokens are mocks: a standard ERC-20, a no-return token and Permit2's
-  mock. Fee-on-transfer, rebasing and blocklisting tokens, and payees whose
-  transfers fail, are not modelled.
+- Tokens are mocks: a standard ERC-20, a no-return token, a token that can
+  blocklist Payment (round 10; its transfer fee stays off) and Permit2's
+  mock. Fee-on-transfer and rebasing tokens, and heirs whose transfers
+  fail, are not modelled.
 - The router is modelled by its checks, not deployed; a router change
-  needs its own tests (K-1 in the audit scope).
+  needs its own tests (K-1 in the audit scope). Round 10's router guard is
+  covered by Hardhat specs on the live mainnet clone code and the HEAD
+  clone, not by this suite (it does not drive the unswap claim).
 
 ### 8.8 How to reproduce (tools as installed for this run)
 
@@ -656,3 +661,41 @@ forge test --match-path "test/foundry/LegacyV3*" -vv                    # CI pro
 $env:FOUNDRY_PROFILE = "deep"; forge test --match-path "test/foundry/LegacyV3*" -vv
 $env:FUZZ_SUMMARY = "out/v3-summary.txt"                                # reach counts
 ```
+
+### 8.9 Round 10 (2026-11-09): the fee without a swap
+
+The claim fee now goes from the owner's wallet to Payment as the token
+itself, and a fee that cannot get there is not collected and never blocks
+a claim (`wave-b-audit-scope.md`, "What changed since 4f58e6b", K-13).
+What changed in the suite:
+
+- Handler: the vault-rail token is a `MockAwkwardERC20` that can blocklist
+  Payment, and the Payment mock can refuse ETH. A 19th entry,
+  `feeRefusal`, switches both on or off. The model then expects no fee at
+  Payment, counts the fee as released in per-share mode and leaves it in
+  the owner's wallet (or the legacy, for ETH). A new reach counter,
+  `feeRefused`, counts claims whose fee was refused.
+- `invariant_perShareEntitlement` (V3): the bound is the inflows plus the
+  uncollected fees, which the records count but which stay in the pot.
+  `invariant_conservation` (V2) is unchanged and exact: what claims moved
+  out is the net payouts plus the fees that arrived.
+- `testFuzz_refusedFeeStaysInThePot`, a seventh stateless property: with
+  a random subset of first-line claims refused a fee, each share is paid
+  its due minus the fee, Payment receives only the fees it accepted, the
+  records stay within the inflows plus the uncollected fees, tokens are
+  conserved, and a later round with Payment reachable leaves at most 2
+  units in the wallet.
+
+CI profile, run locally on 2026-11-09 (forge 1.8.6) at the round 10 code:
+3 suites, 0 failures. The invariant suite ran 256 runs x depth 200, 7
+invariant functions, 0 counterexamples, 0 reverts (412 s; a second run of
+that suite alone passed too). The
+differential suite had 0 differences over 11,461 claim pairs (2,136
+accepted by both twins) and 5,655 combined edits (2,738). The 7 stateless
+properties each passed 2,000 runs. Reach of the invariant campaign: 5,271
+claim calls, 1,115 accepted (584 per-share, 129 by a backup, 147 sweeps,
+33 with a capped due), **312 claims with a refused fee**, 744 accepted NFT
+claims (99 item moves), 305 first payees, 302 claims refused because
+someone else owned the share, 90 owner calls from carol's callbacks (all
+refused), 0 of 2,640 stranger attempts through. The deep profile was not
+rerun for round 10.

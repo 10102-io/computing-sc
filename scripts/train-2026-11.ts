@@ -9,7 +9,9 @@
  * deploy (sends deploy transactions from the deployer, nothing else):
  *   a: TransferEOALegacy (the new clone implementation) and LegacyPullVaultV2
  *      (router proxy, UpgradeTimelock, that implementation); Etherscan-verified.
- *   b: NftCollectionWhiteList (deployer admin) and TransferEOALegacyV3.
+ *   b: NftCollectionWhiteList (deployer admin; an already recorded list is
+ *      reused, as on Sepolia) and TransferEOALegacyV3. The new router
+ *      implementation comes from deploy-impl.ts (IMPLS=TransferEOALegacyRouter).
  *   Recorded under `train202611` in contract-addresses.json, never over the
  *   live entries (they move when the batch has executed).
  *
@@ -20,7 +22,8 @@
  * timelock; every pending implementation, the new clone, vault2 (and in wave
  * B the v3 implementation and the list) run the compiled code, immutables
  * masked; vault2's router and timelock; the new router implementation's
- * timelock; Payment: on mainnet TRAIN_PAYMENT may only be unset or the
+ * timelock (in wave B also: it differs from the live one, and no
+ * reinitializer runs, the counter stays 5); Payment: on mainnet TRAIN_PAYMENT may only be unset or the
  * recorded Payment, and on every network the router's Payment after the
  * batch is the recorded one.
  *   a: output/train-2026-11-wave-a-<network>.json
@@ -33,8 +36,9 @@
  *      [6] DefaultProxyAdmin.upgrade(PremiumSetting, pending impl)
  *      [7] DefaultProxyAdmin.upgrade(EIP712LegacyVerifier, pending impl)
  *   b: output/train-2026-11-wave-b-<network>.json
- *      [0] LegacyPullVaultV2.allowImplementation(TransferEOALegacyV3)
- *      [1] router.setLegacyImplementation(TransferEOALegacyV3)
+ *      [0] DefaultProxyAdmin.upgrade(TransferEOALegacyRouter, pending impl)
+ *      [1] LegacyPullVaultV2.allowImplementation(TransferEOALegacyV3)
+ *      [2] router.setLegacyImplementation(TransferEOALegacyV3)
  *
  * check: the same assertions, nothing written, and the written file must
  * equal the batch they build, item for item; run it right before print and
@@ -115,7 +119,9 @@ async function main() {
       record("LegacyPullVaultV2", vault);
     } else {
       need(vault2, "LegacyPullVaultV2 (wave A first)");
-      const list = await deployAndVerify("NftCollectionWhiteList", [deployer.address]);
+      const recorded = train.NftCollectionWhiteList ?? net.NftCollectionWhiteList?.address;
+      if (recorded) console.log(`NftCollectionWhiteList: reusing the recorded ${recorded}`);
+      const list = recorded ? need(recorded, "NftCollectionWhiteList") : await deployAndVerify("NftCollectionWhiteList", [deployer.address]);
       record("NftCollectionWhiteList", list);
       const v3 = await deployAndVerify("TransferEOALegacyV3", [list]);
       record("TransferEOALegacyV3Impl", v3);
@@ -219,11 +225,18 @@ async function main() {
     }
     assert(same(routerTimelock || "0x", timelock), "wave A executed: the router pins the UpgradeTimelock");
     assert(same(await live.pullVault(), vaultAddr), "wave A executed: the router uses vault2");
+    // The router upgrade (unswap guard only when something would convert):
+    // no reinitializer, so the counter stays 5 and storage is untouched.
+    const routerImpl = need(net.TransferEOALegacyRouter?.pendingImplementation, "TransferEOALegacyRouter.pendingImplementation (run deploy-impl.ts)");
+    assert(!same(routerImpl, admin.implementation), `router pending implementation ${routerImpl} differs from the live ${admin.implementation}`);
+    assert(await isCompiled("TransferEOALegacyRouter", routerImpl), `router pending implementation ${routerImpl} runs the compiled TransferEOALegacyRouter`);
+    assert(same(await R.attach(routerImpl).upgradeTimelock(), timelock), "new router implementation's upgradeTimelock() is the UpgradeTimelock");
     assert(await isCompiled("TransferEOALegacyV3", v3), `v3 implementation ${v3} runs the compiled TransferEOALegacyV3`);
     assert(await isCompiled("NftCollectionWhiteList", list), `list ${list} runs the compiled NftCollectionWhiteList`);
     assert(!(await vault.isAllowedCodehash(await vault.codehashOf(v3))), "vault2 does not allow v3 yet");
     const V3 = await ethers.getContractFactory("TransferEOALegacyV3");
     assert(same(await V3.attach(v3).nftAllowlist(), list), "v3 implementation's nftAllowlist() is the recorded list");
+    items.push({ proxy: "TransferEOALegacyRouter", impl: routerImpl });
     items.push({ target: vaultAddr, data: V.interface.encodeFunctionData("allowImplementation", [v3]), label: `vault2.allowImplementation(${v3})` });
     items.push({ target: routerProxy, data: R.interface.encodeFunctionData("setLegacyImplementation", [v3]), label: `router.setLegacyImplementation(${v3})` });
   }

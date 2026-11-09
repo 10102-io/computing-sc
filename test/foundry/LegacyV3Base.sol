@@ -21,9 +21,11 @@ contract MockPremiumAll {
   }
 }
 
-/// @dev Payment as the clone sees it: a fee in basis points and a payee.
+/// @dev Payment as the clone sees it: a fee in basis points and a payee,
+/// which can be switched to refuse ETH (a failed ETH fee).
 contract MockFeePayment {
   uint256 public immutable fee;
+  bool public refuseEth;
 
   constructor(uint256 fee_) {
     fee = fee_;
@@ -33,11 +35,19 @@ contract MockFeePayment {
     return fee;
   }
 
-  receive() external payable {}
+  function setRefuseEth(bool refuse) external {
+    refuseEth = refuse;
+  }
+
+  receive() external payable {
+    require(!refuseEth, "refused");
+  }
 }
 
-/// @dev A Uniswap router with no liquidity: `_swapAdminFee` falls back to
-/// sending the fee tokens to Payment, so every fee stays countable.
+/// @dev A Uniswap router with no liquidity. The claim fee is never swapped
+/// (it reaches Payment as the token itself); the clone takes a router at
+/// initialize only for the owner's unswap and the unswap claim, which these
+/// suites do not drive.
 contract NoLiquidityRouter {
   function swapExactTokensForETH(uint256, uint256, address[] calldata, address, uint256) external pure returns (uint256[] memory) {
     revert("no liquidity");

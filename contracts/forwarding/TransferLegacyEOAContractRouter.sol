@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {EOALegacyFactory} from "../common/EOALegacyFactory.sol";
@@ -1025,11 +1026,20 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     // guard: a non-WETH swap needs a minimum, and only a sole recipient of
     // their layer may pick it (a co-recipient could sandwich everyone's share
     // and bear only their part). Others claim the token with `activeLegacy`.
-    // Every clone vintage exposes eoaStorageToken() and getBeneficiaries(address).
+    // Only when the clone would swap something: every clone vintage with this
+    // claim pulls min(owner's balance, owner's direct allowance to the clone)
+    // and swaps nothing when that is 0. Every such vintage exposes
+    // eoaStorageToken() and getBeneficiaries(address).
     address storageToken = ITransferEOALegacy(legacyAddress).eoaStorageToken();
     if (storageToken != address(0) && storageToken != weth) {
-      if (amountOutMin_ == 0) revert ZeroAmountOutMin();
-      if (ITransferEOALegacy(legacyAddress).getBeneficiaries(msg.sender).length != 1) revert UnswapNeedsSoleRecipient();
+      address owner = IPremiumLegacy(legacyAddress).getLegacyOwner();
+      if (
+        IERC20(storageToken).balanceOf(owner) != 0 &&
+        IERC20(storageToken).allowance(owner, legacyAddress) != 0
+      ) {
+        if (amountOutMin_ == 0) revert ZeroAmountOutMin();
+        if (ITransferEOALegacy(legacyAddress).getBeneficiaries(msg.sender).length != 1) revert UnswapNeedsSoleRecipient();
+      }
     }
 
     ITransferEOALegacy(legacyAddress).activeLegacyAndUnswap(

@@ -7,6 +7,7 @@ import {TransferEOALegacyV3} from "../../contracts/forwarding/TransferLegacyEOAC
 import {TransferLegacyStruct} from "../../contracts/libraries/TransferLegacyStruct.sol";
 import {ERC20Token} from "../../contracts/mock/ERC20Token.sol";
 import {MockNoReturnERC20} from "../../contracts/mock/MockNoReturnERC20.sol";
+import {MockAwkwardERC20} from "../../contracts/mock/MockAwkwardERC20.sol";
 import {MockERC721} from "../../contracts/mock/ERC721Token.sol";
 import {MockERC1155} from "../../contracts/mock/ERC1155Token.sol";
 import {MockPermit2} from "../../contracts/mock/MockPermit2.sol";
@@ -47,8 +48,9 @@ contract HostileHeir {
  * legacy, created as the router creates it, with three first-line shares,
  * backup lines, a second and a third line, an executor, three tokens on the
  * three pull rails (a direct allowance, a no-return token on a direct
- * allowance, Permit2 through LegacyPullVaultV2), ETH, and ERC-721 and
- * ERC-1155 items. This contract is the router: claims go through
+ * allowance, Permit2 through LegacyPullVaultV2, with a token that can
+ * blocklist Payment), ETH (Payment can refuse it), and ERC-721 and ERC-1155
+ * items. This contract is the router: claims go through
  * `routerClaim`, which runs the router's own checks after the clone call,
  * so a refused claim reverts as a whole, as on chain.
  *
@@ -86,7 +88,7 @@ contract LegacyV3Handler is LegacyV3Base {
 
   ERC20Token internal tokA;
   MockNoReturnERC20 internal tokB;
-  ERC20Token internal tokC;
+  MockAwkwardERC20 internal tokC;
   address[] public tokens;
   MockERC721 public nft721;
   MockERC721 public unlisted721;
@@ -113,11 +115,17 @@ contract LegacyV3Handler is LegacyV3Base {
   mapping(address => address) public mShareOwner;
   mapping(address => mapping(address => uint256)) public mReleased;
   mapping(address => uint256) public mTotal;
+  bool public mFeeRefused; // tokC blocklists Payment and Payment refuses ETH
 
   // ───────────── ghosts for the invariant contract ─────────────
 
   mapping(address => uint256) public ghostIn; // token (address(0) = ETH) => everything ever made available
-  mapping(address => uint256) public ghostClaimedOut; // token => everything claims moved out (net + fee)
+  mapping(address => uint256) public ghostClaimedOut; // token => everything claims moved out (net + collected fee)
+  /// @dev Per-share fees that could not reach Payment. They stay in the
+  /// owner's wallet (or the legacy, for ETH) and are still counted as
+  /// released, so the records may exceed inflows by this much (K-13).
+  mapping(address => uint256) public ghostFeeUncollected;
+  uint256 public feesRefused; // claims whose fee could not reach Payment
   uint256 public ghost1155Minted0;
   uint256 public ghost1155Minted1;
   uint256 public perShareClaims;
@@ -167,7 +175,7 @@ contract LegacyV3Handler is LegacyV3Base {
 
     tokA = new ERC20Token("Token A", "A", 18);
     tokB = new MockNoReturnERC20("Tether-like", "B", 6);
-    tokC = new ERC20Token("Token C", "C", 18);
+    tokC = new MockAwkwardERC20();
     tokens.push(address(tokA));
     tokens.push(address(tokB));
     tokens.push(address(tokC));
@@ -503,7 +511,7 @@ contract LegacyV3Handler is LegacyV3Base {
       vm.writeLine(path, string.concat(opNames[i], " ", vm.toString(calls[opNames[i]]), " ", vm.toString(accepted[opNames[i]])));
     }
     // Reach: how often the states that matter were hit (count twice to keep the three-column format).
-    string[10] memory names = [
+    string[11] memory names = [
       "v3.reach.perShareClaim",
       "v3.reach.sweepClaim",
       "v3.reach.backupClaim",
@@ -513,9 +521,10 @@ contract LegacyV3Handler is LegacyV3Base {
       "v3.reach.ownedRefused",
       "v3.reach.ownedSkipped",
       "v3.reach.hostileOwnerCall",
-      "v3.reach.combinedEdit"
+      "v3.reach.combinedEdit",
+      "v3.reach.feeRefused"
     ];
-    uint256[10] memory counts = [
+    uint256[11] memory counts = [
       perShareClaims,
       sweepClaims,
       backupClaims,
@@ -525,9 +534,10 @@ contract LegacyV3Handler is LegacyV3Base {
       ownedRefused,
       ownedSkipped,
       hostileAttempts,
-      combinedEdits
+      combinedEdits,
+      feesRefused
     ];
-    for (uint256 i; i < 10; ++i) vm.writeLine(path, string.concat(names[i], " ", vm.toString(counts[i]), " ", vm.toString(counts[i])));
+    for (uint256 i; i < 11; ++i) vm.writeLine(path, string.concat(names[i], " ", vm.toString(counts[i]), " ", vm.toString(counts[i])));
   }
 
   function _mint(uint256 t, uint256 amount) internal {
@@ -616,6 +626,22 @@ contract LegacyV3Handler is LegacyV3Base {
     if (seed % 5 != 0) return;
     ownerDead = true;
     _ok("v3.die");
+  }
+
+  /// @dev Fees that cannot reach Payment: the vault-rail token blocklists it
+  /// and Payment refuses ETH, or both are switched back. A claim must still
+  /// pay its due minus the fee; the fee is not collected.
+  function feeRefusal(uint256 seed) external {
+    _op("v3.feeRefusal");
+    bool refuse = seed % 2 == 1;
+    tokC.setBlocked(address(payment), refuse);
+    payment.setRefuseEth(refuse);
+    mFeeRefused = refuse;
+    _ok("v3.feeRefusal");
+  }
+
+  function _feeRefused(address token) internal view returns (bool) {
+    return mFeeRefused && (token == address(0) || token == address(tokC));
   }
 
   function checkIn() external {
@@ -1150,15 +1176,22 @@ contract LegacyV3Handler is LegacyV3Base {
     }
     if (amount == 0) return;
     uint256 fee = _fee(amount);
+    // A fee that cannot reach Payment is not collected, and still counted
+    // as released (K-13): it stays in the pot.
+    uint256 feeIn = _feeRefused(token) ? 0 : fee;
     want[_slot(watch, nw, to)][col] += amount - fee;
-    want[_slot(watch, nw, address(payment))][col] += fee;
+    want[_slot(watch, nw, address(payment))][col] += feeIn;
     for (uint256 i; i < mShares.length; ++i) {
       if (due[i] == 0) continue;
       mReleased[token][mShares[i]] += due[i];
       mShareOwner[mShares[i]] = to;
     }
     mTotal[token] += amount;
-    ghostClaimedOut[token] += amount;
+    ghostClaimedOut[token] += amount - fee + feeIn;
+    if (feeIn != fee) {
+      ghostFeeUncollected[token] += fee;
+      ++feesRefused;
+    }
   }
 
   /// @dev Whole-estate settlement, as the wave A clone pays: the fee first,
@@ -1176,7 +1209,10 @@ contract LegacyV3Handler is LegacyV3Base {
     if (total == 0) return;
     uint256 fee = _fee(total);
     uint256 distributable = total - fee;
-    want[_slot(watch, nw, address(payment))][col] += fee;
+    // A fee that cannot reach Payment stays where it was, not owed.
+    uint256 feeIn = _feeRefused(token) ? 0 : fee;
+    want[_slot(watch, nw, address(payment))][col] += feeIn;
+    if (feeIn != fee) ++feesRefused;
     if (layer == 1) {
       uint256 processed;
       for (uint256 i; i < mShares.length; ++i) {
@@ -1187,7 +1223,7 @@ contract LegacyV3Handler is LegacyV3Base {
     } else {
       want[_slot(watch, nw, actor)][col] += distributable;
     }
-    ghostClaimedOut[token] += total;
+    ghostClaimedOut[token] += distributable + feeIn;
   }
 
   // ───────────── NFT claims ─────────────
