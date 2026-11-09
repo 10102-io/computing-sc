@@ -23,17 +23,19 @@ npx hardhat test                        # mocha + chai, ~22 spec files under tes
 npx hardhat run scripts/dump-storage-layouts.ts   # layout diff before any impl swap
 npm run sync-ui:check                   # frontend ABI/address drift
 
-# ShieldVault and QuantumRecoveryRegistry evidence (docs/security/). The npm
-# scripts use POSIX env syntax for CI; in PowerShell set the variable first.
-$env:HARDHAT_NO_FORK='1'; npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,QuantumRecoveryRegistry}.spec.ts"
+# ShieldVault (v2 and v3) and QuantumRecoveryRegistry evidence (docs/security/).
+# The npm scripts use POSIX env syntax for CI; in PowerShell set the variable
+# first. Coverage instruments artifacts/ in place: run no other Hardhat command
+# meanwhile, or the later specs count against uninstrumented code.
+$env:HARDHAT_NO_FORK='1'; npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,ShieldVaultV3,QuantumRecoveryRegistry}.spec.ts"
 git submodule update --init             # once: lib/forge-std for the fuzz suite
 forge test --match-path "test/foundry/**" -vv   # needs Foundry v1.8.6
-slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-remaps "@openzeppelin=node_modules/@openzeppelin" --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" --filter-paths node_modules --triage-database slither.db.json --fail-medium
+slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-remaps "@openzeppelin=node_modules/@openzeppelin" --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" --filter-paths node_modules --triage-database slither.db.json --fail-medium   # and ShieldVaultV3.sol
 ```
 
 CI (`.github/workflows/security.yml`, since 2026-10-29) runs the Hardhat
 suite, the `deployments/` pointer audit, coverage with thresholds for
-ShieldVault and the registry, Slither and Aderyn, and the Foundry fuzz and
+ShieldVault (v2 and v3) and the registry, Slither and Aderyn, and the Foundry fuzz and
 invariant suite on every PR and every push
 to `dev` and `main`. The checks are informational, not required: a red run
 blocks nothing, `[skip ci]` in a commit message skips one, and the workflow

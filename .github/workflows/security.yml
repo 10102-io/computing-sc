@@ -1,8 +1,9 @@
 # ShieldVault security evidence (docs/security/tooling-report.md).
 #
 # Four independent jobs so one slow or flaky tool never hides another's
-# result: the Hardhat suite, coverage of the two review targets, static
-# analysis (Slither and Aderyn) and the Foundry fuzz and invariant suite.
+# result: the Hardhat suite, coverage of the review targets (ShieldVault v2
+# and v3, the registry), static analysis (Slither and Aderyn) and the
+# Foundry fuzz and invariant suite.
 # Everything here runs on the public toolchain only; no secrets, no RPC.
 #
 # Tests run with HARDHAT_NO_FORK=1 so a stray fork-block.json can never
@@ -45,7 +46,7 @@ jobs:
       - run: npx hardhat run scripts/audit-deployment-artifacts.ts
 
   coverage:
-    name: coverage (ShieldVault, registry)
+    name: coverage (ShieldVault v2 and v3, registry)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -56,8 +57,8 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run coverage
-      # The two review targets must stay fully covered. The two branch arms
-      # that are unreachable by construction are documented in
+      # The review targets must stay fully covered. The two branch arms per
+      # vault that are unreachable by construction are documented in
       # docs/security/tooling-report.md; the threshold below allows exactly those.
       - name: enforce thresholds
         run: |
@@ -65,6 +66,7 @@ jobs:
             const s = require("./coverage/coverage-summary.json");
             const want = {
               "contracts/shield/ShieldVault.sol": { lines: 100, statements: 100, functions: 100, branches: 98 },
+              "contracts/shield/ShieldVaultV3.sol": { lines: 100, statements: 100, functions: 100, branches: 98 },
               "contracts/common/QuantumRecoveryRegistry.sol": { lines: 100, statements: 100, functions: 100, branches: 100 },
             };
             let bad = 0;
@@ -110,16 +112,17 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.8.6
-      # Slither runs on the two review targets straight through solc (no
-      # Hardhat compile), with the deployed compiler settings. Every finding
-      # is triaged in docs/security/static-analysis.md; the three false
-      # positives rated Medium or High there are recorded in slither.db.json
-      # so the contract stays untouched, and anything new at Medium or above
-      # fails the job. Low and informational results are reported, not fatal.
+      # Slither runs on the review targets straight through solc (no Hardhat
+      # compile), with the deployed compiler settings. Every finding is
+      # triaged in docs/security/static-analysis.md; the false positives
+      # rated Medium or High there (three per vault) are recorded in
+      # slither.db.json so the contracts stay untouched, and anything new at
+      # Medium or above fails the job. Low and informational results are
+      # reported, not fatal.
       - name: slither
         run: |
           set -o pipefail
-          for f in contracts/shield/ShieldVault.sol contracts/common/QuantumRecoveryRegistry.sol; do
+          for f in contracts/shield/ShieldVault.sol contracts/shield/ShieldVaultV3.sol contracts/common/QuantumRecoveryRegistry.sol; do
             slither "$f" \
               --compile-force-framework solc \
               --solc-remaps "@openzeppelin=node_modules/@openzeppelin" \
@@ -135,7 +138,7 @@ jobs:
           export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
           aderyn --version
           aderyn . -s contracts \
-            -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol \
+            -i contracts/shield/ShieldVault.sol,contracts/shield/ShieldVaultV3.sol,contracts/common/QuantumRecoveryRegistry.sol \
             -o aderyn-report.md
           grep -q "| High | 0 |" aderyn-report.md || { echo "Aderyn reports a High"; exit 1; }
       # Legacy v3 (wave B) and the files it relies on, report only: every
