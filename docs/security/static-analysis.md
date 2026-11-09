@@ -140,6 +140,12 @@ against v3 too.
 Aderyn was not run locally (no Windows build of 0.6.8, see "Legacy v3"
 below); CI runs it on v3 with the v2 files, with the same "no High" gate.
 
+Rerun on 2026-11-09 after round 11 (`collectFees` refuses a recipient
+that is the token's own contract), with CI's flags
+(`--triage-database slither.db.json --fail-medium`): the same 6 results
+shown (T4 to T9), the three recorded false positives still matched (their
+ids come from names, not line numbers), exit 0.
+
 ## What static analysis does not say
 
 Neither tool reasons about the protocol's own invariants (delays, digest
@@ -221,6 +227,23 @@ detector and function. The two Medium ones are `unused-return` in
 not touch. The changed `activeLegacyAndUnswap` has one `reentrancy-benign`
 result, the same before and after: `isCreateLegacy` is written after the
 clone call, under the router's `nonReentrant`.
+
+Round 11 (2026-11-09, the direct rail through a self-call and the
+whole-estate fee after the beneficiaries) added five results to v3's run,
+all in the inherited base: 86 (21 in v3, 65 inherited); the router is
+unchanged (46). New: **R11-1**, `arbitrary-send-erc20` (High / High) on
+`pullDirect` (`safeTransferFrom(from_, ...)` with `from_` a parameter),
+and four `calls-loop` (Low): two more on `_transferErc20ToBeneficiary` (the
+call to self inside the payout loops) and two on
+`_transferEthToBeneficiary`. R11-1 is **by design**: `pullDirect` refuses
+every caller but the legacy itself (`OnlySelf`), and its one caller,
+`_transferErc20ToBeneficiary`, passes the legacy owner as `from`, as the
+direct rail always did (A-W2). Nothing makes the legacy call itself with
+chosen calldata: its outgoing calls go to tokens, Permit2, the vault,
+Payment and heirs (ETH with empty calldata, which reaches `receive`), the
+Uniswap router, WETH, PremiumSetting and allowlisted NFT collections with
+fixed selectors. The `calls-loop` results are bounded like the others
+(A-W14 and after).
 
 The Medium and High results are **not** added to `slither.db.json`. The
 reentrancy-eth result on v3's `_transferAssetToBeneficiaries` gets a

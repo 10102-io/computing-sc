@@ -2,7 +2,9 @@
 
 Sections 1 to 7 are ShieldVault v2 and the registry (2026-10-27). Section 8
 is legacy v3, wave B of the 2026-11 train (2026-11-05). Section 9 is
-ShieldVault v3 (2026-11-09), built and not deployed.
+ShieldVault v3 (2026-11-09), built and not deployed. Section 10 is round
+11 (2026-11-09): the fixes after two cross-model reviews of both, and the
+whole suite rerun on the merged branch.
 
 Status of `contracts/shield/ShieldVault.sol` (v2) and
 `contracts/common/QuantumRecoveryRegistry.sol`: **internally reviewed,
@@ -861,3 +863,56 @@ $env:FOUNDRY_INVARIANT_RUNS = "768"; $env:FOUNDRY_INVARIANT_DEPTH = "250"; $env:
 forge test --match-path "test/foundry/ShieldVaultV3.invariants.t.sol" -vv                       # longer campaign
 npx hardhat run scripts/deploy-shield-vault-v3.ts --network hardhat                             # deploy rehearsal, records nothing
 ```
+
+## 10. Round 11 (2026-11-09): after the cross-model reviews
+
+Two read-only reviews, a GPT-family and a Gemini-family reviewer, read
+round 10 (section 8.9) and ShieldVault v3 (section 9) at `d988e6b`, the
+merge of both with `dev`. No Critical or High. What was done, with the
+reasons and the known issues: `wave-b-audit-scope.md` ("What changed since
+4f58e6b", K-13, K-14, K-17, "ShieldVault v3"). Status unchanged: internally
+reviewed, tooling-verified, not independently audited, not deployed.
+
+| Finding | Change | Evidence |
+|---|---|---|
+| Medium (GPT): on the clone's direct rail, a token that moves funds and returns `false` counted as 0 while the move stayed (a per-share claimant could drain the other shares) | the direct transfer runs in `pullDirect` on the legacy itself (only `address(this)` may call it), with `safeTransferFrom`, inside `try`: the move rolls back | `Train2026-11.review.spec.ts`: whole-estate on the base and v3, full and partial moves rolled back and later claims exact; per-share, three claims by A take nothing from B (full and partial); the deployed wave A code (a starved heir at fee 0, a reverting claim at 25 bps) and the live 2026-07-30 code (no bias) |
+| Low (GPT): the router's unswap guard trusts the storage token's views | accepted (K-14 (b)) | a token that reports 0 to the router: the live clone code swaps at a zero minimum; a HEAD clone keeps both guards |
+| L-1 (Gemini): the whole-estate fee was pulled before the beneficiaries | after them, for ETH and tokens | a token that takes 0.1% more under an exact allowance: both heirs paid in full, the fee not collected |
+| I-1 (Gemini): ShieldVault v3's `collectFees` could pay the token's own contract | refused (`InvalidAddress`) | `ShieldVaultV3.spec.ts`; the Foundry handler's `collectFees` now expects the refusal |
+| Untested cases (both) | specified | the unswap claim with a vault or Permit2 approval plus a small direct allowance (the direct part swapped, the rest on its rail, one call); a second whole-estate claim after a refused fee; per-share payouts failing for a blocklisted heir and an heir refusing ETH, nothing recorded, the backup claims; ShieldVault v3 with a token that takes 10% more and returns `false` (nothing owed, the shortfall shown); replay of v2 check-ins, cancels and sheets on v3 and the reverse; gas burners (a fee receiver burning all its gas, a token burning it on the fee transfer in both modes, a ShieldVault v3 token burning it on one payout and on fee collection) |
+
+New mock: `MockWeirdERC20` (moves part or all and returns `false`, takes
+more than the amount, burns the gas of a transfer to one address, or
+answers `balanceOf` and `allowance` with 0 to one caller). The live
+fixture gains the deployed wave A clone's runtime code (15,426 bytes,
+keccak `0x4cae…bbcb`, read with `eth_getCode`).
+
+Results on this machine, 2026-11-09, at the round 11 code, run one at a
+time:
+
+- Hardhat: 470 passing, 0 failing (444 at `d988e6b`; 22 new legacy specs,
+  4 new ShieldVault v3 specs).
+- Coverage (`npm run coverage`, the CI scope): ShieldVaultV3.sol 100%
+  lines (228/228), statements (186/186), functions (42/42), 98.91% branches
+  (182/184; the two dark arms are v2's dead ones); ShieldVault.sol
+  unchanged (100, 100, 100, 98.84%); the registry 100%. Every CI threshold
+  met.
+- Foundry, CI profile, every suite (`test/foundry/**`): 7 suites, 39 tests,
+  0 failures, 18 min. Legacy v3 invariants 568 s, 0 counterexamples, 326
+  claims with a refused fee; differential 0 differences over 11,449 claim
+  pairs; ShieldVault v2 and v3 invariants 945 s and 1,086 s, 0
+  counterexamples; 35 stateless properties.
+- Slither (CI flags): ShieldVaultV3 6 results shown over the triage
+  database, exit 0 (as before); the router 46 (unchanged); legacy v3 86, the
+  five new ones from the self-call, triaged in `static-analysis.md` (R11-1,
+  by design).
+- `check-clone-reproducible.ts`: v3 (23,490 bytes) and the base (14,320)
+  IDENTICAL from their minimal input.
+- Sizes: v3 23,490 (1,086 spare), the base 14,320, the router 23,398,
+  ShieldVault v3 14,733 (14,724 before), ShieldVault v2 14,375 (unchanged).
+- Gas: the self-call costs about 1,500 per direct transfer (a 10-token
+  claim: 1,101,410 on the base, 1,058,599 before; 1,414,114 on v3
+  per-share, 1,383,081 before).
+
+Not rerun: the deep Foundry profiles and Aderyn (no Windows build; CI
+runs it).

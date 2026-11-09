@@ -1,10 +1,11 @@
-# Legacy v3 (wave B): scope for an external review
+# Legacy v3 (wave B) and ShieldVault v3: scope for an external review
 
 10102 Computing Legacy lets an Ethereum account name heirs for its tokens,
 ETH and now NFTs, and hands them over when the owner has been inactive for
 a chosen period. Version 3 of the per-owner legacy contract adds three
 optional features. This document is the scope for an external review before
-v3 goes to mainnet. Status: internally reviewed twice, then two independent
+v3 goes to mainnet, together with ShieldVault v3 (its own section near the
+end). Status: internally reviewed twice, then two independent
 read-only reviews by other model families (a GPT-family and a
 Gemini-family reviewer). Their first pass at `88838a4` found one High, two
 Mediums and several Lows, fixed in rounds 7 and 8 or listed below; both
@@ -13,16 +14,20 @@ round 8 diff at `4f58e6b` with no regressions. Round 10 (founder
 decisions, 2026-11-09) then changed three things, listed in "What changed
 since 4f58e6b": the claim fee is no longer swapped, the router's unswap
 guard applies only when something would convert, and the wave B batch
-upgrades the router for it. Round 10 had our own review, specs and
-tooling, no external review yet. Tooling-verified (the evidence is in
-`tooling-report.md`, section 8, and `static-analysis.md`, "Legacy v3").
-Not independently audited: that is what this document is for.
+upgrades the router for it. Two read-only cross-model reviews (a GPT-family
+and a Gemini-family reviewer) then read round 10 and ShieldVault v3 after
+the merge, at `d988e6b`: no Critical or High; one Medium (a token that
+moves funds and returns `false` on the direct rail), two Lows and one Info,
+fixed or accepted in round 11 (listed in "What changed since 4f58e6b" and
+the known issues), plus the cases both found untested, now specified.
+Tooling-verified (the evidence is in `tooling-report.md`, sections 8 and
+9, and `static-analysis.md`, "Legacy v3" and "ShieldVault v3"). Not
+independently audited: that is what this document is for.
 
-**Commit to audit:** `55ecbe25f931ffba1e99c63bae57f886eabe8c25` on branch `feat/wave-b-final` of
-`computing-sc` (round 10 on top of `dev` `15bd140`, whose contracts equal
-`4f58e6b`). Later commits on the branch touch documentation only, unless a
-fix list says otherwise. ShieldVault v3 joins the scope from its own
-branch before the review (last section).
+**Commit to audit:** `COMMIT_TO_AUDIT` on branch `feat/wave-b-final` of
+`computing-sc` (rounds 10 and 11 and ShieldVault v3, merged with `dev`;
+the legacy contracts at `15bd140` equal `4f58e6b`). Later commits on the
+branch touch documentation only, unless a fix list says otherwise.
 
 ## Files in scope
 
@@ -33,18 +38,19 @@ nSLOC counted with `solidity-code-metrics` 0.0.28 (`npx solidity-code-metrics <f
 | `contracts/forwarding/TransferLegacyEOAContractV3.sol` | 327 | the v3 clone implementation (new) |
 | `contracts/whitelist/NftCollectionWhiteList.sol` | 59 | the allowlist of NFT collections (new) |
 | `contracts/common/LegacyPullVaultV2.sol` | 82 | the pull vault: in scope for its NFT rails (`pullERC721`, `pullERC1155`) and the implementation allowlist; deployed with wave A |
-| `contracts/forwarding/TransferLegacyEOAContract.sol` | 562 | the clone code v3 inherits, at HEAD: in scope as v3's behaviour (whole-estate mode runs it as is) and for the round 10 fee change. The deployed wave A clone (`0x2E2d…924C`) is this file at the tag `v2026.11.07`, unchanged on chain and out of scope |
+| `contracts/forwarding/TransferLegacyEOAContract.sol` | 571 | the clone code v3 inherits, at HEAD: in scope as v3's behaviour (whole-estate mode runs it as is) and for the round 10 and 11 changes (the fee, the direct rail). The deployed wave A clone (`0x2E2d…924C`) is this file at the tag `v2026.11.07`, unchanged on chain and out of scope (its exposure to the round 11 Medium is K-17) |
 | `contracts/common/GenericLegacy.sol` | 83 | the shared base of both clones; in scope as v3's behaviour |
 | `contracts/forwarding/TransferLegacyEOAContractRouter.sol` | 591 (file) | the EOA router, an upgradeable proxy deployed with wave A: in scope for the round 10 change in `activeLegacyAndUnswap` (the guard, 11 lines), which the wave B batch deploys. Its claim paths (`_runActiveLegacy`, `activeLegacyFor`, `activeLegacyAndUnswap`) are context: they decide who may claim when, and the clone trusts them (K-1) |
 
 New code: 468 nSLOC (v3, the list, the vault). With the inherited code a
-reviewer must read: 1,113. Counted on HEAD; round 10 made v3 7 nSLOC and
-the base 25 nSLOC smaller.
+reviewer must read: 1,122. Counted on HEAD; round 10 made v3 7 nSLOC and
+the base 25 nSLOC smaller, round 11 the base 9 larger. ShieldVault v3
+adds 483 (its section).
 
 ## What changed since 4f58e6b
 
-`git diff 4f58e6b <commit to audit> -- contracts/` is three files (and
-the Foundry suite):
+For the legacy contracts, `git diff 4f58e6b <commit to audit> --
+contracts/forwarding/` is three files (and the Foundry suite). Round 10:
 
 1. **`TransferLegacyEOAContract.sol` (the base v3 inherits): the claim fee
    without a swap.** In whole-estate `_transferAssetToBeneficiaries`, the
@@ -76,8 +82,37 @@ the Foundry suite):
    function, storage layout unchanged; deployed by the wave B batch as a
    proxy upgrade without a reinitializer.
 
-Sizes: v3 23,517 bytes (was 24,470), the base 14,252 (15,426), the router
-23,398 (23,040).
+Round 11, after the cross-model reviews:
+
+4. **The direct rail rolls back a transfer it counts as failed** (GPT
+   review, Medium). `_transferErc20ToBeneficiary` used SafeERC20's
+   `trySafeTransferFrom`, which returns `false` when a token moves the
+   funds and then returns `false` (the Tether Gold pattern), while the
+   move stays. In per-share mode `_settle` then recorded nothing, so a
+   claimant could repeat the claim and drain the other shares (1,000
+   tokens split 60/40: A claims again and again, B gets nothing); in
+   whole-estate mode the remainder for the last beneficiary was computed
+   too high. The Permit2 and vault rails already rolled back (Permit2's
+   transfer reverts on `false`). The direct rail now calls a new external
+   `pullDirect(token, from, to, amount)` on the legacy itself, which
+   accepts only `msg.sender == address(this)` (`OnlySelf`) and uses
+   `safeTransferFrom`; the call is wrapped in `try`, so a `false` return or
+   a revert undoes whatever moved and counts 0, never a claim-wide revert.
+   It holds no guard, so v3's claim guard around its caller does not refuse
+   it; cost, one call to self per direct transfer. A token that always
+   returns `false` (Tether Gold) therefore cannot be claimed on any rail of
+   the new clones; it stays with the owner's wallet, accounted for. The
+   deployed clones' exposure is K-17.
+5. **The whole-estate fee after the beneficiaries** (Gemini review, L-1).
+   `_transferAssetToBeneficiaries` pulled the fee first; with a finite
+   allowance and a token that takes more than the amount, the last
+   beneficiary's pull could then fail. The fee now goes after the loop,
+   for ETH and tokens, as v3's `_settle` does; such a token leaves the fee
+   uncollected instead (K-13). No invariant changes: the amounts are the
+   same, only the order of the transfers.
+
+Sizes: v3 23,490 bytes (24,470 before round 10, 23,517 after it), the
+base 14,320 (15,426; 14,252), the router 23,398 (23,040).
 
 ## What v3 does
 
@@ -211,8 +246,8 @@ From the Foundry suite (`test/foundry/LegacyV3*`), checked after every call:
   moment stays open to its own line and to the next sweep. Owning shares a
   sweep did not pay would reopen the empty-claim problem fixed in round 7
   (an empty claim taking a share without receiving anything).
-- **K-8. Size.** 23,517 of 24,576 bytes at 200 runs (1,059 spare since
-  round 10; 106 before the fee swap was removed). If a fix needs more,
+- **K-8. Size.** 23,490 of 24,576 bytes at 200 runs (1,086 spare since
+  round 11; 106 before the fee swap was removed). If a fix needs more,
   `_pullNft` (about 600 bytes) moves into a linked library first; the
   optimizer runs last. The router has 1,178 bytes spare.
 - **K-9. Static analysis.** Slither is triaged in `static-analysis.md`. CI
@@ -251,14 +286,31 @@ From the Foundry suite (`test/foundry/LegacyV3*`), checked after every call:
   and the shares receive it pro rata. Dues never exceed what is pullable,
   so nothing is paid twice (spec "the uncollected fee stays in the pot and
   is never paid twice"; Foundry V2 exact, V3 with that bound). Only the
-  protocol fee is lost.
-- **K-14. `activeLegacyAndUnswap` reads only the direct allowance**
-  (inherited from the deployed wave A clone; refused in per-share mode).
-  With a Permit2 or vault approval nothing is swapped and nothing is lost:
-  the heir takes the token claim, as the app does when there is nothing to
-  swap. Since round 10 the router's guard uses the same rule, so such an
-  heir may also use the unswap entry point with a zero minimum: nothing
-  converts, and the listed tokens are paid on their rails.
+  protocol fee is lost. Since round 11 the fee is the last transfer of a
+  token or ETH settlement in both modes, after the payout it is taken on.
+  A fee receiver or token that burns all the gas it is given costs the
+  claimant gas (63/64 of what is left at the fee call), not the claim:
+  with a gas limit that leaves enough after it, the claim completes and
+  the fee is not collected (specs at a 10M gas limit).
+- **K-14. The unswap claim and the router's guard.** (a)
+  `activeLegacyAndUnswap` reads only the direct allowance (inherited from
+  the deployed wave A clone; refused in per-share mode). With a Permit2 or
+  vault approval nothing is swapped and nothing is lost: the heir takes
+  the token claim, as the app does when there is nothing to swap. Since
+  round 10 the router's guard uses the same rule, so such an heir may also
+  use the unswap entry point with a zero minimum: nothing converts, and
+  the listed tokens are paid on their rails (spec: a vault or Permit2
+  approval plus a small direct allowance swaps the direct part and pays
+  the rest on its rail in one call). (b) **Accepted (GPT review, Low;
+  founder decision):** the guard trusts the storage token's `balanceOf`
+  and `allowance`, which a hostile token can answer differently per
+  caller: 0 to the router, the real values to an old clone, which then
+  swaps at the caller's zero minimum (spec, on the live mainnet clone
+  code). Kept, because the storage token is the owner's own choice and a
+  hostile token already controls everything stored in it (it can move or
+  freeze the balance at will), so the guard protects nothing more there.
+  New clones are unaffected: they read the values themselves and keep
+  both guards (spec).
 - **K-15. NFT callback re-entry.** A recipient's ERC-721 or ERC-1155
   callback that calls `router.activeLegacy` re-enters the clone through the
   router; v3's guard, shared by token and NFT claims, refuses it (spec "the
@@ -272,6 +324,41 @@ From the Foundry suite (`test/foundry/LegacyV3*`), checked after every call:
   mark is undone with it; review L-2). `DEATH_GRACE`, `MIN_BACKUP_DELAY`,
   `MAX_BACKUP_DELAY` and `MAX_NFT_ITEMS` are internal constants now (30 days,
   30 days, 3,650 days, 50; for size): the app uses the documented values.
+- **K-17. Deployed clones and a token that moves funds and returns
+  `false`** (the round 11 Medium, which only new clones fix; deployed
+  clones cannot change). Affected tokens: those whose `transferFrom` moves
+  the funds and still returns `false`; Tether Gold (XAUt) is the
+  documented case (the weird-erc20 catalogue). Only on a direct approval
+  to the clone; the Permit2 and vault rails revert on `false`. Exposure by
+  clone version:
+  - **the wave A clone** (`0x2E2d…924C`, mainnet and Sepolia; also
+    Sepolia's v3 `0x057c…3993`, whose per-share mode has the reviewer's
+    drain, testnet only): `trySafeTransferFrom` counts the move as
+    failed. With a nonzero fee (new mainnet creates snapshot 25 bps) the
+    fee moves into the legacy first and `_swapAdminFee`'s fallback
+    `safeTransfer` to `Payment` reverts on `false`, so any claim that
+    lists such a token reverts: the token cannot be claimed through the
+    legacy, the other tokens can (spec). With a zero fee, or an amount
+    whose fee rounds to 0, the whole-estate split is biased: an earlier
+    beneficiary's move counts as 0, the last beneficiary is asked for the
+    whole remainder and gets nothing, claim after claim (spec: 600, then
+    840 of 1,000 to the first of two heirs, 0 to the second). Read-only
+    on mainnet, 2026-11-09: no legacy uses this clone yet (44 legacies,
+    all on older versions); it is the target of new creates until wave B.
+  - **older versions** (every live mainnet legacy: the five clone
+    implementations and the 21 full-bytecode legacies since 2026-02): the
+    direct rail is `try transferFrom { return amount; }`, which ignores the
+    return value, so such a move counts as paid and nothing is biased (spec
+    on the live 2026-07-30 code). The opposite quirk applies there instead:
+    a token that returns `false` without moving (old ZRX- or BAT-style
+    failures) counts as paid while nothing moved, so that heir's payout is
+    lost for that claim. Legacy 1 predates them; the 2025 versions either
+    ignore the return value in the same way or revert the whole claim on
+    `false`, so none is biased either. All seven live mainnet legacies
+    snapshotted a zero fee.
+
+  The app's token list (`TokenWhiteList`, admin-curated) should not offer
+  tokens with either behaviour.
 
 Fixed before this review, for context (`docs/plans/train-2026-11.md`,
 review rounds 1 to 3 and 6 to 8): H-1 (the last claimer of a round took later
@@ -289,22 +376,120 @@ second-equals-third check is dropped (it strands nothing); `claimNfts`
 claims the legacy before any external call. Round 10 (founder decisions):
 the fee is no longer swapped (K-6), a failed fee is not owed (K-13), and
 the router's unswap guard applies only when something would convert
-(K-14).
+(K-14). Round 11, after the cross-model reviews of round 10: the direct
+rail rolls back a transfer it counts as failed (Medium; K-17 for deployed
+clones), the whole-estate fee goes last (L-1), the router's trust in the
+storage token is accepted (Low, K-14), ShieldVault v3 refuses to collect
+fees to the token's own contract (Info), and the cases both reviews found
+untested are specified.
 
-## ShieldVault v3 (separate branch `feat/shield-vault-v3`, merged before the review)
+## ShieldVault v3
 
-To be filled in when that branch merges: the commit, files and nSLOC, what
-changed against the deployed ShieldVault, its trust model, invariants and
-known issues, and its tooling evidence (`tooling-report.md`,
-`static-analysis.md`).
+A delayed, inheritable, quantum-vetoable holding of one ERC-20 per
+position, not upgradeable. v3 is a new deployment next to the deployed v2
+(mainnet `0xA1EA2F8C0518458975E09ED63bf5D48980f76C38`, which has never held
+a position and whose fee for new holdings is 0). Status: internally
+reviewed, tooling-verified, read by the two cross-model reviews of round 11
+(one Info, fixed), not independently audited, not deployed. Built on
+`feat/shield-vault-v3` (`df19774`), merged at `d988e6b`; the commit to
+audit is the one above. Spec and reasons: `docs/plans/shield-vault.md`,
+"v3"; evidence: `tooling-report.md` section 9 and `static-analysis.md`,
+"ShieldVault v3".
+
+| File | nSLOC | Role |
+|---|---|---|
+| `contracts/shield/ShieldVaultV3.sol` | 483 (Aderyn counts 494) | the vault (new) |
+| `contracts/common/QuantumRecoveryRegistry.sol` | 47 | deployed, unchanged: where owners register the scheme-5 veto commitments a position pins; context |
+| `contracts/shield/ShieldVault.sol` | 492 (Aderyn) | the deployed v2, unchanged; the reference v3 differs from, out of scope |
+
+What v3 changes against v2 (outside comments, 16 lines added and 14
+removed before round 11):
+
+1. **The fee is taken on releases only.** `executeFallback` charges the
+   position's rate (fixed at `open`, at most 50 bps) once, on the balance
+   it releases, before the split. Withdrawals (`ALL` included), the veto,
+   changes, cancels and both claims charge nothing; a held or failed share
+   is recorded net and claimed whole.
+2. **A payout the token reports as failed owes only what stayed in the
+   vault** (checklist audit SV-L1). `_payOrOwe` reads the vault's balance
+   before the transfer and, after a reported failure, again: a token that
+   moves the funds and returns `false` is not paid a second time, from
+   other positions, through `owed`; a partial move owes the rest.
+3. **The token's own contract is refused as a payee wherever one is chosen
+   at call time**: `requestWithdraw` and `claimOwedWithSig` destinations,
+   `open` and `requestChange` beneficiaries, and since round 11
+   `collectFees` while `feeRecipient` is the token (Gemini review, Info;
+   `InvalidAddress`, the fees wait for `setFeeRecipient`). Not the veto's
+   recovery wallet, which is inside the commitment.
+
+Unchanged on purpose: every function, event, error and struct (v3's ABI is
+v2's, fragment for fragment, tested), the constructor and admin surface,
+the delays, the signed actions and their nonces, the EIP-712 domain
+(`"10102 ShieldVault"`, `"2"`) and the veto tag. Both bind the vault's
+address, so nothing signed or committed for one vault verifies on the
+other: round 11 specifies it both ways (a check-in and a cancel signed for
+the other vault, and a sheet committed for it, are refused, no nonce
+spent).
+
+**Trust model.** The owner opens, deposits, checks in and requests a
+withdrawal or a change of beneficiaries and sheet, each waiting the exit
+delay (7, 30 or 90 days), cancellable and vetoable meanwhile. After the
+silence period (180 to 1,095 days) anyone may release the balance to the
+beneficiaries; a `holdMask` share waits for its key's signed claim. Whoever
+holds the recovery secret may veto at any time, to the recovery wallet
+committed with it. The admin (the governance Safe, `Ownable2Step`) curates
+tokens, pauses new deposits, sets the release fee for positions opened
+later and the fee recipient; it cannot reach a position, an owed entry, a
+pin or a nonce. Exits are never pausable. Listed tokens: wstETH, USDC,
+USDT and WETH, under the curation rule of `shield-vault.md` ("Tokens"):
+the sender is debited exactly the amount, no hooks, a `balanceOf` that
+never reverts (v3 no longer needs a truthful `false`).
+
+**Invariants the tooling checks** (Foundry, after every call of a
+26-operation handler with an exact payout model, a lying token and the
+token contracts in the payee pool): the handler saw no violation, solvency
+per token (vault balance = positions + owed + fees + donations), an open
+position is funded, pending operations are consistent, stored configs are
+valid, a closed position is terminal, the fee is fixed at open and at most
+50 bps, veto digests are disjoint and pinned, fees come only from releases,
+no reentrancy succeeded. Plus 15 stateless properties, among them
+`testFuzz_falseReturnOwesOnlyWhatStayed` and
+`testFuzz_gasLimitCannotForceOwed`.
+
+**Known issues and accepted risks.**
+
+- **SK-1. A token that debits more than the amount** takes the excess
+  from the other positions in that token, whether it returns `true` or
+  `false`. v3 owes nothing for it (no double payment), but cannot see the
+  shortfall (spec, round 11). Excluded by the curation rule.
+- **SK-2. A token that burns all the gas of one transfer.** With a gas
+  limit that leaves enough after the 63/64 forwarded, a release completes
+  and that payee's share is owed (spec at 10M gas); a caller cannot choose
+  a gas limit that turns a payable payout into an owed one
+  (`testFuzz_gasLimitCannotForceOwed`). `collectFees` to such a recipient
+  reverts and the fees wait; fees never sit in the path of an exit.
+- **SK-3. A fee recipient that is a listed token's contract** blocks
+  collecting that token's fees until the Safe sets another recipient (round
+  11). Nothing is lost.
+- **SK-4. v2's accepted limitations hold for v3 unchanged**
+  (`shield-vault.md`, "Known limitations"): nonces are per signer and
+  purpose, not per position; a signed cancel binds the id and `readyAt`,
+  not the operation; EIP-7702 accounts count as contracts for the held-share
+  guard and for signatures.
+- **SK-5. Static analysis gap.** Slither cannot build IR for OpenZeppelin's
+  `EIP712` constructor and accessors; covered by the constructor and domain
+  specs (`static-analysis.md`). CI gates v3 with `--fail-medium` over
+  `slither.db.json` (v2's three false positives under v3's names) and with
+  Aderyn's "no High".
 
 ## Out of scope
 
 Wave A, which is deployed on Sepolia and mainnet (executed on mainnet
 2026-11-07): the router except its round 10 change, the timelock and
 premium contracts, the consent verifier, the wave A clone as used by
-existing legacies (the tag `v2026.11.07`), the ERC-20 path of
-LegacyPullVaultV2, the deployed ShieldVault and the recovery registry. Also
+existing legacies (the tag `v2026.11.07`; its known exposure is K-17), the
+ERC-20 path of LegacyPullVaultV2, the deployed ShieldVault v2 and the
+recovery registry (context for ShieldVault v3). Also
 the app, the subgraph and the worker, except where a finding needs one of
 them to change.
 
@@ -317,15 +502,18 @@ npm ci
 git submodule update --init          # lib/forge-std
 npx hardhat compile
 npx hardhat test                     # full suite; v3 is test/Train2026-11.v3.spec.ts
-npx hardhat test test/Train2026-11.v3.spec.ts test/Train2026-11.fee.spec.ts test/Train2026-11.oldclones.spec.ts
-forge test --match-path "test/foundry/LegacyV3*" -vv              # Foundry v1.8.6, CI profile
+npx hardhat test test/Train2026-11.v3.spec.ts test/Train2026-11.fee.spec.ts test/Train2026-11.oldclones.spec.ts test/Train2026-11.review.spec.ts
+$env:HARDHAT_NO_FORK="1"; npx hardhat test test/ShieldVault.spec.ts test/ShieldVault.branches.spec.ts test/ShieldVaultV3.spec.ts test/QuantumRecoveryRegistry.spec.ts
+$env:HARDHAT_NO_FORK="1"; npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,ShieldVaultV3,QuantumRecoveryRegistry}.spec.ts"   # alone: it instruments artifacts/
+forge test --match-path "test/foundry/**" -vv                     # Foundry v1.8.6, CI profile, every suite
 $env:FOUNDRY_PROFILE="deep"; forge test --match-path "test/foundry/LegacyV3*" -vv
 $env:CLONE="contracts/forwarding/TransferLegacyEOAContractV3.sol:TransferEOALegacyV3"; npx hardhat run scripts/check-clone-reproducible.ts
 ```
 
 Slither, with solc 0.8.35 selected and Foundry on the PATH (the same
 command on `contracts/forwarding/TransferLegacyEOAContractRouter.sol` for
-the router):
+the router; on `contracts/shield/ShieldVaultV3.sol` add
+`--triage-database slither.db.json --fail-medium`, as CI does):
 
 ```powershell
 slither contracts/forwarding/TransferLegacyEOAContractV3.sol --compile-force-framework solc --solc-remaps "@openzeppelin=node_modules/@openzeppelin" --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" --filter-paths node_modules

@@ -66,7 +66,7 @@ async function eventsOf(tx: any, vault: any): Promise<string[]> {
 describe("ShieldVaultV3: fee on releases only, truthful payouts, token refused as payee", function () {
   this.timeout(180000);
 
-  async function deploy(contract: "ShieldVault" | "ShieldVaultV3", tokenName: "MockAwkwardERC20" | "MockLyingERC20", feeBps: number) {
+  async function deploy(contract: "ShieldVault" | "ShieldVaultV3", tokenName: "MockAwkwardERC20" | "MockLyingERC20" | "MockWeirdERC20", feeBps: number) {
     const [admin, owner, alice, bob, thief, relayer, recovery, carol, treasury] = await ethers.getSigners();
     const registry = await (await ethers.getContractFactory("QuantumRecoveryRegistry")).deploy();
     const token = await (await ethers.getContractFactory(tokenName)).deploy();
@@ -95,6 +95,7 @@ describe("ShieldVaultV3: fee on releases only, truthful payouts, token refused a
   const v3Awkward = () => deploy("ShieldVaultV3", "MockAwkwardERC20", 50);
   const v3Lying = () => deploy("ShieldVaultV3", "MockLyingERC20", 25);
   const v2Lying = () => deploy("ShieldVault", "MockLyingERC20", 25);
+  const v3Weird = () => deploy("ShieldVaultV3", "MockWeirdERC20", 50);
 
   const deadlineIn = async (seconds: number) => (await ethers.provider.getBlock("latest")).timestamp + seconds;
   const lastId = async (f: any) => (await f.vault.positionCount()).toNumber();
@@ -306,5 +307,123 @@ describe("ShieldVaultV3: fee on releases only, truthful payouts, token refused a
     const p = await asV3.positionOf(1);
     assert.equal(p.owner, f.owner.address);
     assert.equal(p.feeBps, 25);
+  });
+
+  // ───────────── 5. findings of the cross-model reviews (2026-11-09) ─────────────
+
+  async function reverts(p: Promise<unknown>): Promise<boolean> {
+    try {
+      await p;
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  it("collectFees refuses a fee recipient that is the token's own contract; the fees wait for a new recipient (review I-1)", async () => {
+    const f = await loadFixture(v3Awkward);
+    await f.vault.connect(f.owner).open(f.token.address, E18.mul(4), config(7, 180, [f.alice.address], [10000]), NO_VETO, MAX_FEE);
+    await increase(181 * DAY);
+    await f.vault.executeFallback(1);
+    const fee = await f.vault.feesAccrued(f.token.address);
+    assert(fee.gt(0));
+    await f.vault.connect(f.admin).setFeeRecipient(f.token.address);
+    await expectRevert(f.vault.collectFees(f.token.address), "InvalidAddress()");
+    assert.equal((await f.vault.feesAccrued(f.token.address)).toString(), fee.toString(), "nothing moved");
+    assert.equal((await f.token.balanceOf(f.token.address)).toString(), "0");
+    await f.vault.connect(f.admin).setFeeRecipient(f.treasury.address);
+    await f.vault.collectFees(f.token.address);
+    assert.equal((await f.token.balanceOf(f.treasury.address)).toString(), fee.toString());
+  });
+
+  it("a token that debits more than the amount and returns false is not owed again; the extra debit is a shortfall the vault cannot see", async () => {
+    const f = await loadFixture(v3Weird);
+    await f.vault.connect(f.owner).open(f.token.address, E18.mul(10), config(7), NO_VETO, MAX_FEE);
+    await f.vault.connect(f.alice).open(f.token.address, E18.mul(10), config(7), NO_VETO, MAX_FEE);
+    await f.vault.connect(f.owner).requestWithdraw(1, await f.vault.ALL(), f.carol.address);
+    await increase(7 * DAY);
+    await f.token.setLie(true, 10_000, 1_000); // moves it all, takes 10% more from the vault, returns false
+    const tx = await f.vault.executePending(1);
+    assert.deepEqual(await eventsOf(tx, f.vault), ["Withdrawn"], "nothing recorded as owed");
+    assert.equal((await f.vault.owed(1, f.carol.address)).toString(), "0", "not paid a second time");
+    assert.equal((await f.token.balanceOf(f.carol.address)).toString(), E18.mul(10).toString());
+    // As with such a token returning true: 11 left for a 10 payout, so the
+    // other holding's 10 is backed by 9. The listing rule admits no such token.
+    assert.equal((await f.token.balanceOf(f.vault.address)).toString(), E18.mul(9).toString());
+    assert.equal((await f.vault.positionOf(2)).balance.toString(), E18.mul(10).toString());
+  });
+
+  it("a signature or a veto sheet made for v2 does not work on v3, and the reverse", async () => {
+    const f = await loadFixture(v3Awkward);
+    const v2 = await (await ethers.getContractFactory("ShieldVault")).deploy(f.registry.address, f.admin.address, [f.token.address], f.treasury.address, 25);
+    await f.token.connect(f.owner).approve(v2.address, ethers.constants.MaxUint256);
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+    const vaults: Record<string, any> = { v2, v3: f.vault };
+    const domainOf = (v: any) => ({ name: "10102 ShieldVault", version: "2", chainId, verifyingContract: v.address });
+    const CHECK_IN = { CheckIn: [{ name: "id", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
+    const CANCEL = {
+      CancelPending: [
+        { name: "id", type: "uint256" },
+        { name: "readyAt", type: "uint64" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+    const digestFor = (v: any, secret: string, to: string) =>
+      ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+          ["bytes32", "uint256", "address", "address", "bytes32", "address"],
+          [ethers.utils.id("10102.ShieldVault.veto.v2"), chainId, v.address, f.owner.address, secret, to]
+        )
+      );
+
+    for (const [from, to] of [["v2", "v3"], ["v3", "v2"]]) {
+      const target = vaults[to];
+      const secret = ethers.utils.hexlify(ethers.utils.randomBytes(32));
+      // A sheet committed for the other vault, pinned on this one.
+      const index = (await f.registry.commitmentCount(f.owner.address)).toNumber();
+      await f.registry.connect(f.owner).register(digestFor(vaults[from], secret, f.recovery.address), SCHEME_HASH_PREIMAGE, vaults[from].address);
+      await target.connect(f.owner).open(f.token.address, E18, config(7, 365, [f.alice.address], [10000]), index, MAX_FEE);
+      const id = (await target.positionCount()).toNumber();
+      const deadline = await deadlineIn(3600);
+      const nonce = (p: number) => target.nonces(f.owner.address, p);
+
+      const checkIn = await f.owner._signTypedData(domainOf(vaults[from]), CHECK_IN, { id, nonce: await nonce(0), deadline });
+      await expectRevert(target.checkInWithSig(id, deadline, checkIn), "InvalidSignature()", `${from} check-in on ${to}:`);
+      await target.connect(f.owner).requestWithdraw(id, E18, f.carol.address);
+      const readyAt = (await target.positionOf(id)).pending.readyAt;
+      const cancel = await f.owner._signTypedData(domainOf(vaults[from]), CANCEL, { id, readyAt, nonce: await nonce(1), deadline });
+      await expectRevert(target.cancelPendingWithSig(id, deadline, cancel), "InvalidSignature()", `${from} cancel on ${to}:`);
+      await expectRevert(target.veto(id, secret, f.recovery.address), "WrongSecret()", `${from} sheet on ${to}:`);
+      assert.equal((await nonce(0)).toNumber() + (await nonce(1)).toNumber(), 0, "no nonce spent");
+      assert.equal((await target.positionOf(id)).pending.kind, 1, "the withdrawal is still pending");
+
+      // The same signatures made for this vault work.
+      const own = await f.owner._signTypedData(domainOf(target), CANCEL, { id, readyAt, nonce: 0, deadline });
+      await target.cancelPendingWithSig(id, deadline, own);
+      assert.equal((await target.positionOf(id)).pending.kind, 0);
+    }
+  });
+
+  it("a token that burns the gas of one payout leaves that share owed and pays the others; fees to such a recipient wait", async () => {
+    const f = await loadFixture(v3Weird);
+    await f.vault.connect(f.owner).open(f.token.address, E18.mul(10), config(7, 180, [f.alice.address, f.bob.address], [5000, 5000]), NO_VETO, MAX_FEE);
+    await f.token.setGasBurner(f.bob.address);
+    await increase(181 * DAY);
+    const rc = await (await f.vault.executeFallback(1, { gasLimit: 10_000_000 })).wait();
+    assert(rc.gasUsed.gt(9_000_000), `the payout burned its share of the gas (${rc.gasUsed})`);
+    const net = E18.mul(10).sub(E18.mul(10).mul(50).div(10000));
+    assert.equal((await f.token.balanceOf(f.alice.address)).sub(E18.mul(1000)).toString(), net.div(2).toString());
+    assert.equal((await f.vault.owed(1, f.bob.address)).toString(), net.sub(net.div(2)).toString(), "bob's share is owed");
+
+    await f.token.setGasBurner(f.treasury.address);
+    const fee = await f.vault.feesAccrued(f.token.address);
+    assert(await reverts(f.vault.collectFees(f.token.address, { gasLimit: 10_000_000 })), "the collection reverts");
+    assert.equal((await f.vault.feesAccrued(f.token.address)).toString(), fee.toString(), "the fees wait");
+    await f.token.setGasBurner(ethers.constants.AddressZero);
+    await f.vault.claimOwed(1, f.bob.address);
+    await f.vault.collectFees(f.token.address);
+    assert.equal((await f.token.balanceOf(f.bob.address)).sub(E18.mul(1000)).toString(), net.sub(net.div(2)).toString());
+    assert.equal((await f.token.balanceOf(f.vault.address)).toString(), "0");
   });
 });

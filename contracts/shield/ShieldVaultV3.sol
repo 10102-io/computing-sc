@@ -277,12 +277,15 @@ contract ShieldVaultV3 is Ownable2Step, ReentrancyGuardTransient, EIP712 {
   }
 
   /// @notice Send the fees taken in `token` to the current `feeRecipient`.
-  /// Anyone may call; fees never sit in the path of an exit.
+  /// Anyone may call; fees never sit in the path of an exit. Refused while
+  /// the recipient is the token's own contract (fees sent there are lost);
+  /// they wait for `setFeeRecipient`.
   function collectFees(IERC20 token) external nonReentrant {
     uint256 amount = feesAccrued[address(token)];
     if (amount == 0) revert NothingOwed();
-    feesAccrued[address(token)] = 0;
     address to = feeRecipient;
+    if (to == address(token)) revert InvalidAddress();
+    feesAccrued[address(token)] = 0;
     emit FeesCollected(address(token), to, amount);
     token.safeTransfer(to, amount);
   }

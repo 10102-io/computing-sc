@@ -65,7 +65,10 @@ What changes, and why:
   beneficiary (`InvalidBeneficiaries`), as they already refused zero and
   the vault. What is sent there is lost, or owed to the token for good.
   The app checks the same before sending (`assertNotTokenContract`); the
-  contract now holds for every caller. Not the veto's recovery wallet: it
+  contract now holds for every caller. `collectFees` refuses to pay while
+  `feeRecipient` is the token's own contract (`InvalidAddress`; review of
+  2026-11-09, Info): the fees wait until the Safe sets another recipient,
+  since a token added later may equal the recipient already set. Not the veto's recovery wallet: it
   is inside the commitment, so the vault cannot see it before the veto,
   and refusing it at the veto would make the stop fail. The app refuses
   it when the sheet is made.

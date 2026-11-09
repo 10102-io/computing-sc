@@ -1043,7 +1043,8 @@ contract ShieldVaultV3Handler is ShieldVaultV3Base {
     address tok = tokens[tokenSeed % tokens.length];
     uint256 accrued = vault.feesAccrued(tok);
     address to = vault.feeRecipient();
-    bool shouldSucceed = accrued > 0 && !_transferBlocked(tok, to) && !_lying(tok);
+    // A recipient that is the token's own contract is refused (review I-1).
+    bool shouldSucceed = accrued > 0 && to != tok && !_transferBlocked(tok, to) && !_lying(tok);
     uint256 before = IERC20(tok).balanceOf(to);
     bytes32 digest = _positionsDigest();
     uint256[] memory otherFees = new uint256[](tokens.length);
