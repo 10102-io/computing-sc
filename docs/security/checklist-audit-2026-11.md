@@ -67,6 +67,17 @@ verifier that does not take a plain on-chain reveal; the registry has no
 invariant test of its own; `UpgradeTimelock.sol` NatSpec still names the
 maintainer as PROPOSER and CANCELLER (deployed source, left as is).
 
+ShieldVault v3 (2026-11-09, `contracts/shield/ShieldVaultV3.sol`, built and
+tooling-verified, not deployed; `shield-vault.md` "v3") folds in the
+ShieldVault items: SV-L1 on-chain (a payout the token reports as failed
+owes only what stayed in the vault), the payee check against the token
+contract (on-chain for withdrawal addresses, beneficiaries and signed-claim
+destinations; not for the recovery wallet, which is inside the commitment),
+the two stale comments, and QR-L's note that scheme 5 carries two preimage
+formats (`shield-vault.md`, "Scheme 5 carries two preimage formats"). The
+ERC-1271 trust and the warning for a holding with neither sheet nor
+fallback stay as recorded: no contract change.
+
 ## Checked and fine (summary)
 
 - **ShieldVault:** reentrancy guards on every token-moving function,

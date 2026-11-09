@@ -103,6 +103,7 @@ Email scheduling and delivery were moved **off-chain** to a reminder-worker (Mai
 | **QuantumRecoveryRegistry** | Append-only registry of post-quantum recovery commitments (hash digests with a scheme id and a context address), timestamped on chain. No admin. ShieldVault reads its scheme-5 commitments as veto digests. |
 | **LegacyPullVault** | The single, verified Permit2 spender for EOA transfer legacies: creators' permits name this vault, while the authority to pull stays bound to each owner's own legacy clone. Spec: `docs/plans/legacy-pull-vault.md`. |
 | **ShieldVault** | Protected holdings: a supported token behind a 7/30/90-day exit delay, an optional fallback to beneficiaries after a silence period, and a veto that moves everything to a pre-committed recovery wallet by revealing a hash secret. Owned by the governance Safe, whose only powers are token curation and pausing new deposits; exits are never pausable. Spec and threat model: `docs/plans/shield-vault.md`. |
+| **ShieldVaultV3** | ShieldVault with the fee taken only on a release to the named people after silence, never on the owner's own exits; a payout the token reports as failed owed only for what stayed in the vault; the token contract refused as a payee. Same ABI and signing domain as v2. Built, not deployed: `docs/plans/shield-vault.md`, "v3". |
 
 ---
 

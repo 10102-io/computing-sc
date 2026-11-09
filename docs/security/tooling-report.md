@@ -1,7 +1,8 @@
-# Tooling report: ShieldVault v2 and legacy v3
+# Tooling report: ShieldVault v2 and v3, legacy v3
 
 Sections 1 to 7 are ShieldVault v2 and the registry (2026-10-27). Section 8
-is legacy v3, wave B of the 2026-11 train (2026-11-05).
+is legacy v3, wave B of the 2026-11 train (2026-11-05). Section 9 is
+ShieldVault v3 (2026-11-09), built and not deployed.
 
 Status of `contracts/shield/ShieldVault.sol` (v2) and
 `contracts/common/QuantumRecoveryRegistry.sol`: **internally reviewed,
@@ -338,8 +339,8 @@ never hides another's result:
 | Job | Does | Fails when |
 |---|---|---|
 | `hardhat tests` | `npm ci`, `npx hardhat compile`, `npx hardhat test` (263 specs) | any spec fails |
-| `coverage` | `npm run coverage`, then a threshold check on the two files; uploads HTML/lcov | ShieldVault below 100% lines, statements, functions or 98% branches; registry below 100% anywhere |
-| `slither and aderyn` | Slither on each file with the deployed compiler settings and the triage database, `--fail-medium`; Aderyn on the two files; since round 7 also, report only, Slither and Aderyn on the three legacy v3 files (section 8); uploads every report | a new Slither result at Medium or above on ShieldVault or the registry; any Aderyn High there (the v3 steps never fail) |
+| `coverage` | `npm run coverage`, then a threshold check on the review targets (since 2026-11-09 ShieldVault v3 too); uploads HTML/lcov | ShieldVault v2 or v3 below 100% lines, statements, functions or 98% branches; registry below 100% anywhere |
+| `slither and aderyn` | Slither on each file with the deployed compiler settings and the triage database, `--fail-medium`; Aderyn on the two files; since round 7 also, report only, Slither and Aderyn on the three legacy v3 files (section 8); uploads every report | a new Slither result at Medium or above on ShieldVault (v2 or v3, since 2026-11-09) or the registry; any Aderyn High there (the legacy v3 steps never fail) |
 | `foundry fuzz and invariants` | `forge test` on `test/foundry/**` with the CI profile, prints per-operation reach, uploads the summary | any counterexample or any handler revert |
 
 Everything runs with `HARDHAT_NO_FORK=1` so a stray `fork-block.json` can
@@ -655,4 +656,165 @@ $env:PATH = "c:\Users\ebusi\dev\computing\.tools\foundry;$env:PATH"
 forge test --match-path "test/foundry/LegacyV3*" -vv                    # CI profile
 $env:FOUNDRY_PROFILE = "deep"; forge test --match-path "test/foundry/LegacyV3*" -vv
 $env:FUZZ_SUMMARY = "out/v3-summary.txt"                                # reach counts
+```
+
+## 9. ShieldVault v3, 2026-11-09
+
+Status of `contracts/shield/ShieldVaultV3.sol`: **internally reviewed,
+tooling-verified, not independently audited, not deployed**, and with no
+adversarial review by a second reviewer yet (v2 had two). What v3 changes
+and why: `docs/plans/shield-vault.md`, "v3". Target: commit `df19774` on
+`feat/shield-vault-v3`. Sections 1 to 7 still describe v2, whose source is
+not edited: its artifact keeps the recorded 14,375 runtime bytes and
+metadata hash `0533e0df…c990`.
+
+### 9.1 Summary
+
+| Evidence | Result | Where |
+|---|---|---|
+| Size | 494 nSLOC (v2: 492). Against v2, outside comments: 16 lines added, 14 removed (the name, the withdrawal fee line, `_payOrOwe`, three payee checks, the validator's token argument). Runtime 14,724 bytes (v2: 14,375; limit 24,576) | `contracts/shield/ShieldVaultV3.sol` |
+| Hardhat specs | 422 passing in the full suite (`HARDHAT_NO_FORK=1`); 114 in the four shield files: v2's 40 specs and 10 branch specs each against v2 and v3 (100), 8 v3 specs, 6 for the registry | `test/ShieldVault.spec.ts`, `test/ShieldVault.branches.spec.ts`, `test/ShieldVaultV3.spec.ts` |
+| Coverage, ShieldVaultV3.sol | **100% lines (227/227), 100% statements (185/185), 100% functions (42/42), 98.9% branches (180/182)**; the two dark arms are v2's two dead arms (section 2), at lines 464 and 556 | `npm run coverage` |
+| Coverage, ShieldVault.sol and the registry | unchanged: 100%, 100%, 100%, 98.84% (170/172); registry 100% | `npm run coverage` |
+| Slither 0.11.6 | 9 results, 0 vulnerabilities: v2's 7 under v3's names (the 3 false positives at Medium or High recorded in `slither.db.json`) and 2 new Low `calls-loop` on `_payOrOwe`'s balance reads, by design | `static-analysis.md`, "ShieldVault v3" |
+| Aderyn | not run locally (no Windows build, section 8.7); CI runs 0.6.8 on v3 with the "no High" gate | `.github/workflows/security.yml` |
+| Foundry stateless fuzz | 15 properties, 2,000 runs each in CI and 20,000 in the deep profile, 0 counterexamples | `test/foundry/ShieldVaultV3.fuzz.t.sol` |
+| Foundry invariants | 10 invariant functions over a 26-operation handler; 256 runs x depth 200 (51,200 calls) in CI, 768 x 250 (192,000 calls) locally; 0 counterexamples, 0 reverts | `test/foundry/ShieldVaultV3.invariants.t.sol`, `ShieldVaultV3Handler.sol` |
+| Findings | none against the contract | |
+
+### 9.2 What the v3 suites check beyond v2's
+
+Hardhat. The shared specs pass on v3 unchanged except the two about the
+fee, which branch on the version: on v3 the withdrawal pays the whole
+amount and accrues nothing, the release accrues the fee. The v3 file adds:
+
+- the owner's own exits are free: a withdrawal, an `ALL` withdrawal with a
+  stranger's dust, a change, a cancel and a veto emit no `FeeCharged` and
+  leave nothing in the vault;
+- a release charges once (one `FeeCharged`), and the held and the failed
+  share are claimed for exactly what was recorded, with no further fee; the
+  vault ends with exactly the release fee;
+- SV-L1: with a token that moves everything and returns `false`, the
+  withdrawal, the release and the veto record nothing as owed; a partial
+  move owes the rest; no move owes it all; each holding is paid once. The
+  same scenario on v2 is in the file too and asserts v2's double payment,
+  so these specs fail on v2's code;
+- the token contract is refused at open, change, withdrawal request and
+  signed claim; a sheet committed to the token still vetoes (by design);
+- the ABI: every v2 fragment, formatted in full, equals v3's; v3's ABI reads
+  a v2 holding; `eip712Domain()` is `"10102 ShieldVault"`, `"2"`, the v3
+  address.
+
+Stateless fuzz. v2's 13 properties with v3's rules
+(`testFuzz_withdrawFeeExact` becomes `testFuzz_withdrawIsFree`, over partial,
+whole and `ALL` withdrawals at any rate; `testFuzz_configValidation` also
+draws the token as a beneficiary, and its mirror refuses it;
+`testFuzz_feeOnTransferCreditsWhatArrived` expects a free withdrawal), and:
+
+| Test | Property |
+|---|---|
+| `testFuzz_falseReturnOwesOnlyWhatStayed` | a token moving 0 to 10,000 bps of a payout and returning `false`, any amount, rate and exit (withdrawal, veto, release): the payee holds what moved, is owed exactly the rest, the fee is taken only on the release, the vault still covers a bystander holding in the same token, and the later claim pays exactly the rest |
+| `testFuzz_tokenRefusedAsPayee` | the token at any position of 1 to 10 beneficiaries is refused at open and change; a withdrawal to it is refused; the held share's own signature naming it is refused without consuming the nonce |
+| `testFuzz_gasLimitCannotForceOwed` | unchanged from v2, and still holds with the two balance reads in the payout path |
+
+Invariants. `ShieldVaultV3Handler.sol` is v2's handler with v3's rules:
+
+- a fourth token, `MockLyingERC20`, listed at start, and a 26th operation
+  `env.lie` that makes it honest (half the draws), move everything and
+  return `false`, move nothing, or move a random part;
+- the four token contracts in the payee pool and as an occasional
+  beneficiary, so the refusal is exercised (refused for the holding's own
+  token, accepted for another);
+- every payout checked against an exact model of what the payee receives,
+  what becomes owed and what leaves the vault (v2's handler accepted either
+  "paid" or "owed"; v3's predicts which);
+- a withdrawal must leave `feesAccrued` as it was; claims and fee
+  collection are refused while the token reports failure, since they must
+  pay in full or revert;
+- one more invariant, `invariant_feesOnlyFromReleases`: per token, fees
+  held plus fees collected equal the fees the releases took.
+
+### 9.3 Results
+
+CI profile, forge 1.8.6, on 2026-11-09:
+
+- Invariants: 256 runs x depth 200 = 51,200 handler calls, 10 invariant
+  functions after each call. 0 counterexamples, 0 reverts. Run twice: alone,
+  before three reach counters were added to the handler (929 s, with the
+  coverage job running alongside), and with the committed handler within
+  the whole `test/foundry/**` suite (38 tests in 7 suites, 0 failures,
+  17 min 20 s).
+- Stateless: 15 tests x 2,000 runs. 0 counterexamples.
+
+Deep fuzz profile: 15 tests x 20,000 runs, 0 counterexamples, 59 s.
+
+Longer local campaign, same code (`FOUNDRY_INVARIANT_RUNS=768
+FOUNDRY_INVARIANT_DEPTH=250`), run on 2026-11-09: 768 runs x depth 250 =
+192,000 handler calls, 10 invariant functions after each call. 0
+counterexamples, 0 reverts. 3,473 s single-threaded. Reach, summed over
+the campaign (192,251 calls made, 91,530 accepted by the vault; the
+`reach.` lines count events inside other calls, not calls):
+
+| Operation | Calls | Accepted by the vault |
+|---|---|---|
+| `admin.setDepositsPaused` | 7283 | 7283 |
+| `admin.setFee` | 7443 | 6656 |
+| `admin.setFeeRecipient` | 7426 | 4910 |
+| `admin.setTokenSupported` | 7435 | 7435 |
+| `adv.armHostile` | 7394 | 7394 |
+| `adv.decoy` | 7609 | 1424 |
+| `cancelPending` | 7257 | 1187 |
+| `cancelPendingWithSig` | 7399 | 627 |
+| `checkIn` | 7452 | 3991 |
+| `checkInWithSig` | 7405 | 1801 |
+| `claimOwed` | 7345 | 747 |
+| `claimOwedWithSig` | 7430 | 265 |
+| `collectFees` | 7555 | 276 |
+| `deposit` | 7372 | 2818 |
+| `env.blocklist` | 7274 | 7274 |
+| `env.donate` | 7488 | 6577 |
+| `env.lie` | 7377 | 7377 |
+| `env.tokenFee` | 7375 | 7375 |
+| `env.warp` | 7361 | 7361 |
+| `executeFallback` | 7412 | 568 |
+| `executePending` | 7236 | 1048 |
+| `open` | 7485 | 1648 |
+| `requestChange` | 7549 | 2172 |
+| `requestWithdraw` | 7290 | 1524 |
+| `stranger.admin` | 7138 | 0 |
+| `veto` | 7461 | 1792 |
+| `reach.lie`: payouts while the token reported failure / of which some funds moved anyway | 66 | 41 |
+| `reach.owed`: payouts that left something owed | 464 | 464 |
+| `reach.tokenPayee`: calls naming the holding's token as a payee / of which that was the only flaw | 388 | 78 |
+
+The deep invariant profile (2,048 runs x depth 300, 614,400 calls) was
+started and stopped after 18 minutes: at about 40 calls a second on this
+machine it needs some four hours, and Foundry reports nothing before a
+campaign ends. The longer campaign above matches the one v2 had (section
+4.4).
+
+### 9.4 Honest limits
+
+Section 4.5 applies unchanged. In addition:
+
+- The lying token is a mock with one switch. The longer campaign made 66
+  payouts while it lied, 41 of them with funds moving anyway (the
+  `reach.lie` line); the stateless property covers that path 20,000 times.
+- No second reviewer has looked at v3. The diff is small and the evidence
+  is the same kind v2 had before its deployment, but v2 also had two
+  adversarial reviews.
+- Cost: every payout makes one `balanceOf` call, two when the transfer
+  fails. Not measured on mainnet tokens.
+
+### 9.5 How to reproduce
+
+```powershell
+$env:HARDHAT_NO_FORK = "1"
+npx hardhat test test/ShieldVault.spec.ts test/ShieldVault.branches.spec.ts test/ShieldVaultV3.spec.ts test/QuantumRecoveryRegistry.spec.ts
+npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,ShieldVaultV3,QuantumRecoveryRegistry}.spec.ts"   # alone: it instruments artifacts/
+$env:PATH = "c:\Users\ebusi\dev\computing\.tools\foundry;$env:PATH"
+forge test --match-path "test/foundry/ShieldVaultV3*" -vv                                       # CI profile
+$env:FOUNDRY_INVARIANT_RUNS = "768"; $env:FOUNDRY_INVARIANT_DEPTH = "250"; $env:FUZZ_SUMMARY = "out/v3-long-summary.txt"
+forge test --match-path "test/foundry/ShieldVaultV3.invariants.t.sol" -vv                       # longer campaign
+npx hardhat run scripts/deploy-shield-vault-v3.ts --network hardhat                             # deploy rehearsal, records nothing
 ```

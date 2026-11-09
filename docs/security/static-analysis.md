@@ -1,6 +1,8 @@
-# Static analysis: ShieldVault v2, QuantumRecoveryRegistry and legacy v3
+# Static analysis: ShieldVault v2 and v3, QuantumRecoveryRegistry and legacy v3
 
-The legacy v3 (wave B) results are in the last section, "Legacy v3".
+ShieldVault v3 has its own section, "ShieldVault v3", after the v2 and
+registry results. The legacy v3 (wave B) results are in the last section,
+"Legacy v3".
 
 Run on 2026-10-27 against the working tree at the `v2026.09.29` source of
 `contracts/shield/ShieldVault.sol` (unchanged since the mainnet deployment
@@ -21,8 +23,8 @@ whole picture is in `tooling-report.md`.
 | Aderyn | 0.6.8 | `aderyn . -s contracts -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol` |
 
 Both tools run in CI (`.github/workflows/security.yml`, job
-`static-analysis`) and locally with `npm run slither:shield` and
-`npm run aderyn:shield`. Slither's 102 detectors and Aderyn's 88 detectors
+`static-analysis`, since 2026-11-09 on ShieldVault v3 as well) and locally
+with `npm run slither:shield` and `npm run aderyn:shield`. Slither's 102 detectors and Aderyn's 88 detectors
 all ran; `--filter-paths node_modules` keeps OpenZeppelin's own code out of
 the result list (its use is in scope, the library is not).
 
@@ -105,6 +107,38 @@ the audit package. 0 High. 5 Low, all on ShieldVault:
 | A3 | Large Numeric Literal | `BPS = 10_000` (line 59) | **Informational, style** | `10_000` with a digit separator is the clearer spelling for basis points; `1e4` would be the suggested form. No behaviour difference. |
 | A4 | Local Variable Shadows State Variable | `Position.feeBps` (line 114) vs the state variable `feeBps` (line 148) | **Informational** | A struct member named like the global rate. Every use is qualified (`p.feeBps` vs `feeBps`), the compiler does not warn, and the two deliberately mean "the rate this position opened with" and "the rate for positions opened from now on". Renaming is not possible without redeploying; the distinction is documented in the struct's NatSpec. |
 | A5 | Loop Contains `require`/`revert` | `_validateConfig` loops (lines 630, 633) | **Informational, by design** | The loop validates a caller-supplied list and must refuse the whole config if any entry is bad; "forgive and continue" is the wrong behaviour for a validator. |
+
+## ShieldVault v3
+
+Run on 2026-11-09 on `feat/shield-vault-v3` against
+`contracts/shield/ShieldVaultV3.sol` (`tooling-report.md` section 9), with
+the tools and settings above (Slither 0.11.6, solc 0.8.35, the deployed
+compiler settings, `--filter-paths node_modules`). Status: internally
+reviewed, tooling-verified, not independently audited, not deployed.
+
+### Verdict
+
+No vulnerability. Slither reports 9 results: the 7 it reports on v2 (the
+same code, so the same triage) and 2 new `calls-loop` results at Low from
+the balance reads v3 adds to `_payOrOwe`. The three rated Medium or above
+are v2's three false positives under v3's names; they are recorded in
+`slither.db.json` (ids below), so CI's `--fail-medium` run on v3 shows 6
+results, exits 0, and fails on anything new. The same three IR warnings
+for OpenZeppelin's `EIP712` constructor and accessors appear (the analysis
+gap above), covered by the same constructor and domain specs, which run
+against v3 too.
+
+| # | Detector | Slither severity | Where | Triage | Reason |
+|---|---|---|---|---|---|
+| T1 | `uninitialized-state` | High / High | `_positions` (line 137) | **False positive**, as S1 | Mapping written through storage pointers. In `slither.db.json` as `8f4d17f6…`. |
+| T2 | `uninitialized-local` | Medium / Medium | `paid` in `executeFallback` (line 488) | **False positive**, as S2 | Zero-started accumulator. `slither.db.json` `15fa63d8…`. |
+| T3 | `uninitialized-local` | Medium / Medium | `sum` in `_validateConfig` (line 659) | **False positive**, as S3 | Zero-started accumulator. `slither.db.json` `04cc0dbd…`. |
+| T4, T5 | `calls-loop` | Low / Medium | `_payOrOwe` (lines 628-636): `token.balanceOf(address(this))` before the transfer and, when it reports failure, after it; reached from the `executeFallback` loop | **Informational, by design** | New in v3: the reads are how a payout reported as failed is owed only what stayed in the vault (checklist audit SV-L1). The loop is bounded by `MAX_BENEFICIARIES = 10`. The listing rule requires a `balanceOf` that never reverts, which the deposit path already relies on, so the reads cannot block a release on a listed token. The transfer in the same loop was already an external call in v2; it goes through SafeERC20's low-level call, which this detector does not report. `testFuzz_gasLimitCannotForceOwed` still holds with the reads in the path. |
+| T6-T8 | `timestamp` | Low / Medium | `executePending`, `executeFallback`, `_verify` | **Informational, by design**, as S4-S6 | Day-scale delays and EIP-712 deadlines. |
+| T9 | `cyclomatic-complexity` | Informational / High | `_validateConfig` (complexity 13) | **Informational**, as S7 | The token check joins the zero and vault checks on the same line; no new branch count. |
+
+Aderyn was not run locally (no Windows build of 0.6.8, see "Legacy v3"
+below); CI runs it on v3 with the v2 files, with the same "no High" gate.
 
 ## What static analysis does not say
 
