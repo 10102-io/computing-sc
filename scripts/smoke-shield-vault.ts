@@ -9,6 +9,8 @@
  * of wall-clock time and are covered by test/ShieldVault.spec.ts.
  *
  *   npx hardhat run scripts/smoke-shield-vault.ts --network sepolia
+ *   $env:SV_VAULT="0x..."   # optional: another vault with the same ABI (v3,
+ *                           # contract-addresses.json ShieldVaultV3)
  */
 import { ethers, network } from "hardhat";
 import { getContracts } from "./utils";
@@ -22,7 +24,7 @@ async function withMargin(est: Promise<any>) {
 async function main() {
   const [deployer] = await ethers.getSigners();
   const book = getContracts()[network.name] as any;
-  const vault = await ethers.getContractAt("ShieldVault", book.ShieldVault.address);
+  const vault = await ethers.getContractAt("ShieldVault", process.env.SV_VAULT || book.ShieldVault.address);
   const registry = await ethers.getContractAt("QuantumRecoveryRegistry", book.QuantumRecoveryRegistry.address);
   const token = await ethers.getContractAt("LegacyToken", book.ERC20Token_R2USD.address);
   const chainId = (await ethers.provider.getNetwork()).chainId;

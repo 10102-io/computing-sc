@@ -3,10 +3,14 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 import { increase } from "./utils/time";
+import { SHIELD_VARIANTS } from "./utils/shieldVariants";
 
 // ShieldVault (docs/plans/shield-vault.md). Each block pins one invariant of
 // the spec's threat model; the property test at the end drives random
 // operation sequences and checks the accounting invariant after each step.
+// The whole suite runs against v2 (deployed) and v3; the few specs where v3
+// behaves differently (the fee) branch on `v.feeOnWithdraw`. v3-only
+// behaviour is in ShieldVaultV3.spec.ts.
 
 const DAY = 86400;
 const NO_VETO = ethers.constants.MaxUint256;
@@ -67,7 +71,7 @@ const SIG_TYPES = {
   ],
 };
 
-describe("ShieldVault", function () {
+for (const v of SHIELD_VARIANTS) describe(v.label, function () {
   this.timeout(180000);
 
   async function deployFixture() {
@@ -76,7 +80,7 @@ describe("ShieldVault", function () {
     const token = await (await ethers.getContractFactory("MockAwkwardERC20")).deploy();
     const other = await (await ethers.getContractFactory("MockAwkwardERC20")).deploy();
     // Fee 0 here, so every pre-fee invariant reads as before; the fee block sets it.
-    const vault = await (await ethers.getContractFactory("ShieldVault")).deploy(
+    const vault = await (await ethers.getContractFactory(v.contract)).deploy(
       registry.address,
       admin.address,
       [token.address],
@@ -588,7 +592,7 @@ describe("ShieldVault", function () {
     assert.equal((await f.vault.fallbackAvailableAt(id)).toNumber(), 0);
   });
 
-  it("the fee is fixed at opening, capped, charged on withdrawals and releases, never on a veto", async () => {
+  it(`the fee is fixed at opening, capped, charged on ${v.feeOnWithdraw ? "withdrawals and releases" : "releases only"}, never on a veto`, async () => {
     const f = await loadFixture(deployFixture);
     await expectRevert(f.vault.connect(f.admin).setFee(51), "FeeTooHigh()");
     await f.vault.connect(f.admin).setFee(25);
@@ -599,8 +603,9 @@ describe("ShieldVault", function () {
     await f.vault.connect(f.owner).requestWithdraw(a.id, E18.mul(4), f.carol.address);
     await increase(30 * DAY);
     await f.vault.executePending(a.id);
-    assert.equal((await f.token.balanceOf(f.carol.address)).toString(), E18.mul(4).mul(9975).div(10000).toString());
-    assert.equal((await f.vault.feesAccrued(f.token.address)).toString(), E18.mul(4).mul(25).div(10000).toString());
+    const withdrawFee = v.feeOnWithdraw ? E18.mul(4).mul(25).div(10000) : ethers.constants.Zero;
+    assert.equal((await f.token.balanceOf(f.carol.address)).toString(), E18.mul(4).sub(withdrawFee).toString());
+    assert.equal((await f.vault.feesAccrued(f.token.address)).toString(), withdrawFee.toString());
 
     await increase(366 * DAY);
     await f.vault.executeFallback(a.id); // 6 E18 at 0.25%, then 60/40
@@ -608,6 +613,10 @@ describe("ShieldVault", function () {
     const alice = (await f.token.balanceOf(f.alice.address)).sub(E18.mul(1000));
     const bob = (await f.token.balanceOf(f.bob.address)).sub(E18.mul(1000));
     assert.equal(alice.add(bob).toString(), releasedNet.toString());
+    assert.equal(
+      (await f.vault.feesAccrued(f.token.address)).toString(),
+      withdrawFee.add(E18.mul(6).mul(25).div(10000)).toString()
+    );
 
     const b = await openWithVeto(f); // opened at 0.5%
     await f.vault.veto(b.id, b.secret, f.recovery.address);
@@ -625,9 +634,15 @@ describe("ShieldVault", function () {
     await f.vault.connect(f.admin).setFee(50);
     const { id } = await openWithVeto(f);
     await f.token.setBlocked(f.treasury.address, true);
-    await f.vault.connect(f.owner).requestWithdraw(id, await f.vault.ALL(), f.owner.address);
-    await increase(30 * DAY);
-    await f.vault.executePending(id);
+    if (v.feeOnWithdraw) {
+      await f.vault.connect(f.owner).requestWithdraw(id, await f.vault.ALL(), f.owner.address);
+      await increase(30 * DAY);
+      await f.vault.executePending(id);
+    } else {
+      // v3 takes its fee on the release only.
+      await increase(366 * DAY);
+      await f.vault.executeFallback(id);
+    }
     await expectRevert(f.vault.collectFees(f.token.address), "blocked", "collect fails alone:");
     await f.vault.connect(f.admin).setFeeRecipient(f.carol.address);
     await f.vault.collectFees(f.token.address);

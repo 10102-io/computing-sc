@@ -1,12 +1,13 @@
 // solidity-coverage configuration (docs/security/tooling-report.md).
 //
 // Default scope is the ShieldVault train: `contracts/shield/ShieldVault.sol`
-// and `contracts/common/QuantumRecoveryRegistry.sol`, which are the two
-// contracts without an independent review. Everything else still compiles
-// (instrumented contracts import it) but is not instrumented, so the report
-// shows real numbers for the two files instead of a wall of mocks.
+// (v2), `contracts/shield/ShieldVaultV3.sol` and
+// `contracts/common/QuantumRecoveryRegistry.sol`, the contracts without an
+// independent review. Everything else still compiles (instrumented contracts
+// import it) but is not instrumented, so the report shows real numbers for
+// those files instead of a wall of mocks.
 //
-//   npm run coverage              ShieldVault + registry, their two spec files
+//   npm run coverage              ShieldVault v2 and v3 + registry, their spec files
 //   COVERAGE_SCOPE=all npm run coverage:all   every contract, every spec
 //
 // viaIR is on in hardhat.config.ts. Instrumentation inflates the code, so
@@ -16,7 +17,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const SHIELD_SCOPE = ["shield/ShieldVault.sol", "common/QuantumRecoveryRegistry.sol"];
+const SHIELD_SCOPE = ["shield/ShieldVault.sol", "shield/ShieldVaultV3.sol", "common/QuantumRecoveryRegistry.sol"];
 
 function listSolFiles(dir, base = dir) {
   const out = [];
