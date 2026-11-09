@@ -24,7 +24,7 @@ Tooling-verified (the evidence is in `tooling-report.md`, sections 8 and
 9, and `static-analysis.md`, "Legacy v3" and "ShieldVault v3"). Not
 independently audited: that is what this document is for.
 
-**Commit to audit:** `COMMIT_TO_AUDIT` on branch `feat/wave-b-final` of
+**Commit to audit:** `8f4b8db2fcbf744e01711b1de453fefbec08b559` on branch `feat/wave-b-final` of
 `computing-sc` (rounds 10 and 11 and ShieldVault v3, merged with `dev`;
 the legacy contracts at `15bd140` equal `4f58e6b`). Later commits on the
 branch touch documentation only, unless a fix list says otherwise.
