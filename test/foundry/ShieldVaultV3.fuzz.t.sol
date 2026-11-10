@@ -358,7 +358,9 @@ contract ShieldVaultV3Fuzz is ShieldVaultV3Base {
     vm.assume(forgerPk != paperPk);
     address paper = vm.addr(paperPk);
     vm.assume(paper.code.length == 0 && paper != address(vault) && paper != address(0));
-    vm.assume(to != address(0) && to != address(vault) && to != paper);
+    // The token's own contract as destination is refused before the signature
+    // is checked (testFuzz_tokenRefusedAsPayee), so it cannot test the key here.
+    vm.assume(to != address(0) && to != address(vault) && to != paper && to != address(token));
     vm.assume(pusher != paper && pusher != address(0) && pusher != address(vault));
     address other = makeAddr("other");
     vm.assume(paper != other);

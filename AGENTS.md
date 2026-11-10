@@ -137,10 +137,11 @@ you add is still the whole safety net for that path.
   (lowercase `feat`/`fix`/`chore`/`docs`/`refactor`, no process words).
   Feature branches carry detail while in flight; milestone branches
   (`feat/create-flow-v2`, `feat/legacy-pull-vault`) are kept.
-- `main` here rejects force pushes (branch protection). So amend the day's
-  commit only while it is not yet on `main`; once it has been fast-
-  forwarded, further same-day work is a second commit, not an amend.
-  Fast-forward `main` at the end of the day, not after every push.
+- Same-day work is always one commit, even after `main` was fast-
+  forwarded: amend the day's commit on `dev` and re-point `main` to it
+  with `--force-with-lease` (force pushes are allowed on `main` since
+  2026-11-10, founder). Fast-forward `main` at the end of the day, not
+  after every push.
 - Mainnet deploys that ship from `dev` before a tag get an
   `[Unreleased on main, already live on mainnet]` note in `CHANGELOG.md`.
 
