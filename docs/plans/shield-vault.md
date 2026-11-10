@@ -14,6 +14,158 @@ new deployment. v2 went live on 2026-09-29: mainnet
 (`contract-addresses.json` `ShieldVault`; v1 kept as `ShieldVaultV1`). Adversarially reviewed twice,
 not independently audited (package: `shield-vault-audit.md`).
 
+**v3 is built, not deployed (2026-11-09, `feat/shield-vault-v3`).** v2 has
+never held a position on mainnet, and its fee for new holdings is 0 since
+the founder decision of 2026-11-09 below. v3 is internally reviewed and
+tooling-verified (`docs/security/tooling-report.md` section 9), not
+independently audited and with no adversarial review of its own yet.
+
+## v3 (2026-11-09)
+
+Founder decision, 2026-11-09: the fee is taken only when a holding is
+released to the named people after the owner's silence, never when the
+owner takes their own money back (a withdrawal, a cancel, the recovery
+sheet, a change), and never twice. v2 charges its rate on withdrawals as
+well and cannot tell an owner's own withdrawal from a release to heirs, so
+v2's rate for new holdings is 0 and v3 is a new, non-upgradeable
+deployment: `contracts/shield/ShieldVaultV3.sol`. `ShieldVault.sol` is not
+edited, so the deployed v2 still reproduces from this repository. Tests:
+`test/ShieldVaultV3.spec.ts` for what differs; the v2 specs
+(`ShieldVault.spec.ts`, `ShieldVault.branches.spec.ts`) run against both
+versions, and the Foundry fuzz and invariant suites have v3 copies
+(`test/foundry/ShieldVaultV3*`).
+
+What changes, and why:
+
+- **The fee is taken on releases only.** `executeFallback` charges the
+  holding's rate once, on the balance it releases (floor, event
+  `FeeCharged`), before the split. `executePending` (withdrawals, `ALL`
+  included), `veto`, changes, cancels and both claims charge nothing.
+  A held or failed share is recorded net, so `claimOwed` and
+  `claimOwedWithSig` pay it whole and never charge twice. Unchanged:
+  `MAX_FEE_BPS` 50, the rate fixed into each holding at `open`, the
+  caller's `maxFeeBps` bound, the Safe setting the rate for later
+  holdings. Launch rate 25 bps (the deploy script's default).
+  `Withdrawn` now carries the whole amount. An owner can still pass money
+  to someone fee-free while alive, by withdrawing to that person's
+  address: that is the owner's own money going where the owner sends it.
+- **A payout the token reports as failed owes only what stayed in the
+  vault** (checklist audit SV-L1). `_payOrOwe` reads the vault's balance
+  before the transfer and, when the transfer reports failure, again after
+  it, and records as owed only the part that did not leave. A token that
+  moves the funds and still returns `false` (the Tether Gold pattern) is no
+  longer paid a second time, from other holdings, by a later claim; a
+  partial move owes the rest; a plain failure owes it all, as before.
+  Cost: one `balanceOf` call per payout, two when it fails. The listing
+  rule gains one clause: `balanceOf` never reverts (the deposit path
+  already relies on it).
+- **The token's own contract is refused as a payee wherever one is chosen
+  at call time.** `requestWithdraw` and `claimOwedWithSig` refuse it as
+  destination (`InvalidAddress`), `open` and `requestChange` as a
+  beneficiary (`InvalidBeneficiaries`), as they already refused zero and
+  the vault. What is sent there is lost, or owed to the token for good.
+  The app checks the same before sending (`assertNotTokenContract`); the
+  contract now holds for every caller. `collectFees` refuses to pay while
+  `feeRecipient` is the token's own contract (`InvalidAddress`; review of
+  2026-11-09, Info): the fees wait until the Safe sets another recipient,
+  since a token added later may equal the recipient already set. Not the veto's recovery wallet: it
+  is inside the commitment, so the vault cannot see it before the veto,
+  and refusing it at the veto would make the stop fail. The app refuses
+  it when the sheet is made.
+- **Comments say what the code does.** `collectFees` pays the recipient at
+  the time of collection (so a change redirects fees accrued earlier); a
+  client holding only a sheet filters `PositionOpened` by the owner printed
+  on it, since a decoy can copy the public digest (both were Info items
+  of the checklist audit).
+
+Unchanged on purpose: every function, event, error and struct. v3's ABI is
+v2's, fragment for fragment (tested), so the app's generated ABI reads and
+writes both vaults. The constructor, the admin surface, the delays, the
+signed actions and their nonces are v2's. So are the EIP-712 domain
+(`"10102 ShieldVault"`, version `"2"`) and the veto tag
+`10102.ShieldVault.veto.v2`: both bind the vault's address, so nothing
+signed or committed for v2 verifies on v3, and the app's signing and sheet
+code works for v3 with only the address changed. No new preimage format
+enters the registry's scheme 5 either (next section).
+
+Considered and left out: the other Info items of the checklist audit need
+no contract change. ERC-1271 wallets are trusted for their own holdings
+only, by design. A holding with neither a sheet nor a fallback locks for
+good if its key is lost; that is a warning for the app, because any
+on-chain way out would be a way in for someone else. v2's known
+limitations below hold for v3 unchanged.
+
+### Scheme 5 carries two preimage formats
+
+`QuantumRecoveryRegistry` scheme 5 ("hash preimage") holds two kinds of
+digest, which only their registration tells apart (checklist audit QR-L):
+
+- a ShieldVault veto digest, `keccak256(abi.encode(keccak256("10102.ShieldVault.veto.v2"),
+  chainId, vault, owner, secret, recoveryTo))`, registered with the vault
+  as `recoveryContext`. v1, v2 and v3 all register this way (v1 with its
+  own tag and no owner); and
+- the dashboard's account recovery digest, a bare `keccak256(secret)`.
+
+A reader counting an account's recovery commitments must leave out every
+entry whose `recoveryContext` is a ShieldVault (v1, v2 and v3).
+
+### v3: the switch
+
+Nothing here has run. The founder does each step with the keys it needs;
+the deployer key never goes to Railway.
+
+1. **Deploy.** `scripts/deploy-shield-vault-v3.ts`, Sepolia first, then
+   mainnet: owner and fee recipient are the governance Safe at
+   construction (no ownership transfer), release fee 25 bps, the v2 token
+   set, recorded under `ShieldVaultV3` (`ShieldVault` stays v2). The script
+   checks owner, pending owner, registry, recipient, rate, cap, tokens and
+   the signing domain, and verifies on Etherscan. On Sepolia, run the smoke
+   script against it (`$env:SV_VAULT=<v3>`, `scripts/smoke-shield-vault.ts`).
+   Also verify on Sourcify: the clear-signing build reads its ABIs there.
+   Then `npm run sync-ui` and copy: the subgraph's `networks.json` gains
+   the key (the subgraph indexes no ShieldVault event, so nothing else
+   changes there).
+   Then `npm run sync-ui` and copy: the subgraph's `networks.json` gains
+   the key (the subgraph indexes no ShieldVault event, so nothing else
+   changes there).
+2. **The Safe pauses deposits on v2**: `scripts/shield-vault-admin.ts` with
+   `SV_ACTION=pause` (its default vault is `ShieldVault`, v2), or
+   `SV_PRINT=1` for Safe{Wallet}. This stops new opens and top-ups only;
+   every v2 exit keeps working. v2 has no mainnet holding, so the timing
+   is free; doing it right before the app release of step 3 spares the
+   live create flow a paused vault.
+3. **The app opens new holdings in v3 and keeps reading v2.** The address
+   constants become a pair per chain (v3 for opens, both for reads):
+   `sync-ui.ts` gains a `ShieldVaultV3` key next to `ShieldVault`, and the
+   ABI can come from either artifact (identical). Holding ids restart at 1
+   in v3, so everything that names a holding by chain and id needs the
+   vault as well: the status page route `/shield/:chainId/:id` (v2 links
+   already printed or emailed must keep resolving to v2), the dashboard
+   lists and the worker's records. Sheets and heir cards already carry the
+   vault address. Withdrawal screens show no fee for a v3 holding; the
+   create flow says the fee is taken only on a release to the named
+   people. `useQuantumReadiness` leaves out v3's veto digests (add v3 to
+   its vault list). The `InvalidAddress` wording adds "or the token
+   contract".
+4. **The worker's shield watch covers both.** `services/reminder-worker`
+   gets the per-chain list of vaults (v2 and v3, from
+   `contract-addresses.json`) as a code default in `config.ts`, in place of
+   `SHIELD_VAULT_ADDRESS` (kept only as an override; no new Railway
+   variable). The watch, the gas relay and `ops-status` iterate
+   the list and key their records by vault and id; the relay's domain
+   check (`"10102 ShieldVault"`, `"2"`) already accepts v3.
+5. **Clear signing and wallet trust for the new address.** A new
+   descriptor `erc7730/registry/10102/calldata-ShieldVaultV3.json` with v3's
+   mainnet deployment: the same functions as v2's, but the withdrawal
+   amount is the amount received (not "Before fee"), the completion intent
+   takes no fee, the release intent does, and "Maximum exit fee" becomes
+   "Maximum release fee" (`erc7730/README.md`, Regenerating; a PR to the
+   registry from the `10102-labs` fork). Submit the address to Blockaid
+   and MetaMask as the dapp's contract, as for v2.
+6. **Docs and records.** `CHANGELOG.md` entry, `docs/CONTRACTS_REFERENCE.md`,
+   the round plan's execution log, and the audit package's scope note
+   (v3 is the contract new holdings go to).
+
 ## v2 (2026-09-28)
 
 What changed, and why, in one place (tests: `test/ShieldVault.spec.ts`):
@@ -191,7 +343,9 @@ would record the amount as owed as well, and `claimOwed` would pay it a
 second time from the other positions (checklist audit 2026-11-02, L-1).
 USDC and USDT are upgradeable; if either ever changes that behaviour,
 the Safe delists it (which stops deposits only) and a new vault is
-deployed.
+deployed. v3 does not rely on a truthful `false`: it owes only what
+stayed in the vault. It relies instead on a `balanceOf` that never
+reverts, which every vault's deposit path already needs.
 
 ## Admin surface
 
@@ -201,6 +355,7 @@ for positions opened later only) and `setFeeRecipient(address)` (which
 also receives fees accrued but not yet collected). Nothing else. No
 upgrade path: a bug fix is
 a new deployment and every position can leave through its own delay.
+v3 has the same surface; its `setFee` sets the release fee.
 
 ## Out of scope
 

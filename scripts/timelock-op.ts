@@ -47,7 +47,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { ethers, network, deployments } from "hardhat";
+import { ethers, network, deployments, artifacts } from "hardhat";
 import * as dotenv from "dotenv";
 import { getContracts } from "./utils";
 import { execViaSafe } from "./utils/safe";
@@ -113,11 +113,15 @@ async function main() {
     throw new Error("Set TL_ACTION to schedule | status | execute | cancel | print.");
   }
 
+  // print and status only read; they run without a key in .env.
   const [signer] = await ethers.getSigners();
+  const readOnly = action === "print" || action === "status";
+  if (!signer && !readOnly) throw new Error(`TL_ACTION=${action} sends a transaction: set the key in .env (print and status need none).`);
   const book = getContracts()[network.name];
   const timelockAddr = book?.UpgradeTimelock?.address;
   if (!timelockAddr) throw new Error(`No UpgradeTimelock recorded for ${network.name}.`);
-  const timelock = await ethers.getContractAt("UpgradeTimelock", timelockAddr, signer as any);
+  const timelockAbi = (await artifacts.readArtifact("UpgradeTimelock")).abi;
+  const timelock = new ethers.Contract(timelockAddr, timelockAbi, (signer ?? ethers.provider) as any);
   const viaSafe = process.env.TL_VIA_SAFE === "1";
   const safeAddr: string | undefined = (book as any)?.governance?.safe;
   if (viaSafe && !safeAddr) throw new Error(`TL_VIA_SAFE set but no governance.safe recorded for ${network.name}.`);
@@ -138,7 +142,7 @@ async function main() {
 
   console.log(`Network:   ${network.name}`);
   console.log(`Timelock:  ${timelockAddr}  (minDelay ${delay.toString()} s)`);
-  console.log(`Signer:    ${signer.address}${viaSafe ? `  via Safe ${safeAddr}` : ""}`);
+  console.log(`Signer:    ${signer ? signer.address : "none (read-only)"}${viaSafe ? `  via Safe ${safeAddr}` : ""}`);
   console.log(`Operation: ${isBatch ? `batch of ${calls.length}` : "single"}`);
   calls.forEach((c, i) => console.log(`  [${i}] ${c.label}\n      target ${c.target}\n      data   ${c.data}`));
   console.log(`  salt: ${salt}`);

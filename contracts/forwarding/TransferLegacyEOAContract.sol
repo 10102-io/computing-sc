@@ -46,6 +46,8 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   error AlreadyBeneficiary();
   error DelayAndDistributionInvalid();
   error SwapFailed();
+  /// @dev Never thrown since the fee stopped being swapped; kept in the ABI
+  /// because deployed clones still revert with it.
   error InvalidPaymentContract();
   error ZeroAmountOutMin();
   error AdminFeeAboveCap(uint256 fee);
@@ -53,6 +55,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
   error EthTransferFailed();
   error UnswapNeedsSoleRecipient();
   error TooManyBeneficiaries();
+  error OnlySelf();
 
   /* State variable */
   uint128 public constant LEGACY_TYPE = 3;
@@ -105,31 +108,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       revert LegacyIsDeleted();
     }
     _;
-  }
-
-  function _swapAdminFee(address token, uint256 amountIn) internal {
-    if (uniswapRouter == address(0) || weth == address(0) || paymentContract == address(0)) {
-      revert InvalidPaymentContract();
-    }
-
-    // Approve token for router
-    IERC20(token).forceApprove(uniswapRouter, amountIn);
-
-    address[] memory path = new address[](2);
-    path[0] = token;
-    path[1] = weth;
-
-    try
-      IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
-        amountIn,
-        0, // accept any amount of ETH
-        path,
-        paymentContract,
-        block.timestamp + 300
-      )
-    {} catch {
-      IERC20(token).safeTransfer(paymentContract, amountIn);
-    }
   }
 
   /**
@@ -780,9 +758,6 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       if (totalAmountEth > 0) {
         uint256 fee = (totalAmountEth * adminFeePercent) / 10000;
         uint256 distributableEth = totalAmountEth - fee;
-        if (fee > 0) {
-          _transferEthToBeneficiary(paymentContract, fee);
-        }
 
         uint256 processedAmountETH = 0;
         for (uint256 i = 0; i < beneficiaries.length ; ) {
@@ -800,6 +775,10 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           unchecked {
             i++;
           }
+        }
+        // After the beneficiaries, as for tokens below.
+        if (fee > 0) {
+          _transferEthToBeneficiary(paymentContract, fee);
         }
       }
     }
@@ -824,21 +803,7 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
       if (totalAmount > 0) {
         uint256 fee = (totalAmount * adminFeePercent) / 10000;
         uint256 distributable = totalAmount - fee;
-      
-        if (fee > 0) {
-          uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-          // The fee pull rides the same guarded rail helper as beneficiary
-          // transfers: a non-pullable fee (revoked underlying approval,
-          // stale rail, quirky token) forfeits the fee for this token
-          // instead of reverting — and thereby bricking — the whole claim
-          // batch. Actual receipts are measured, never assumed.
-          _transferErc20ToBeneficiary(token, ownerAddress, address(this), fee, route, vault);
-          uint256 actualFeeReceived =  IERC20(token).balanceOf(address(this)) - balanceBefore;
-          if (actualFeeReceived > 0) {
-            _swapAdminFee(token, actualFeeReceived);
-          }
-        }
-        
+
         uint256 processedAmountERC20 = 0;
         for (uint256 j = 0; j < beneficiaries.length; ) {
           uint256 amount = j != beneficiaries.length - 1
@@ -853,6 +818,15 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
           unchecked {
             j++;
           }
+        }
+        // The fee goes from the owner's wallet to Payment as it is, never
+        // swapped, on the rail the payout uses, after the beneficiaries: a
+        // token that takes more than the amount, under a finite allowance,
+        // cannot leave the last beneficiary short. A fee that cannot be
+        // pulled (reverting or blocklisting token, revoked approval) is not
+        // collected and never reverts the claim; it is not owed later.
+        if (fee > 0) {
+          _transferErc20ToBeneficiary(token, ownerAddress, paymentContract, fee, route, vault);
         }
       }
       unchecked {
@@ -945,11 +919,24 @@ contract TransferEOALegacy is GenericLegacy, ITransferEOALegacy {
         return 0;
       }
     }
-    // SafeERC20's try variant: tokens that return nothing (mainnet USDT) count
-    // as success, a `false` return or a revert counts as a failed transfer
-    // (0, never a claim-wide revert). A bare `try IERC20.transferFrom` reverted
-    // the whole claim on USDT at the bool decode (checklist audit M-2).
-    return IERC20(erc20Address_).trySafeTransferFrom(from_, to_, amount_) ? amount_ : 0;
+    // Through `pullDirect` on this contract, so a token that moves funds and
+    // returns `false` has the move rolled back with the failure: a transfer
+    // counted as 0 must have moved nothing. Tokens that return nothing
+    // (mainnet USDT) count as success; a failure is 0, never a claim-wide
+    // revert (checklist audit M-2).
+    try this.pullDirect(erc20Address_, from_, to_, amount_) {
+      return amount_;
+    } catch {
+      return 0;
+    }
+  }
+
+  /// @dev The direct rail's transfer, callable only by this contract (see
+  /// `_transferErc20ToBeneficiary`). Holds no guard of its own, so the v3
+  /// claim guard around its caller does not refuse it.
+  function pullDirect(address token_, address from_, address to_, uint256 amount_) external {
+    if (msg.sender != address(this)) revert OnlySelf();
+    IERC20(token_).safeTransferFrom(from_, to_, amount_);
   }
 
  /**

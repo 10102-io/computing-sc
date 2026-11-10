@@ -23,17 +23,19 @@ npx hardhat test                        # mocha + chai, ~22 spec files under tes
 npx hardhat run scripts/dump-storage-layouts.ts   # layout diff before any impl swap
 npm run sync-ui:check                   # frontend ABI/address drift
 
-# ShieldVault and QuantumRecoveryRegistry evidence (docs/security/). The npm
-# scripts use POSIX env syntax for CI; in PowerShell set the variable first.
-$env:HARDHAT_NO_FORK='1'; npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,QuantumRecoveryRegistry}.spec.ts"
+# ShieldVault (v2 and v3) and QuantumRecoveryRegistry evidence (docs/security/).
+# The npm scripts use POSIX env syntax for CI; in PowerShell set the variable
+# first. Coverage instruments artifacts/ in place: run no other Hardhat command
+# meanwhile, or the later specs count against uninstrumented code.
+$env:HARDHAT_NO_FORK='1'; npx hardhat coverage --testfiles "test/{ShieldVault,ShieldVault.branches,ShieldVaultV3,QuantumRecoveryRegistry}.spec.ts"
 git submodule update --init             # once: lib/forge-std for the fuzz suite
 forge test --match-path "test/foundry/**" -vv   # needs Foundry v1.8.6
-slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-remaps "@openzeppelin=node_modules/@openzeppelin" --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" --filter-paths node_modules --triage-database slither.db.json --fail-medium
+slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-remaps "@openzeppelin=node_modules/@openzeppelin" --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" --filter-paths node_modules --triage-database slither.db.json --fail-medium   # and ShieldVaultV3.sol
 ```
 
 CI (`.github/workflows/security.yml`, since 2026-10-29) runs the Hardhat
 suite, the `deployments/` pointer audit, coverage with thresholds for
-ShieldVault and the registry, Slither and Aderyn, and the Foundry fuzz and
+ShieldVault (v2 and v3) and the registry, Slither and Aderyn, and the Foundry fuzz and
 invariant suite on every PR and every push
 to `dev` and `main`. The checks are informational, not required: a red run
 blocks nothing, `[skip ci]` in a commit message skips one, and the workflow
@@ -50,7 +52,12 @@ you add is still the whole safety net for that path.
   Jan 2025 report, `Security_Review_Computing_Will.pdf`) and CDSecurity
   (full suite incl. timelocks and premium, Oct 2025). Later riders
  (LegacyPullVault, auto-renew, QuantumRecoveryRegistry, UpgradeTimelock,
- ShieldVault) had adversarial review, not a third firm audit. Say so plainly when a
+ ShieldVault) had adversarial review, not a third firm audit, and so did
+ wave A of the 2026-11 train (live 2026-11-07: LegacyPullVaultV2, the new
+ clone, the timelocked router levers, PremiumRegistry coupons and
+ referrals, the PremiumSetting and verifier changes), which also had our
+ own checklist pass. Wave B (legacy v3, NftCollectionWhiteList) is
+ Sepolia-only until its external review. Say so plainly when a
   change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
@@ -73,7 +80,10 @@ you add is still the whole safety net for that path.
  Safe too, and the deployer holds none (`scripts/handover-payment-roles.ts`).
  The deployer keeps day-to-day ops (plan prices, Premium grants, banners,
  token list); the Safe is co-admin there and owns PremiumSetting
- (`scripts/add-safe-admin.ts`), so it can revoke a leaked deployer key. Scripts drive the
+ (`scripts/add-safe-admin.ts`), so it can revoke a leaked deployer key.
+ Since 2026-11-07 the Safe is also the EOA router's code admin, and the
+ router's rotation levers (`setLegacyImplementation`, `setPullVault`, a
+ non-zero attestor) answer only to `UpgradeTimelock`. Scripts drive the
  threshold-1 Safe with `TL_VIA_SAFE=1`; once it is 2-of-3, use
  `TL_ACTION=print` and Safe{Wallet}.
 - Storage: append only, never reorder or retype. The timelock vaults and
@@ -86,7 +96,9 @@ you add is still the whole safety net for that path.
   hot swap.
 - Claims, check-ins, deletes and withdrawals are never pausable. Keep it
   that way; `setCreatePaused` is the only circuit breaker and it stops new
-  creates only.
+  creates only. The other instant lever, the attestor kill switch
+  (`setActivityAttestor(0)`), only stops automatic renewals. Both are the
+  Safe's, through `scripts/safe-call.ts`.
 
 ## Conventions that exist for a reason
 
@@ -148,8 +160,14 @@ you add is still the whole safety net for that path.
 - `docs/security/checklist-audit-2026-11.md`: the checklist audit of the
   unaudited riders, with each finding's status; its "Left" column is the
   input to the next contract train.
-- `docs/plans/round-2026-09.md`: the current round (governance, destination
+- `docs/plans/train-2026-11.md`: the current contract train (wave A live
+ 2026-11-07, wave B on Sepolia until its external review), with its
+ execution log, runbooks and the follow-up table for the sibling repos.
+ The cross-repo order of work is `computing/docs/plans/round-2026-11.md`.
+- `docs/plans/round-2026-09.md`: the 2026-09 round (governance, destination
  wallet, the trains behind them) with its execution log at the top.
+- `scripts/safe-call.ts`: the Safe's instant emergency stops (pause new
+  creates, stop renewals), printed for Safe{Wallet} or sent at threshold 1.
 - `scripts/timelock-op.ts`, `scripts/harden-governance.ts`,
  `scripts/verify-governance.ts`, `scripts/deploy-impl.ts`,
  `scripts/dump-storage-layouts.ts`, `scripts/refresh-impl-artifacts.ts`,

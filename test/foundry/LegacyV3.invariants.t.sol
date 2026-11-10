@@ -30,7 +30,8 @@ contract LegacyV3Invariants is Test {
     h.boot();
     legacy = h.legacy();
     targetContract(address(h));
-    bytes4[] memory s = new bytes4[](18);
+    bytes4[] memory s = new bytes4[](19);
+    s[18] = h.feeRefusal.selector;
     s[17] = h.combinedEdit.selector;
     s[15] = h.die.selector;
     s[16] = h.claimAgain.selector;
@@ -89,21 +90,25 @@ contract LegacyV3Invariants is Test {
 
   /// @dev V2 and V3 in per-share mode: the records add up (the shares'
   /// `released` sum to `totalReleased`), and no share has received more
-  /// than its percentage of everything that token ever brought in.
+  /// than its percentage of everything that token ever brought in. A fee
+  /// that could not reach Payment is counted as released but stays in the
+  /// pot (K-13), so the bound is the inflows plus those uncollected fees;
+  /// the funds themselves are checked exactly by `invariant_conservation`.
   function invariant_perShareEntitlement() public view {
     for (uint256 t; t < 4; ++t) {
       address token = t < 3 ? h.tokenAt(t) : address(0);
+      uint256 everIn = h.ghostIn(token) + h.ghostFeeUncollected(token);
       uint256 sum;
       for (uint256 i; i < h.everShareCount(); ++i) {
         address s = h.everShares(i);
         uint256 r = legacy.released(token, s);
         sum += r;
         // Shares change only before activation, when nothing was claimed yet.
-        assertLe(r, (h.ghostIn(token) * legacy.getDistribution(1, s)) / 1_000_000, "a share received more than its running-total entitlement");
+        assertLe(r, (everIn * legacy.getDistribution(1, s)) / 1_000_000, "a share received more than its running-total entitlement");
         assertEq(r, h.mReleased(token, s), "released differs from the model");
       }
       assertEq(sum, legacy.totalReleased(token), "released does not add up to totalReleased");
-      assertLe(legacy.totalReleased(token), h.ghostIn(token), "released more than ever came in");
+      assertLe(legacy.totalReleased(token), everIn, "released more than ever came in");
     }
   }
 

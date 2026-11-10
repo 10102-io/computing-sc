@@ -232,7 +232,7 @@
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
       ],
       "eoaRouterCodeAdmin": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
-      "_eoaRouterCodeAdminNote": "Sepolia TransferEOALegacyRouter _codeAdmin until the train. The router is at initializer counter 3, so its live initializeV3 is callable by anyone until the batch runs (testnet only); train-2026-11.ts fails if the live value differs.",
+      "_eoaRouterCodeAdminNote": "Sepolia TransferEOALegacyRouter _codeAdmin before the train (counter 3). Since wave A ran on Sepolia (2026-11-05) the code admin is the Safe at counter 5; this field is the pre-train value, compared only by verify-governance.ts while the router still runs its pre-train implementation and by train-2026-11.ts for wave A.",
       "activityAttestor": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
       "_activityAttestorNote": "Sepolia rehearsal attestor (the maintainer EOA), read 2026-11-04."
     },
@@ -363,7 +363,7 @@
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
       "implementation": "0x90A3574a88FB5cbEb3E220a212d94Bf3D1abBA69",
-      "_note": "RETIRED 2026-06-02 (Phase B): Chainlink Automation/Functions scheduling moved off-chain to the reminder-worker. Contract remains on-chain but is no longer driven by any Chainlink upkeep — PremiumSetting now emits triggers consumed off-chain and timing is read from PremiumReminderView. Pending: cancel the mainnet Automation upkeep + Functions subscription and withdraw LINK."
+      "_note": "RETIRED 2026-06-02 (Phase B): Chainlink Automation/Functions scheduling moved off-chain to the reminder-worker. Contract remains on-chain but is no longer driven by any Chainlink upkeep — PremiumSetting now emits triggers consumed off-chain and timing is read from PremiumReminderView. Teardown done: the three Automation upkeeps were cancelled 2026-06-02 and hold 0 LINK, the manager holds 0 LINK, Functions subscription 141 no longer exists (verified on chain 2026-11-09)."
     },
     "PremiumMailRouter": {
       "address": "0x78D8eF582A0F1d1d817Cf25E03E4cAA3EB420F32",
@@ -456,7 +456,7 @@
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
       ],
       "eoaRouterCodeAdmin": "0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630",
-      "_eoaRouterCodeAdminNote": "TransferEOALegacyRouter _codeAdmin (storage) until the 2026-11 train's initializeV4 hands it to the Safe; train-2026-11.ts and verify-governance.ts compare the live value with it.",
+      "_eoaRouterCodeAdminNote": "TransferEOALegacyRouter _codeAdmin (storage) before the 2026-11 train. Since initializeV4 on 2026-11-07 the code admin is the Safe at counter 5; this field is the pre-train value, compared only by verify-governance.ts while the router still runs its pre-train implementation and by train-2026-11.ts for wave A.",
       "activityAttestor": "0x0925B872a4F4a39544A5a191dB67C42E30240a1E",
       "_activityAttestorNote": "EOA router activityAttestor, rotated 2026-10-22 after the Railway incident (computing/docs/OPS-CHECKLIST.md); replaces 0x4B05aC1b0BF109A9CE30dCEc2831990d694d74D0 (2026-07-30). Checked by verify-governance.ts."
     },

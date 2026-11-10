@@ -3,12 +3,14 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 import { increase } from "./utils/time";
+import { SHIELD_VARIANTS } from "./utils/shieldVariants";
 
 // Branch coverage for ShieldVault (docs/security/tooling-report.md). The
 // 2026-09-29 coverage run of ShieldVault.spec.ts left these paths dark:
 // every guard that only a malformed call reaches, the reentrancy branch of
 // each `nonReentrant` function, `domainSeparator`, and the `_isHeld` miss.
 // Each block here lights one of them and pins what the guard protects.
+// Runs against v2 and v3 (test/utils/shieldVariants.ts).
 
 const DAY = 86400;
 const NO_VETO = ethers.constants.MaxUint256;
@@ -57,14 +59,14 @@ const CLAIM_TYPES = {
   ],
 };
 
-describe("ShieldVault: branch coverage", function () {
+for (const v of SHIELD_VARIANTS) describe(`${v.label}: branch coverage`, function () {
   this.timeout(180000);
 
   async function deployFixture() {
     const [admin, owner, alice, bob, thief, relayer, recovery, carol, treasury] = await ethers.getSigners();
     const registry = await (await ethers.getContractFactory("QuantumRecoveryRegistry")).deploy();
     const token = await (await ethers.getContractFactory("MockAwkwardERC20")).deploy();
-    const vault = await (await ethers.getContractFactory("ShieldVault")).deploy(
+    const vault = await (await ethers.getContractFactory(v.contract)).deploy(
       registry.address,
       admin.address,
       [token.address],
@@ -101,7 +103,7 @@ describe("ShieldVault: branch coverage", function () {
 
   it("the constructor refuses a zero registry and the setters refuse zero or self addresses", async () => {
     const f = await loadFixture(deployFixture);
-    const Vault = await ethers.getContractFactory("ShieldVault");
+    const Vault = await ethers.getContractFactory(v.contract);
     await expectRevert(
       Vault.deploy(ethers.constants.AddressZero, f.admin.address, [f.token.address], f.treasury.address, 0),
       "InvalidAddress()",
@@ -265,7 +267,7 @@ describe("ShieldVault: branch coverage", function () {
     const [admin, owner, alice, treasury, recovery] = await ethers.getSigners();
     const registry = await (await ethers.getContractFactory("QuantumRecoveryRegistry")).deploy();
     const token = await (await ethers.getContractFactory("MockReentrantShieldToken")).deploy();
-    const vault = await (await ethers.getContractFactory("ShieldVault")).deploy(registry.address, admin.address, [token.address], treasury.address, 25);
+    const vault = await (await ethers.getContractFactory(v.contract)).deploy(registry.address, admin.address, [token.address], treasury.address, 25);
     await token.mint(owner.address, E18.mul(1000));
     await token.connect(owner).approve(vault.address, ethers.constants.MaxUint256);
     await vault.connect(owner).open(token.address, E18.mul(10), config(7, 365, [alice.address], [10000]), NO_VETO, MAX_FEE);
@@ -313,6 +315,7 @@ describe("ShieldVault: branch coverage", function () {
     assert.equal((await token.reentrySucceeded()).toNumber(), 0);
     assert.equal((await token.lastRevertData()).slice(0, 10), guardSelector);
     assert.equal((await vault.positionOf(1)).pending.kind, 0);
-    assert.equal((await vault.feesAccrued(token.address)).toString(), E18.mul(25).div(10000).toString());
+    const fee = v.feeOnWithdraw ? E18.mul(25).div(10000) : ethers.constants.Zero;
+    assert.equal((await vault.feesAccrued(token.address)).toString(), fee.toString());
   });
 });

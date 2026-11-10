@@ -49,11 +49,11 @@ No Critical or High. Severity is the reviewer's, confirmed here.
 | M-1 | An activated legacy stays bound in the vault (release happens on delete only); its beneficiaries can front-run the owner's next create, use the new permit, and pull the new allowances through the old legacy. | No such binding | | app: when `boundLegacy(owner)` is not live, create with an empty bundle first (re-binds), then set allowances; contract: in feat/train-2026-11, not deployed |
 | M-2 | The clone's direct ERC-20 rail is `try IERC20.transferFrom` with a `bool` return: USDT returns nothing, the decode failure is not caught, and the whole claim (and its fee pull) reverts. In every EOA clone since 2025-08. | No direct USDT allowance | | contract: in feat/train-2026-11, not deployed; app: route USDT through Permit2 only |
 | M-3 | The code admin key moves `setPullVault` / `setLegacyImplementation` without the timelock; the app read the vault live and signed unlimited permits for whatever it returned. | Key not compromised | App pins the vault (`pullVault` in the generated addresses, `PullVaultMismatchError`); `verify-governance.ts` checks vault and implementation; the worker alerts on `PullVaultSet`, `ActivityAttestorSet` and an implementation change; `upgrade-timelock.md` corrected | router: in feat/train-2026-11, not deployed; app: pin the implementation before direct approvals |
-| M-4 | The unswap claim swaps a non-WETH storage token with the caller's minimum, which the app set to 0: sandwichable. | 1 legacy, nothing pullable now | App quotes the router (`getTokenToEthAmountOut`) and accepts at most 2% less; the claim card points to the no-swap claim | contract: in feat/train-2026-11, not deployed (`_swapAdminFee` unchanged by decision, see `docs/plans/train-2026-11.md`) |
+| M-4 | The unswap claim swaps a non-WETH storage token with the caller's minimum, which the app set to 0: sandwichable. | 1 legacy, nothing pullable now | App quotes the router (`getTokenToEthAmountOut`) and accepts at most 2% less; the claim card points to the no-swap claim | contract: in feat/train-2026-11, not deployed (`_swapAdminFee` unchanged by decision, see `docs/plans/train-2026-11.md`); since round 10 (2026-11-09) v3 and the next base clone send the fee to Payment unswapped, the deployed wave A clone keeps the swap |
 | L-1 (vault) | Delete revokes only the ERC-20 approvals, never the Permit2 allowance to the vault, which the owner's next legacy inherits. | | | app: Permit2 `lockdown` per (token, vault) on delete |
 | L-2 | A ready timelock operation never expires and anyone may execute it; `verify-governance.ts` reported pending ones as fine. | None open | Script fails on a ready, unexecuted operation | cancel superseded operations as a rule (runbook) |
 | SV-L1 | ShieldVault's listing rule did not require a truthful transfer return value; a token that moves funds but returns `false` would be paid twice through `owed`. | Not with wstETH, USDC, USDT, WETH | Listing rule in `shield-vault.md` | none |
-| QR-L | The dashboard counted ShieldVault veto digests (same registry, scheme 5) as the account's quantum recovery path. | Any ShieldVault user with a sheet | App counts only commitments not registered by a ShieldVault (v1 or v2), tested | document that scheme 5 carries two preimage formats |
+| QR-L | The dashboard counted ShieldVault veto digests (same registry, scheme 5) as the account's quantum recovery path. | Any ShieldVault user with a sheet | App counts only commitments not registered by a ShieldVault (v1 or v2), tested | none: the two scheme-5 preimage formats are documented (2026-11-09) in `docs/CONTRACTS_REFERENCE.md` (QuantumRecoveryRegistry) and `computing-docs/architecture/quantum-readiness.md` |
 
 Info items, recorded and not acted on: ShieldVault trusts ERC-1271
 signatures completely (a wallet that accepts anything harms only its own
@@ -66,6 +66,17 @@ quantum digest is a bare `keccak256(secret)`, safe only for a future
 verifier that does not take a plain on-chain reveal; the registry has no
 invariant test of its own; `UpgradeTimelock.sol` NatSpec still names the
 maintainer as PROPOSER and CANCELLER (deployed source, left as is).
+
+ShieldVault v3 (2026-11-09, `contracts/shield/ShieldVaultV3.sol`, built and
+tooling-verified, not deployed; `shield-vault.md` "v3") folds in the
+ShieldVault items: SV-L1 on-chain (a payout the token reports as failed
+owes only what stayed in the vault), the payee check against the token
+contract (on-chain for withdrawal addresses, beneficiaries and signed-claim
+destinations; not for the recovery wallet, which is inside the commitment),
+the two stale comments, and QR-L's note that scheme 5 carries two preimage
+formats (`shield-vault.md`, "Scheme 5 carries two preimage formats"). The
+ERC-1271 trust and the warning for a holding with neither sheet nor
+fallback stay as recorded: no contract change.
 
 ## Checked and fine (summary)
 
