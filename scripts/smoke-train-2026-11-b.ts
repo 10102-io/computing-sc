@@ -36,11 +36,13 @@
  *      30-day grace cannot shorten the deadline; the Foundry fuzz test
  *      `testFuzz_executorTiming` covers the shortening.)
  *   5. Whole estate as wave A: on legacy 1 (no backup lines) a token claim
- *      pays both beneficiaries their percentages, less the fee.
+ *      pays both beneficiaries their percentages, less the fee, which
+ *      reaches Payment as the token.
  *
  * Addresses: contract-addresses.json for the network; the v3 implementation
  * and the NFT list from `train202611` (written by train-2026-11.ts wave b),
- * else top-level `TransferEOALegacyV3Impl` / `NftCollectionWhiteList`.
+ * else the recorded `TransferEOALegacyImpl` (v3 once the batch executed) /
+ * `NftCollectionWhiteList`.
  * The router must already create v3 clones and vault2 must allow them, or
  * the run stops before sending anything.
  */
@@ -441,14 +443,18 @@ export async function runSmokeB(ctx: SmokeBContext): Promise<boolean> {
     await waitFor(l1.legacy);
     const aBefore: BigNumber = await token.balanceOf(beneA.address);
     const bBefore: BigNumber = await token.balanceOf(beneB);
+    const payBefore: BigNumber = await token.balanceOf(payment.address);
     await send(router.connect(beneA), "activeLegacy", [l1.id, [token.address], false]);
-    const distributable = unit.sub(unit.mul(feeBps).div(10_000));
+    const fee = unit.mul(feeBps).div(10_000);
+    const distributable = unit.sub(fee);
     const wantA = distributable.mul(600_000).div(1_000_000);
     const wantB = distributable.sub(wantA);
     const gotA = (await token.balanceOf(beneA.address)).sub(aBefore);
     const gotB = (await token.balanceOf(beneB)).sub(bBefore);
-    const ok = gotA.eq(wantA) && gotB.eq(wantB) && (await l1.legacy.backupDelay()).eq(0);
-    set(current, ok ? "PASS" : "FAIL", `A received ${gotA.toString()} (expected ${wantA.toString()}), B ${gotB.toString()} (expected ${wantB.toString()}), fee ${feeBps.toString()} bps`);
+    // The fee reaches Payment as the claimed token, never swapped.
+    const gotFee = (await token.balanceOf(payment.address)).sub(payBefore);
+    const ok = gotA.eq(wantA) && gotB.eq(wantB) && gotFee.eq(fee) && (await l1.legacy.backupDelay()).eq(0);
+    set(current, ok ? "PASS" : "FAIL", `A received ${gotA.toString()} (expected ${wantA.toString()}), B ${gotB.toString()} (expected ${wantB.toString()}), Payment ${gotFee.toString()} of the token (expected ${fee.toString()}, fee ${feeBps.toString()} bps)`);
   } catch (e) {
     failed(current, e);
   }
@@ -494,7 +500,7 @@ async function main() {
   const train = net.train202611 ?? {};
   const addresses: SmokeBAddresses = {
     router: pick("TransferEOALegacyRouter", net.TransferEOALegacyRouter?.address),
-    v3: pick("train202611.TransferEOALegacyV3Impl", train.TransferEOALegacyV3Impl, net.TransferEOALegacyV3Impl?.address),
+    v3: pick("train202611.TransferEOALegacyV3Impl", train.TransferEOALegacyV3Impl, net.TransferEOALegacyImpl?.address),
     nftList: pick("train202611.NftCollectionWhiteList", train.NftCollectionWhiteList, net.NftCollectionWhiteList?.address),
     vault2: pick("LegacyPullVault (v2)", train.LegacyPullVaultV2, net.LegacyPullVault?.address),
     premiumRegistry: pick("PremiumRegistry", net.PremiumRegistry?.address),

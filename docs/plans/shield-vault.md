@@ -111,8 +111,21 @@ entry whose `recoveryContext` is a ShieldVault (v1, v2 and v3).
 
 ### v3: the switch
 
-Nothing here has run. The founder does each step with the keys it needs;
-the deployer key never goes to Railway.
+Step 1 has run: Sepolia on 2026-11-10 (`0xf62c6Ce336D1b4f14Bd4BA57cc207CFCEFe98C82`,
+block 12107893) and mainnet on 2026-11-11
+(`0x1610DC8D25475959D5ba9395c4CE02456B51EB59`, block 26393545, tx
+`0x3b01…6cc6`): owner and fee recipient the Safe, 25 bps, the v2 token
+set, Etherscan-verified, exact matches on Sourcify, subgraph v1.1.1. v3 is
+not independently audited;
+the founder moved it ahead of the external review (2026-11-10, risk
+accepted). Steps 2 to 4 ran on 2026-11-11: the worker release that serves
+both vaults went live first (`/sponsor/status` lists both), then the app
+with v3 as the vault new holdings open in, then the Safe paused deposits
+on v2 (mainnet `0x5fd634c6435db2192596face3cecdbfcc7052479de6b5a20200e6cd71f1f06bc`,
+Sepolia `0xd1d1d4e99184d8fb5784f40dd43894ea73047f15a989e2ebccec1eaa31d74aef`);
+`depositsPaused` reads true on v2 and false on v3. Step 5 (clear signing,
+wallet trust) is open. The deployer key
+never goes to Railway.
 
 1. **Deploy.** `scripts/deploy-shield-vault-v3.ts`, Sepolia first, then
    mainnet: owner and fee recipient are the governance Safe at
@@ -122,12 +135,10 @@ the deployer key never goes to Railway.
    the signing domain, and verifies on Etherscan. On Sepolia, run the smoke
    script against it (`$env:SV_VAULT=<v3>`, `scripts/smoke-shield-vault.ts`).
    Also verify on Sourcify: the clear-signing build reads its ABIs there.
-   Then `npm run sync-ui` and copy: the subgraph's `networks.json` gains
-   the key (the subgraph indexes no ShieldVault event, so nothing else
-   changes there).
-   Then `npm run sync-ui` and copy: the subgraph's `networks.json` gains
-   the key (the subgraph indexes no ShieldVault event, so nothing else
-   changes there).
+   Then `npm run sync-ui` and copy. In the subgraph's `networks.json` the
+   `ShieldVaultV3` placeholder (zero address) takes the address; its data
+   source and handlers are already in `subgraph.yaml`, so a new subgraph
+   version is the only other step there.
 2. **The Safe pauses deposits on v2**: `scripts/shield-vault-admin.ts` with
    `SV_ACTION=pause` (its default vault is `ShieldVault`, v2), or
    `SV_PRINT=1` for Safe{Wallet}. This stops new opens and top-ups only;
@@ -136,8 +147,8 @@ the deployer key never goes to Railway.
    live create flow a paused vault.
 3. **The app opens new holdings in v3 and keeps reading v2.** The address
    constants become a pair per chain (v3 for opens, both for reads):
-   `sync-ui.ts` gains a `ShieldVaultV3` key next to `ShieldVault`, and the
-   ABI can come from either artifact (identical). Holding ids restart at 1
+   `sync-ui.ts` has a `ShieldVaultV3` key (`shieldVaultV3`) next to
+   `ShieldVault`, and the ABI can come from either artifact (identical). Holding ids restart at 1
    in v3, so everything that names a holding by chain and id needs the
    vault as well: the status page route `/shield/:chainId/:id` (v2 links
    already printed or emailed must keep resolving to v2), the dashboard

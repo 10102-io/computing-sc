@@ -30,7 +30,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
-      "implementation": "0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9"
+      "implementation": "0x474db46AE73F18702A94C8EBe655fC16070cA153"
     },
     "PremiumRegistry": {
       "address": "0xE243360635cbdA1B092DF9a2acC454Eb04aa70Fb",
@@ -204,7 +204,7 @@
       }
     },
     "TransferEOALegacyImpl": {
-      "address": "0x057cc6baf9b8d5Ee11246C10F602b26Bb5fc3993"
+      "address": "0x779cD63a41A7164A98C2B2EF5029CC6561FC5cD6"
     },
     "PremiumReminderView": {
       "address": "0x8260d5f188e3772be590f16DF515241de4B2C965"
@@ -241,6 +241,9 @@
     },
     "ShieldVaultV1": {
       "address": "0xC930fD647919eb19eDFE1c7Fd69F7bC594C2AebA"
+    },
+    "ShieldVaultV3": {
+      "address": "0xf62c6Ce336D1b4f14Bd4BA57cc207CFCEFe98C82"
     }
   },
   "localhost": {
@@ -358,7 +361,8 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1"
+      "implementation": "0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1",
+      "pendingImplementation": "0x8F8971289e35adF8f9123BF142120D21109974eb"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -465,6 +469,13 @@
     },
     "ShieldVaultV1": {
       "address": "0x83074f8519F54AF05f7C48911E432e0C44dBEE69"
+    },
+    "train202611": {
+      "NftCollectionWhiteList": "0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623",
+      "TransferEOALegacyV3Impl": "0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9"
+    },
+    "ShieldVaultV3": {
+      "address": "0x1610DC8D25475959D5ba9395c4CE02456B51EB59"
     }
   }
 }

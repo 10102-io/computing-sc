@@ -56,9 +56,15 @@ you add is still the whole safety net for that path.
  wave A of the 2026-11 train (live 2026-11-07: LegacyPullVaultV2, the new
  clone, the timelocked router levers, PremiumRegistry coupons and
  referrals, the PremiumSetting and verifier changes), which also had our
- own checklist pass. Wave B (legacy v3, NftCollectionWhiteList) is
- Sepolia-only until its external review. Say so plainly when a
-  change lands on those. ShieldVault and the registry also carry tooling
+ own checklist pass. Wave B (legacy v3, NftCollectionWhiteList) and
+ ShieldVault v3 are live on Sepolia since 2026-11-10; the founder moved
+ their mainnet deploy ahead of the external review (2026-11-10, risk
+ accepted). On mainnet since 2026-11-11: ShieldVault v3 is deployed
+ (`ShieldVaultV3`) and takes new holdings (the Safe paused deposits on v2,
+ exits there keep working), and wave B is deployed and scheduled in the timelock
+ (executable from 2026-11-13 20:37 UTC; until it executes, its addresses
+ sit under `train202611` and the router creates the wave A clone). Say so
+ plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
 - Proxies are hardhat-deploy `OptimizedTransparentProxy` behind
@@ -137,11 +143,12 @@ you add is still the whole safety net for that path.
   (lowercase `feat`/`fix`/`chore`/`docs`/`refactor`, no process words).
   Feature branches carry detail while in flight; milestone branches
   (`feat/create-flow-v2`, `feat/legacy-pull-vault`) are kept.
-- Same-day work is always one commit, even after `main` was fast-
-  forwarded: amend the day's commit on `dev` and re-point `main` to it
-  with `--force-with-lease` (force pushes are allowed on `main` since
-  2026-11-10, founder). Fast-forward `main` at the end of the day, not
-  after every push.
+- Same-day work is always one commit: amend the day's commit on `dev`.
+  `main` takes fast-forwards only, once, at the end of the day and never
+  after every push, so an amend never has to re-point it. Work that lands
+  after `main` moved goes into the next day's commit. (Force pushes on
+  `main` were open on 2026-11-10 and 2026-11-11 for the deploy days only,
+  founder.)
 - Mainnet deploys that ship from `dev` before a tag get an
   `[Unreleased on main, already live on mainnet]` note in `CHANGELOG.md`.
 
@@ -162,7 +169,7 @@ you add is still the whole safety net for that path.
   unaudited riders, with each finding's status; its "Left" column is the
   input to the next contract train.
 - `docs/plans/train-2026-11.md`: the current contract train (wave A live
- 2026-11-07, wave B on Sepolia until its external review), with its
+ 2026-11-07, wave B on Sepolia and scheduled on mainnet), with its
  execution log, runbooks and the follow-up table for the sibling repos.
  The cross-repo order of work is `computing/docs/plans/round-2026-11.md`.
 - `docs/plans/round-2026-09.md`: the 2026-09 round (governance, destination

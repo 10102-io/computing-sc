@@ -1,0 +1,16 @@
+[
+  {
+    "proxy": "TransferEOALegacyRouter",
+    "impl": "0x8F8971289e35adF8f9123BF142120D21109974eb"
+  },
+  {
+    "target": "0xC6640962618f9D729032487EC5DEf226BF6F43E3",
+    "data": "0x38572b1d000000000000000000000000f9b6241ab7513181c9ed4f0920e0b008fb9264e9",
+    "label": "vault2.allowImplementation(0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9)"
+  },
+  {
+    "target": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
+    "data": "0x120f8b80000000000000000000000000f9b6241ab7513181c9ed4f0920e0b008fb9264e9",
+    "label": "router.setLegacyImplementation(0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9)"
+  }
+]

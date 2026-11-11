@@ -85,6 +85,7 @@ const UI_KEYS = [
   'tokenWhitelist',
   'quantumRegistry',
   'shieldVault',
+  'shieldVaultV3',
   'pullVault',
 ] as const;
 
@@ -92,6 +93,7 @@ type UIContractAddresses = Record<(typeof UI_KEYS)[number], string | null>;
 
 const CONTRACT_TO_UI_KEY: Record<string, keyof UIContractAddresses> = {
   ShieldVault: 'shieldVault',
+  ShieldVaultV3: 'shieldVaultV3',
   MultisigLegacyRouter: 'inheritance',
   TransferLegacyRouter: 'forwarding',
   TransferEOALegacyRouter: 'forwardingEOA',
@@ -202,7 +204,7 @@ function writeAddresses(): void {
 }
 
 /** Admin UI only needs a subset of contracts per chain (computing-admin). */
-type AdminContractKey = 'premiumRegistry' | 'payment' | 'configBanner' | 'tokenWhiteList' | 'shieldVault';
+type AdminContractKey = 'premiumRegistry' | 'payment' | 'configBanner' | 'tokenWhiteList' | 'shieldVault' | 'shieldVaultV3';
 
 const ADMIN_CONTRACT_MAP: Record<string, AdminContractKey> = {
   PremiumRegistry: 'premiumRegistry',
@@ -210,6 +212,7 @@ const ADMIN_CONTRACT_MAP: Record<string, AdminContractKey> = {
   Banner: 'configBanner',
   TokenWhiteList: 'tokenWhiteList',
   ShieldVault: 'shieldVault',
+  ShieldVaultV3: 'shieldVaultV3',
 };
 
 function buildAdminContractAddresses(
@@ -221,6 +224,7 @@ function buildAdminContractAddresses(
     configBanner: null,
     tokenWhiteList: null,
     shieldVault: null,
+    shieldVaultV3: null,
   };
   for (const [contractName, key] of Object.entries(ADMIN_CONTRACT_MAP)) {
     const entry = networkContracts[contractName];
@@ -247,6 +251,7 @@ function writeAdminAddresses(): void {
     '  configBanner: string | null;',
     '  tokenWhiteList: string | null;',
     '  shieldVault: string | null;',
+    '  shieldVaultV3: string | null;',
     '}>;',
     '',
     'export const ADMIN_CONTRACT_ADDRESSES_BY_CHAIN_ID: AdminContractAddressesByChainId = {',

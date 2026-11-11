@@ -21,6 +21,39 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-11 — Shield Vault v3 on mainnet, legacy v3 scheduled
+
+[Unreleased on main, already live on mainnet. Not independently audited:
+internal reviews, tooling and a Sepolia walk of the app with real
+transactions. The founder moved both ahead of the external review on
+2026-11-10, risk accepted.]
+
+- **Shield Vault v3** is deployed at
+  `0x1610DC8D25475959D5ba9395c4CE02456B51EB59` (recorded as `ShieldVaultV3`;
+  `ShieldVault` stays v2). A fee is taken only when a holding is released
+  to the named people after the owner's silence: 0.25%, fixed when the
+  holding opens, at most 0.5% for later holdings. Withdrawals, cancels,
+  stops with the sheet and claims of a kept share pay none. Owner and fee
+  recipient are the governance Safe from construction; wstETH, USDC, USDT
+  and WETH. Not upgradeable; v2 holdings keep every exit where they are.
+  The app opens new holdings in v3 since the same day, and the Safe paused
+  deposits on v2 (mainnet `0x5fd6…06bc`, Sepolia `0xd1d1…4aef`); v2 held
+  nothing on mainnet.
+- **Legacy v3** (NFTs in a legacy, backup heirs, an executor) is deployed
+  and waits in the UpgradeTimelock, executable from **2026-11-13 20:37
+  UTC** (operation `0x7df5…d7e3`, scheduled from the Safe, `0xfd5a…8f57`):
+  the router implementation `0x8F8971289e35adF8f9123BF142120D21109974eb`
+  (the unswap guard only when something would convert; no reinitializer,
+  storage untouched), `allowImplementation` on LegacyPullVaultV2 and
+  `setLegacyImplementation` for `TransferEOALegacyV3`
+  `0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9`. Its NFT allow list is
+  `0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623` (deployer admin for the
+  list's upkeep, the Safe co-admin), empty until collections are vetted.
+  Until execution new legacies are the wave A clone, and existing legacies
+  keep their implementation forever either way.
+- Sepolia runs both since 2026-11-10 (`docs/plans/train-2026-11.md`,
+  execution log).
+
 ## 2026-11-07 — Contract train 2026-11: wave A live on mainnet
 
 [Wave A executed on mainnet 2026-11-07 through the UpgradeTimelock
