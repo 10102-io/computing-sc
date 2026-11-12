@@ -4,8 +4,11 @@
  * will verify. Recompiles the artifact's own build-info input with the cached
  * native solc and compares the runtime bytecode byte for byte (exit 1 if not);
  * then, for information, compiles the same contract inside a repo-wide input
- * (every contract in one job, the shape that produced the unverifiable April
- * 2026 target) and reports whether unrelated files shift its bytecode.
+ * (every contract in one job, the shape that produced the April 2026 target,
+ * which a verifier building the contract's own closure could not match) and
+ * reports whether unrelated files shift its bytecode. The old targets were
+ * reproduced and verified on 2026-11-12 from the inputs of their real jobs:
+ * docs/security/compiler-known-bugs.md section 2.3.
  *
  *   npx hardhat run scripts/check-clone-reproducible.ts
  *   $env:CLONE="contracts/forwarding/TransferLegacyEOAContractV3.sol:TransferEOALegacyV3"; npx hardhat run scripts/check-clone-reproducible.ts

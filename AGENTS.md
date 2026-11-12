@@ -67,12 +67,25 @@ you add is still the whole safety net for that path.
  plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
+- Compilers on mainnet: solc 0.8.35 for everything deployed since
+  2026-07-27, 0.8.20 before (34 of the 48 legacies run 0.8.20 code for
+  good), 0.8.10 for hardhat-deploy's proxies. Every known compiler bug of
+  those versions is assessed in `docs/security/compiler-known-bugs.md`
+  (2026-11-12): each contract rebuilt to the bytes on the chain, none found
+  affected, and the old clone targets and first legacies verified on
+  Sourcify and Etherscan. The optimizer bug fixed in 0.8.38 is the one answered by an
+  indication (the compiler team's nightly comparison), not a proof. On a
+  new solc release or compiler bug notice, run
+  `scripts/compiler-bugs/known-bugs.mjs` first. The next train compiles
+  with 0.8.38 (`docs/plans/solc-upgrade.md`).
 - Proxies are hardhat-deploy `OptimizedTransparentProxy` behind
  `DefaultProxyAdmin`, whose owner is `UpgradeTimelock` (OpenZeppelin
  TimelockController, 48h on mainnet, 300s on Sepolia). Every
  implementation swap is: diff storage layouts (`dump-storage-layouts.ts`),
  `scripts/deploy-impl.ts`, `scripts/timelock-op.ts` print then schedule
- (one `TL_BATCH` for a train), wait, execute, `scripts/
+ (one `TL_BATCH` for a train), wait and rehearse the scheduled operation
+ on a fork (`scripts/rehearse-timelock-op.ts`: no key, prints every value
+ the execution changes), execute, `scripts/
  refresh-impl-artifacts.ts`, `npm run sync-ui:check`. Runbook:
  `docs/plans/upgrade-timelock.md`. Role and delay changes:
  `scripts/harden-governance.ts`; any other raw call goes through
@@ -162,6 +175,9 @@ you add is still the whole safety net for that path.
 - `docs/security/tooling-report.md`, `docs/security/static-analysis.md`:
   coverage, fuzz and static-analysis evidence for ShieldVault and the
   registry, with every triaged finding.
+- `docs/security/compiler-known-bugs.md`: every known solc bug against
+  every contract on mainnet, with the evidence and its limits; the scripts
+  behind it are `scripts/compiler-bugs/` (read-only, plain Node).
 - `docs/security/wave-b-audit-scope.md`: the external review scope for
  legacy v3 (wave B); its tooling evidence is `tooling-report.md` section 8
  and the Foundry suite `test/foundry/LegacyV3*`.
@@ -176,7 +192,8 @@ you add is still the whole safety net for that path.
  wallet, the trains behind them) with its execution log at the top.
 - `scripts/safe-call.ts`: the Safe's instant emergency stops (pause new
   creates, stop renewals), printed for Safe{Wallet} or sent at threshold 1.
-- `scripts/timelock-op.ts`, `scripts/harden-governance.ts`,
+- `scripts/timelock-op.ts`, `scripts/rehearse-timelock-op.ts`,
+ `scripts/harden-governance.ts`,
  `scripts/verify-governance.ts`, `scripts/deploy-impl.ts`,
  `scripts/dump-storage-layouts.ts`, `scripts/refresh-impl-artifacts.ts`,
  `scripts/smoke-payto.ts`, `scripts/verify-etherscan-status.ts`,

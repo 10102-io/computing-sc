@@ -156,7 +156,22 @@ Direct hardhat-deploy proxy upgrades from the deployer key **revert** now
    works with `TL_PROXY` + `TL_IMPL`. Announce the queued upgrade
    (changelog/Discord); the window is the feature, use it.
 4. **Wait out the delay** (48h mainnet / 300s sepolia). The reminder
-   worker's timelock watch emails on `CallScheduled`.
+   worker's timelock watch emails on `CallScheduled`. During the wait,
+   **rehearse the scheduled operation against the live state**:
+
+   ```powershell
+   $env:TL_BATCH="output/upgrade-batch-mainnet.json"; npx hardhat run scripts/rehearse-timelock-op.ts
+   ```
+
+   It forks the network locally (no key, nothing sent), checks that the
+   file describes the operation that is pending on chain and that the
+   timelock refuses it before the eta, executes it at the eta from an
+   address with no role, and prints the gas used and every value that
+   changed: each zero-argument getter of the contracts the batch touches
+   and the implementation of every recorded proxy, read before and after.
+   A change nobody meant shows up there. `REHEARSE_NETWORK=sepolia` for the
+   testnet; `REHEARSE_SMOKE` runs a train's smoke on the fork afterwards
+   (see the script header). Run it again shortly before executing.
 5. **Execute** with the same params and `TL_ACTION="execute"`. Anyone can
    execute a ready operation; the script sends from the deployer for
    convenience and never routes execution through the Safe.

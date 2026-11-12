@@ -27,7 +27,32 @@
 - The vendored `SignatureCheckerLite` swap back to OZ `SignatureChecker`
   (needs ≥0.8.24) rides the next commit, per its inline TODO(deferred).
 
-## Background
+## Next: 0.8.35 to 0.8.38, with the next contract train (planned 2026-11-12)
+
+0.8.35 has six known bugs today, 0.8.38 (2026-10-22) has none. None of the
+six is found to apply to what is deployed
+(`docs/security/compiler-known-bugs.md`), so nothing is redeployed for
+this: the bump rides the next train, for the contracts that train deploys.
+Legacies that exist keep their code.
+
+- One `version` in `hardhat.config.ts` (the compiler entry and the two
+  clone overrides) and the exact pragmas. `evmVersion` stays `cancun`.
+- Storage layouts before and after (`scripts/dump-storage-layouts.ts`):
+  must be identical.
+- The bytecode will change, and that is expected: under 0.8.37 eight
+  contracts differ from 0.8.35, under 0.8.38 59 of 66
+  (`scripts/compiler-bugs/tree-version-diff.mjs 0.8.36 0.8.37 0.8.38`
+  shows which; `ir-diff.mjs` shows why). The contract sizes move by a few
+  bytes: check the v3 clone against the 24,576-byte limit.
+- The whole suite, coverage, the Foundry fuzz and invariant suites, Slither
+  and Aderyn on the new build.
+- `scripts/check-clone-reproducible.ts` for both clones, then the list of
+  known bugs again for the release chosen
+  (`scripts/compiler-bugs/known-bugs.mjs 0.8.38`): if a later release is
+  out by then and has soaked, take that one.
+- Foundry: `foundry.toml` pins the same solc; keep the two in step.
+
+## Background (2026-04)
 
 The project currently uses solc 0.8.20 (with a secondary 0.8.22 compiler entry).
 Etherscan flags four low-severity known compiler bugs for 0.8.20:
