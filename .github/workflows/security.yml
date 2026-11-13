@@ -2,8 +2,10 @@
 #
 # Four independent jobs so one slow or flaky tool never hides another's
 # result: the Hardhat suite, coverage of the review targets (ShieldVault v2
-# and v3, the registry), static analysis (Slither and Aderyn) and the
-# Foundry fuzz and invariant suite.
+# and v3, the registry), static analysis (Slither) and the Foundry fuzz and
+# invariant suite. Aderyn ran beside Slither until its maintainer retired it
+# and withdrew its downloads on 2026-11-13; its last reports are kept in
+# docs/security/aderyn-2026-11-12/.
 # Everything here runs on the public toolchain only; no secrets, no RPC.
 #
 # Tests run with HARDHAT_NO_FORK=1 so a stray fork-block.json can never
@@ -21,7 +23,8 @@ permissions:
 
 concurrency:
   group: security-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push replaces a running run; a manual re-run is never cancelled.
+  cancel-in-progress: ${{ github.run_attempt == 1 }}
 
 env:
   HARDHAT_NO_FORK: "1"
@@ -92,7 +95,7 @@ jobs:
           retention-days: 30
 
   static-analysis:
-    name: slither and aderyn
+    name: slither
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -132,15 +135,6 @@ jobs:
               --fail-medium \
               --json "slither-$(basename "$f" .sol).json" 2>&1 | tee -a slither.txt || exit 1
           done
-      - name: aderyn
-        run: |
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Cyfrin/aderyn/releases/download/aderyn-v0.6.8/aderyn-installer.sh | sh
-          export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
-          aderyn --version
-          aderyn . -s contracts \
-            -i contracts/shield/ShieldVault.sol,contracts/shield/ShieldVaultV3.sol,contracts/common/QuantumRecoveryRegistry.sol \
-            -o aderyn-report.md
-          grep -q "| High | 0 |" aderyn-report.md || { echo "Aderyn reports a High"; exit 1; }
       # Legacy v3 (wave B) and the files it relies on, report only: every
       # result is triaged in docs/security/static-analysis.md ("Legacy v3"),
       # and one of v3's Slither ids changes between identical runs, so a
@@ -158,13 +152,6 @@ jobs:
               --fail-none \
               --json "slither-v3-$(basename "$f" .sol).json" 2>&1 | tee -a slither-v3.txt
           done
-      - name: aderyn (legacy v3, report only)
-        if: always()
-        run: |
-          export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$HOME/.cargo/bin:$HOME/.aderyn/bin:$PATH"
-          aderyn . -s contracts \
-            -i contracts/forwarding/TransferLegacyEOAContractV3.sol,contracts/whitelist/NftCollectionWhiteList.sol,contracts/common/LegacyPullVaultV2.sol \
-            -o aderyn-v3-report.md || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -172,9 +159,7 @@ jobs:
           path: |
             slither.txt
             slither-*.json
-            aderyn-report.md
             slither-v3.txt
-            aderyn-v3-report.md
           retention-days: 30
 
   fuzz:

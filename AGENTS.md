@@ -35,12 +35,13 @@ slither contracts/shield/ShieldVault.sol --compile-force-framework solc --solc-r
 
 CI (`.github/workflows/security.yml`, since 2026-10-29) runs the Hardhat
 suite, the `deployments/` pointer audit, coverage with thresholds for
-ShieldVault (v2 and v3) and the registry, Slither and Aderyn, and the Foundry fuzz and
+ShieldVault (v2 and v3) and the registry, Slither, and the Foundry fuzz and
 invariant suite on every PR and every push
 to `dev` and `main`. The checks are informational, not required: a red run
 blocks nothing, `[skip ci]` in a commit message skips one, and the workflow
 can be disabled from the Actions tab. Slither needs Foundry on the PATH
-(crytic-compile reads `forge config` whenever `foundry.toml` exists). A new
+(crytic-compile reads `forge config` whenever `foundry.toml` exists). Aderyn ran beside Slither until Cyfrin retired it
+on 2026-11-13 (last reports: `docs/security/aderyn-2026-11-12/`). A new
 Slither finding at Medium or above is triaged in
 `docs/security/static-analysis.md` and `slither.db.json`, never silenced by
 editing deployed contract source. Outside those two contracts, every spec
@@ -61,9 +62,10 @@ you add is still the whole safety net for that path.
  their mainnet deploy ahead of the external review (2026-11-10, risk
  accepted). On mainnet since 2026-11-11: ShieldVault v3 is deployed
  (`ShieldVaultV3`) and takes new holdings (the Safe paused deposits on v2,
- exits there keep working), and wave B is deployed and scheduled in the timelock
- (executable from 2026-11-13 20:37 UTC; until it executes, its addresses
- sit under `train202611` and the router creates the wave A clone). Say so
+ exits there keep working). On mainnet since 2026-11-13 20:42 UTC: wave B
+ executed through the timelock, so the router creates legacy v3 clones
+ (`TransferEOALegacyImpl`); legacies created from 2026-11-07 to then keep
+ the wave A clone. Say so
  plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
@@ -185,7 +187,7 @@ you add is still the whole safety net for that path.
   unaudited riders, with each finding's status; its "Left" column is the
   input to the next contract train.
 - `docs/plans/train-2026-11.md`: the current contract train (wave A live
- 2026-11-07, wave B on Sepolia and scheduled on mainnet), with its
+ 2026-11-07, wave B live 2026-11-13), with its
  execution log, runbooks and the follow-up table for the sibling repos.
  The cross-repo order of work is `computing/docs/plans/round-2026-11.md`.
 - `docs/plans/round-2026-09.md`: the 2026-09 round (governance, destination

@@ -21,6 +21,44 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-13 — Legacy v3 live on mainnet
+
+[Unreleased on main, already live on mainnet. Not independently audited:
+internal reviews, tooling, a Sepolia walk of the app with real
+transactions and two rehearsals of this operation on a fork of mainnet.
+The founder moved it ahead of the external review on 2026-11-10, risk
+accepted.]
+
+- **The router creates legacy v3 clones.** The batch scheduled on
+  2026-11-11 executed on 2026-11-13 20:42 UTC
+  (`0x98afe0b972519cc9ba1ca82d8824f0157d4e2160fc7548bf33b7448fa9e736e7`):
+  the router runs `0x8F8971289e35adF8f9123BF142120D21109974eb` (the unswap
+  guard only when something would convert), LegacyPullVaultV2 allows
+  `TransferEOALegacyV3` `0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9`, and
+  that is what a new wallet legacy is: NFTs from the allow list, backup
+  heirs per share, an executor, and a claim fee that reaches the treasury
+  as the claimed token.
+- **Nothing changes for existing legacies.** A clone pins its
+  implementation and its vault: legacies created from 2026-11-07 keep the
+  wave A clone `0x2E2dE6475fcBE77E7930499981850d37b237924C`, older ones
+  theirs. An owner who wants v3 creates a new legacy.
+- **The NFT allow list is empty** (`0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623`):
+  no NFT can be named until collections are vetted and added.
+- Rehearsed at the eta on a fork (`scripts/rehearse-timelock-op.ts`): two
+  values change, the two above. After it: `verify-governance.ts` 31/31, the
+  deployment pointers agree with both chains, and the wave B smoke passes
+  (5 of 5) on a fork of mainnet taken after the real execution. For that,
+  the rehearsal script runs a train's smoke alone once its operation has
+  executed (`REHEARSE_SMOKE`).
+- **CI:** Aderyn left the security workflow. Its maintainer retired it on
+  2026-11-13 and withdrew the downloads; Slither still gates the same
+  files, and Aderyn's last reports (2026-11-12, 0 High) are kept in
+  `docs/security/aderyn-2026-11-12/`. A manual re-run of the workflow is
+  no longer cancelled by its own concurrency rule.
+- **Clear signing:** descriptors for Shield Vault v3 and for the legacy
+  create with a claim fee bound are submitted to the registry
+  (`erc7730/README.md`).
+
 ## 2026-11-11 — Shield Vault v3 on mainnet, legacy v3 scheduled
 
 [Unreleased on main, already live on mainnet. Not independently audited:

@@ -174,7 +174,10 @@ Direct hardhat-deploy proxy upgrades from the deployer key **revert** now
    (see the script header). Run it again shortly before executing.
 5. **Execute** with the same params and `TL_ACTION="execute"`. Anyone can
    execute a ready operation; the script sends from the deployer for
-   convenience and never routes execution through the Safe.
+   convenience and never routes execution through the Safe. After it, the
+   rehearsal command with `REHEARSE_SMOKE` set runs the smoke alone on a
+   fork of the network as it now is: the proof that the live state passes,
+   with no transaction sent.
 6. **Reconcile artifacts**: `$env:IMPLS="..."; npx hardhat run
    scripts/refresh-impl-artifacts.ts --network mainnet` reads the live
    EIP-1967 implementation, promotes `pendingImplementation` to

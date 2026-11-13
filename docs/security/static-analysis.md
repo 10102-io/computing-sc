@@ -10,6 +10,16 @@ of 2026-09-29; the mainnet bytecode match is recorded in
 `docs/plans/shield-vault-audit.md`, section 2) and
 `contracts/common/QuantumRecoveryRegistry.sol`.
 
+**Aderyn retired (2026-11-13).** Cyfrin retired Aderyn and withdrew its
+release downloads on 2026-11-13, so it can no longer be installed and CI
+runs Slither alone since that day. Everything below that names Aderyn is
+the record of runs made while it existed. Its last reports, from the
+workflow of commit `8e32e70` on 2026-11-12 (0 High on ShieldVault v2 and
+v3 and the registry), are kept in `aderyn-2026-11-12/`; no contract source
+changed between that run and the retirement. A second analyser beside
+Slither is an open choice for the next contract train, not a gap in what
+is deployed.
+
 Status of these contracts: internally reviewed, tooling-verified, not
 independently audited. This file is one piece of that tooling evidence; the
 whole picture is in `tooling-report.md`.
@@ -22,9 +32,9 @@ whole picture is in `tooling-report.md`.
 | solc for Slither | 0.8.35 via `solc-select` | Same settings as `hardhat.config.ts`, so the analysed code is the deployed shape. `--compile-force-framework solc` is needed because the presence of `foundry.toml` would otherwise make crytic-compile pick Foundry and require `forge` |
 | Aderyn | 0.6.8 | `aderyn . -s contracts -i contracts/shield/ShieldVault.sol,contracts/common/QuantumRecoveryRegistry.sol` |
 
-Both tools run in CI (`.github/workflows/security.yml`, job
-`static-analysis`, since 2026-11-09 on ShieldVault v3 as well) and locally
-with `npm run slither:shield` and `npm run aderyn:shield`. Slither's 102 detectors and Aderyn's 88 detectors
+Both tools ran in CI (`.github/workflows/security.yml`, job
+`static-analysis`, since 2026-11-09 on ShieldVault v3 as well) until
+2026-11-13; Slither still does, and locally with `npm run slither:shield`. Slither's 102 detectors and Aderyn's 88 detectors
 all ran; `--filter-paths node_modules` keeps OpenZeppelin's own code out of
 the result list (its use is in scope, the library is not).
 

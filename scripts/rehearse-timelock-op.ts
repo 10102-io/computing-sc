@@ -19,7 +19,10 @@
  *                      well (the timelock, the proxy admin and every batch
  *                      target that is a recorded contract are always read)
  *   REHEARSE_SMOKE   = b → after the execution, run the wave B smoke
- *                      (scripts/smoke-train-2026-11-b.ts) on the fork
+ *                      (scripts/smoke-train-2026-11-b.ts) on the fork. Once
+ *                      the operation has executed on the network, the same
+ *                      command runs the smoke alone, on a fork of the
+ *                      network as it is then
  *   REHEARSE_AS      = address the smoke runs as (impersonated on the fork;
  *                      the maintainer EOA, for its roles)
  *
@@ -169,10 +172,59 @@ async function main() {
     console.log(`  ${ok ? "ok  " : "FAIL"} ${what}${detail ? `: ${detail}` : ""}`);
   };
 
+  // The train's smoke on the fork (REHEARSE_SMOKE=b): after the rehearsed execution or, once the
+  // operation has really executed, on a fork of the network as it then is.
+  const wantsSmoke = (process.env.REHEARSE_SMOKE ?? "").toLowerCase() === "b";
+  const smokeB = async (what: string) => {
+    const as = process.env.REHEARSE_AS;
+    if (!as) throw new Error("REHEARSE_SMOKE needs REHEARSE_AS (the address the smoke runs as).");
+    const who = ethers.utils.getAddress(as);
+    console.log(`\nWave B smoke on the fork, as ${who}:`);
+    await rpc("hardhat_impersonateAccount", [who]);
+    await rpc("hardhat_setBalance", [who, "0x8ac7230489e80000"]); // 10 ETH, on the fork only
+    process.env.SMOKE_LIBRARY = "1";
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { runSmokeB } = require("./smoke-train-2026-11-b");
+    const train = book.train202611 ?? {};
+    const pick = (what: string, ...vals: Array<string | undefined>) => {
+      const v = vals.find(Boolean);
+      if (!v) throw new Error(`missing address: ${what}`);
+      return ethers.utils.getAddress(v);
+    };
+    const base = (await provider.getBlock("latest")).baseFeePerGas ?? ethers.BigNumber.from(0);
+    const gasPrice = base.mul(2).add(1);
+    const ok: boolean = await runSmokeB({
+      deployer: provider.getSigner(who),
+      addresses: {
+        router: pick("TransferEOALegacyRouter", book.TransferEOALegacyRouter?.address),
+        v3: pick("TransferEOALegacyV3Impl", train.TransferEOALegacyV3Impl, book.TransferEOALegacyImpl?.address),
+        nftList: pick("NftCollectionWhiteList", train.NftCollectionWhiteList, book.NftCollectionWhiteList?.address),
+        vault2: pick("LegacyPullVault (v2)", train.LegacyPullVaultV2, book.LegacyPullVault?.address),
+        premiumRegistry: pick("PremiumRegistry", book.PremiumRegistry?.address),
+        verifier: pick("EIP712LegacyVerifier", book.EIP712LegacyVerifier?.address),
+      },
+      overrides: { gasPrice },
+      fund: ethers.utils.parseEther("1"),
+      // Local time: the fork jumps to the timestamp instead of waiting for it.
+      waitUntil: async (t: number) => {
+        if ((await provider.getBlock("latest")).timestamp >= t) return;
+        await rpc("evm_setNextBlockTimestamp", [t]);
+        await rpc("evm_mine");
+      },
+      networkName: `${net} fork`,
+    });
+    check(what, ok);
+  };
+
   // ── 1. What the file describes is what is pending on chain ──────────────
   console.log("\nBefore:");
   const [pending, done, ts] = await Promise.all([timelock.isOperationPending(id), timelock.isOperationDone(id), timelock.getTimestamp(id)]);
   const eta: number = ts.toNumber();
+  if (done && wantsSmoke) {
+    console.log("  the operation has executed on the network: nothing is left to rehearse, and the fork is the state after it");
+    await smokeB("the wave B smoke passes on a fork of the network after the real execution");
+    return finish(checks);
+  }
   check("the operation in the file is scheduled on chain and not yet executed", pending && !done, pending ? `eta ${new Date(eta * 1000).toISOString()}` : done ? "already executed" : "not scheduled");
   if (!pending || done) return finish(checks);
 
@@ -237,46 +289,7 @@ async function main() {
   if (changed.length === 0) console.log("  nothing");
 
   // ── 5. Optional: the train's smoke on the fork ──────────────────────────
-  if ((process.env.REHEARSE_SMOKE ?? "").toLowerCase() === "b") {
-    const as = process.env.REHEARSE_AS;
-    if (!as) throw new Error("REHEARSE_SMOKE needs REHEARSE_AS (the address the smoke runs as).");
-    const who = ethers.utils.getAddress(as);
-    console.log(`\nWave B smoke on the fork, as ${who}:`);
-    await rpc("hardhat_impersonateAccount", [who]);
-    await rpc("hardhat_setBalance", [who, "0x8ac7230489e80000"]); // 10 ETH, on the fork only
-    process.env.SMOKE_LIBRARY = "1";
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { runSmokeB } = require("./smoke-train-2026-11-b");
-    const train = book.train202611 ?? {};
-    const pick = (what: string, ...vals: Array<string | undefined>) => {
-      const v = vals.find(Boolean);
-      if (!v) throw new Error(`missing address: ${what}`);
-      return ethers.utils.getAddress(v);
-    };
-    const base = (await provider.getBlock("latest")).baseFeePerGas ?? ethers.BigNumber.from(0);
-    const gasPrice = base.mul(2).add(1);
-    const ok: boolean = await runSmokeB({
-      deployer: provider.getSigner(who),
-      addresses: {
-        router: pick("TransferEOALegacyRouter", book.TransferEOALegacyRouter?.address),
-        v3: pick("TransferEOALegacyV3Impl", train.TransferEOALegacyV3Impl, book.TransferEOALegacyImpl?.address),
-        nftList: pick("NftCollectionWhiteList", train.NftCollectionWhiteList, book.NftCollectionWhiteList?.address),
-        vault2: pick("LegacyPullVault (v2)", train.LegacyPullVaultV2, book.LegacyPullVault?.address),
-        premiumRegistry: pick("PremiumRegistry", book.PremiumRegistry?.address),
-        verifier: pick("EIP712LegacyVerifier", book.EIP712LegacyVerifier?.address),
-      },
-      overrides: { gasPrice },
-      fund: ethers.utils.parseEther("1"),
-      // Local time: the fork jumps to the timestamp instead of waiting for it.
-      waitUntil: async (t: number) => {
-        if ((await provider.getBlock("latest")).timestamp >= t) return;
-        await rpc("evm_setNextBlockTimestamp", [t]);
-        await rpc("evm_mine");
-      },
-      networkName: `${net} fork`,
-    });
-    check("the wave B smoke passes on the fork after the execution", ok);
-  }
+  if (wantsSmoke) await smokeB("the wave B smoke passes on the fork after the execution");
 
   finish(checks, gasUsed);
 }
@@ -285,7 +298,9 @@ function finish(checks: { what: string; ok: boolean }[], gasUsed = "") {
   const failed = checks.filter((c) => !c.ok);
   console.log(
     failed.length === 0
-      ? `\nRehearsal passed (${checks.length} checks${gasUsed ? `, execution gas ${gasUsed}` : ""}). Read the changed values above: they are what the real execution will do.`
+      ? gasUsed
+        ? `\nRehearsal passed (${checks.length} checks, execution gas ${gasUsed}). Read the changed values above: they are what the real execution will do.`
+        : `\nPassed (${checks.length} check${checks.length === 1 ? "" : "s"}), with no execution rehearsed.`
       : `\nRehearsal FAILED: ${failed.map((c) => c.what).join("; ")}`
   );
   if (failed.length > 0) process.exitCode = 1;

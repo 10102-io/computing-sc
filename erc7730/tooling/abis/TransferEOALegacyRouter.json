@@ -1,7 +1,13 @@
 [
   {
     "type": "constructor",
-    "inputs": [],
+    "inputs": [
+      {
+        "name": "upgradeTimelock_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
     "stateMutability": "nonpayable"
   },
   {
@@ -70,6 +76,22 @@
     "inputs": []
   },
   {
+    "name": "FeeAboveMax",
+    "type": "error",
+    "inputs": [
+      {
+        "name": "fee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxFeeBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
     "name": "InvalidInitialization",
     "type": "error",
     "inputs": []
@@ -111,6 +133,11 @@
   },
   {
     "name": "NotInitializing",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "NotUpgradeTimelock",
     "type": "error",
     "inputs": []
   },
@@ -171,11 +198,34 @@
     "inputs": []
   },
   {
+    "name": "UnswapNeedsSoleRecipient",
+    "type": "error",
+    "inputs": []
+  },
+  {
+    "name": "ZeroAmountOutMin",
+    "type": "error",
+    "inputs": []
+  },
+  {
     "name": "ActivityAttestorSet",
     "type": "event",
     "inputs": [
       {
         "name": "attestor",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "CodeAdminSet",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "codeAdmin",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -231,6 +281,45 @@
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LegacyCreationCodeSet",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "codeHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LegacyImplementationSet",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "implementation",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "PaymentContractSet",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "paymentContract",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -1138,6 +1227,30 @@
     "stateMutability": "view"
   },
   {
+    "name": "attestorNonceSeen",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "legacyId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "attestor",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
     "name": "autoRenewState",
     "type": "function",
     "inputs": [
@@ -1516,6 +1629,164 @@
     "stateMutability": "nonpayable"
   },
   {
+    "name": "createLegacyV2WithMaxFee",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "distributions_",
+        "type": "tuple[]",
+        "components": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "percent",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "internalType": "struct TransferLegacyStruct.Distribution[]"
+      },
+      {
+        "name": "extraConfig_",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "lackOfOutgoingTxRange",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "delayLayer2",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "delayLayer3",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "internalType": "struct TransferLegacyStruct.LegacyExtraConfig"
+      },
+      {
+        "name": "layer2Distribution_",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "percent",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "internalType": "struct TransferLegacyStruct.Distribution"
+      },
+      {
+        "name": "layer3Distribution_",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "percent",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "internalType": "struct TransferLegacyStruct.Distribution"
+      },
+      {
+        "name": "permit2_",
+        "type": "tuple",
+        "components": [
+          {
+            "name": "permitBatch",
+            "type": "tuple",
+            "components": [
+              {
+                "name": "details",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "token",
+                    "type": "address",
+                    "internalType": "address"
+                  },
+                  {
+                    "name": "amount",
+                    "type": "uint160",
+                    "internalType": "uint160"
+                  },
+                  {
+                    "name": "expiration",
+                    "type": "uint48",
+                    "internalType": "uint48"
+                  },
+                  {
+                    "name": "nonce",
+                    "type": "uint48",
+                    "internalType": "uint48"
+                  }
+                ],
+                "internalType": "struct IAllowanceTransfer.PermitDetails[]"
+              },
+              {
+                "name": "spender",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "sigDeadline",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ],
+            "internalType": "struct IAllowanceTransfer.PermitBatch"
+          },
+          {
+            "name": "signature",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "internalType": "struct TransferEOALegacyRouter.Permit2CreateBundle"
+      },
+      {
+        "name": "signatureTimestamp",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "agreementSignature",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "maxFeeBps_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "legacyAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
     "name": "createPaused",
     "type": "function",
     "inputs": [],
@@ -1690,24 +1961,16 @@
     "stateMutability": "nonpayable"
   },
   {
-    "name": "initializeV2",
+    "name": "initializeV4",
     "type": "function",
     "inputs": [
       {
         "name": "codeAdmin_",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "name": "initializeV3",
-    "type": "function",
-    "inputs": [
+      },
       {
-        "name": "codeAdmin_",
+        "name": "paymentContract_",
         "type": "address",
         "internalType": "address"
       }
@@ -2329,6 +2592,19 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "name": "upgradeTimelock",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "name": "verifier",

@@ -173,6 +173,192 @@
     ],
     "owner": "10102"
   },
+  "Create a legacy for two beneficiaries with a backup, at a claim fee of 0.25% at most": {
+    "intent": "Create legacy, approve tokens",
+    "fields": [
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "60%"
+      },
+      {
+        "label": "Beneficiary",
+        "value": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      },
+      {
+        "label": "Share",
+        "value": "40%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "4320:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Backup delay",
+        "value": "2160:00:00"
+      },
+      {
+        "label": "Second backup share",
+        "value": "None"
+      },
+      {
+        "label": "Maximum claim fee",
+        "value": "0.25%"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      {
+        "label": "Amount covered",
+        "value": "Unlimited USDC"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      {
+        "label": "Amount covered",
+        "value": "2 WETH"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission held by",
+        "value": "10102 LegacyPullVaultV2"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create a legacy with two backups that accepts no claim fee": {
+    "intent": "Create legacy, approve tokens",
+    "fields": [
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "100%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "8760:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Backup delay",
+        "value": "1440:00:00"
+      },
+      {
+        "label": "Second backup",
+        "value": "0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB"
+      },
+      {
+        "label": "Second backup share",
+        "value": "100%"
+      },
+      {
+        "label": "Second backup delay",
+        "value": "720:00:00"
+      },
+      {
+        "label": "Maximum claim fee",
+        "value": "0%"
+      },
+      {
+        "label": "Token covered",
+        "value": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+      },
+      {
+        "label": "Amount covered",
+        "value": "5 wstETH"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission held by",
+        "value": "10102 LegacyPullVaultV2"
+      }
+    ],
+    "owner": "10102"
+  },
+  "Create a legacy that names a backup with no share, at a claim fee of 0.5% at most": {
+    "intent": "Create legacy, approve tokens",
+    "fields": [
+      {
+        "label": "Beneficiary",
+        "value": "0x8ba1f109551bD432803012645Ac136ddd64DBA72"
+      },
+      {
+        "label": "Share",
+        "value": "100%"
+      },
+      {
+        "label": "Inactivity period",
+        "value": "4320:00:00"
+      },
+      {
+        "label": "Backup beneficiary",
+        "value": "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+      },
+      {
+        "label": "Backup share",
+        "value": "None"
+      },
+      {
+        "label": "Second backup share",
+        "value": "None"
+      },
+      {
+        "label": "Maximum claim fee",
+        "value": "0.5%"
+      },
+      {
+        "label": "Token covered",
+        "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      {
+        "label": "Amount covered",
+        "value": "1000 USDC"
+      },
+      {
+        "label": "Permission expires",
+        "value": "2030-12-31 23:59:59Z"
+      },
+      {
+        "label": "Permission held by",
+        "value": "10102 LegacyPullVaultV2"
+      }
+    ],
+    "owner": "10102"
+  },
   "Check in on legacy 12": {
     "intent": "Check in",
     "fields": [
@@ -485,6 +671,16 @@
       }
     ],
     "interpolatedIntent": "Delete legacy 12",
+    "owner": "10102"
+  },
+  "Let the owner of the ended legacy 12 create a new one": {
+    "intent": "Allow creating a new legacy",
+    "fields": [
+      {
+        "label": "Ended legacy",
+        "value": "12"
+      }
+    ],
     "owner": "10102"
   },
   "Claim USDC, WETH and ETH from legacy 12": {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const names = ['TransferEOALegacyRouter', 'TimeLockRouter', 'ShieldVault'];
+const names = ['TransferEOALegacyRouter', 'TimeLockRouter', 'ShieldVault', 'ShieldVaultV3'];
 const verbose = process.argv.includes('--verbose');
 let pass = 0;
 let total = 0;

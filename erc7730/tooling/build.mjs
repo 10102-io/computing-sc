@@ -25,6 +25,9 @@ const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const WSTETH = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0';
 const PULL_VAULT = '0x95F0981026C7e804fD6ba8bE738cA7c380C7f978';
+// The router's vault since 2026-11-07, so what `createLegacyV2WithMaxFee`
+// names as the Permit2 spender.
+const PULL_VAULT_V2 = '0xC6640962618f9D729032487EC5DEf226BF6F43E3';
 const ALICE = '0x8ba1f109551bD432803012645Ac136ddd64DBA72';
 const BOB = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B';
 const CAROL = '0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db';
@@ -81,6 +84,104 @@ const shieldBeneficiaries = bundled(person('config.beneficiaries.[]', 'Beneficia
 // signer sees when a share is not paid straight out.
 const heldShares = unlessZero(raw('config.holdMask', 'Held shares (mask)'));
 
+// What both creates of the legacy router show, in one order, so a signer
+// reads the same screens. `terms` are the fields only one of them has; they
+// follow the legacy's own settings and come before the token permissions.
+const createFields = (terms = []) => [
+  ...beneficiaries('distributions_'),
+  dur('extraConfig_.lackOfOutgoingTxRange', 'Inactivity period'),
+  unlessNoAddress(person('layer2Distribution_.user', 'Backup beneficiary')),
+  backupShare('layer2Distribution_.percent', 'Backup share'),
+  unlessZero(dur('extraConfig_.delayLayer2', 'Backup delay')),
+  unlessNoAddress(person('layer3Distribution_.user', 'Second backup')),
+  backupShare('layer3Distribution_.percent', 'Second backup share'),
+  unlessZero(dur('extraConfig_.delayLayer3', 'Second backup delay')),
+  ...terms,
+  bundled(
+    tokenAddr('permit2_.permitBatch.details.[].token', 'Token covered'),
+    tokAmt('permit2_.permitBatch.details.[].amount', 'Amount covered', 'permit2_.permitBatch.details.[].token', { threshold: hex(maxUint160), message: 'Unlimited' }),
+    date('permit2_.permitBatch.details.[].expiration', 'Permission expires')
+  ),
+  contractAddr('permit2_.permitBatch.spender', 'Permission held by'),
+  never('permit2_.permitBatch.details.[].nonce', 'Permit nonce'),
+  never('permit2_.permitBatch.details.[]', 'Permit details'),
+  never('permit2_.permitBatch.sigDeadline', 'Permit deadline'),
+  never('permit2_.signature', 'Permit signature'),
+  never('signatureTimestamp', 'Terms timestamp'),
+  never('agreementSignature', 'Terms signature')
+];
+
+// The create cases, for both creates: the same people, tokens and periods.
+// `vault` is the Permit2 spender. `withMaxFee` is what the case becomes for
+// `createLegacyV2WithMaxFee`: 25 is the live claim fee the app passes
+// (`Payment.getFee()`, read 2026-11-13), 0 is what it passes when no fee was
+// shown, 50 is the highest a new legacy accepts (`MAX_ADMIN_FEE_BPS`).
+const createCases = (vault) => [
+  {
+    description: 'Create a legacy for two beneficiaries with a backup, covering USDC and WETH',
+    withMaxFee: { description: 'Create a legacy for two beneficiaries with a backup, at a claim fee of 0.25% at most', maxFeeBps: 25n },
+    args: [
+      [{ user: ALICE, percent: 600000n }, { user: BOB, percent: 400000n }],
+      { lackOfOutgoingTxRange: 180n * DAY, delayLayer2: 90n * DAY, delayLayer3: 0n },
+      { user: CAROL, percent: 1000000n },
+      { user: ZERO, percent: 0n },
+      {
+        permitBatch: {
+          details: [
+            { token: USDC, amount: maxUint160, expiration: 1924991999, nonce: 0 },
+            { token: WETH, amount: parseEther('2'), expiration: 1924991999, nonce: 3 }
+          ],
+          spender: vault,
+          sigDeadline: 1800000000n
+        },
+        signature: '0x' + 'ab'.repeat(65)
+      },
+      1799990000n,
+      '0x' + 'cd'.repeat(65)
+    ]
+  },
+  {
+    description: 'Create a legacy with two backups, covering wstETH',
+    withMaxFee: { description: 'Create a legacy with two backups that accepts no claim fee', maxFeeBps: 0n },
+    args: [
+      [{ user: ALICE, percent: 1000000n }],
+      { lackOfOutgoingTxRange: 365n * DAY, delayLayer2: 60n * DAY, delayLayer3: 30n * DAY },
+      { user: CAROL, percent: 1000000n },
+      { user: DAVE, percent: 1000000n },
+      {
+        permitBatch: {
+          details: [{ token: WSTETH, amount: parseEther('5'), expiration: 1924991999, nonce: 0 }],
+          spender: vault,
+          sigDeadline: 1800000000n
+        },
+        signature: '0x' + 'ab'.repeat(65)
+      },
+      0n,
+      '0x'
+    ]
+  },
+  {
+    description: 'Create a legacy that names a backup with no share',
+    withMaxFee: { description: 'Create a legacy that names a backup with no share, at a claim fee of 0.5% at most', maxFeeBps: 50n },
+    args: [
+      [{ user: ALICE, percent: 1000000n }],
+      { lackOfOutgoingTxRange: 180n * DAY, delayLayer2: 0n, delayLayer3: 0n },
+      { user: CAROL, percent: 0n },
+      { user: ZERO, percent: 0n },
+      {
+        permitBatch: {
+          details: [{ token: USDC, amount: parseUnits('1000', 6), expiration: 1924991999, nonce: 1 }],
+          spender: vault,
+          sigDeadline: 1800000000n
+        },
+        signature: '0x' + 'ab'.repeat(65)
+      },
+      0n,
+      '0x'
+    ]
+  }
+];
+
 const SPECS = [
   {
     name: 'TransferEOALegacyRouter',
@@ -92,93 +193,26 @@ const SPECS = [
       'setLegacyConfig(uint256,(string,string,string[],(address,uint256)[]),(uint256,uint256,uint256),(address,uint256),(address,uint256),string,string)': ['legacyId_', 'mainConfig_', 'extraConfig_', 'layer2Distribution_', 'layer3Distribution_', 'layer2Nickname_', 'layer3Nickname_']
     },
     enums: { layer: { 2: 'First backup', 3: 'Second backup' }, backupShare: { 0: 'None', 1000000: '100%' } },
+    // Names only this descriptor's cases need, so the other test files keep
+    // their data provider as it is.
+    addressNames: { [PULL_VAULT_V2.toLowerCase()]: '10102 LegacyPullVaultV2' },
     formats: {
       createLegacyV2: {
         intent: 'Create legacy, approve tokens',
-        fields: [
-          ...beneficiaries('distributions_'),
-          dur('extraConfig_.lackOfOutgoingTxRange', 'Inactivity period'),
-          unlessNoAddress(person('layer2Distribution_.user', 'Backup beneficiary')),
-          backupShare('layer2Distribution_.percent', 'Backup share'),
-          unlessZero(dur('extraConfig_.delayLayer2', 'Backup delay')),
-          unlessNoAddress(person('layer3Distribution_.user', 'Second backup')),
-          backupShare('layer3Distribution_.percent', 'Second backup share'),
-          unlessZero(dur('extraConfig_.delayLayer3', 'Second backup delay')),
-          bundled(
-            tokenAddr('permit2_.permitBatch.details.[].token', 'Token covered'),
-            tokAmt('permit2_.permitBatch.details.[].amount', 'Amount covered', 'permit2_.permitBatch.details.[].token', { threshold: hex(maxUint160), message: 'Unlimited' }),
-            date('permit2_.permitBatch.details.[].expiration', 'Permission expires')
-          ),
-          contractAddr('permit2_.permitBatch.spender', 'Permission held by'),
-          never('permit2_.permitBatch.details.[].nonce', 'Permit nonce'),
-          never('permit2_.permitBatch.details.[]', 'Permit details'),
-          never('permit2_.permitBatch.sigDeadline', 'Permit deadline'),
-          never('permit2_.signature', 'Permit signature'),
-          never('signatureTimestamp', 'Terms timestamp'),
-          never('agreementSignature', 'Terms signature')
-        ],
-        tests: [
-          {
-            description: 'Create a legacy for two beneficiaries with a backup, covering USDC and WETH',
-            args: [
-              [{ user: ALICE, percent: 600000n }, { user: BOB, percent: 400000n }],
-              { lackOfOutgoingTxRange: 180n * DAY, delayLayer2: 90n * DAY, delayLayer3: 0n },
-              { user: CAROL, percent: 1000000n },
-              { user: ZERO, percent: 0n },
-              {
-                permitBatch: {
-                  details: [
-                    { token: USDC, amount: maxUint160, expiration: 1924991999, nonce: 0 },
-                    { token: WETH, amount: parseEther('2'), expiration: 1924991999, nonce: 3 }
-                  ],
-                  spender: PULL_VAULT,
-                  sigDeadline: 1800000000n
-                },
-                signature: '0x' + 'ab'.repeat(65)
-              },
-              1799990000n,
-              '0x' + 'cd'.repeat(65)
-            ]
-          },
-          {
-            description: 'Create a legacy with two backups, covering wstETH',
-            args: [
-              [{ user: ALICE, percent: 1000000n }],
-              { lackOfOutgoingTxRange: 365n * DAY, delayLayer2: 60n * DAY, delayLayer3: 30n * DAY },
-              { user: CAROL, percent: 1000000n },
-              { user: DAVE, percent: 1000000n },
-              {
-                permitBatch: {
-                  details: [{ token: WSTETH, amount: parseEther('5'), expiration: 1924991999, nonce: 0 }],
-                  spender: PULL_VAULT,
-                  sigDeadline: 1800000000n
-                },
-                signature: '0x' + 'ab'.repeat(65)
-              },
-              0n,
-              '0x'
-            ]
-          },
-          {
-            description: 'Create a legacy that names a backup with no share',
-            args: [
-              [{ user: ALICE, percent: 1000000n }],
-              { lackOfOutgoingTxRange: 180n * DAY, delayLayer2: 0n, delayLayer3: 0n },
-              { user: CAROL, percent: 0n },
-              { user: ZERO, percent: 0n },
-              {
-                permitBatch: {
-                  details: [{ token: USDC, amount: parseUnits('1000', 6), expiration: 1924991999, nonce: 1 }],
-                  spender: PULL_VAULT,
-                  sigDeadline: 1800000000n
-                },
-                signature: '0x' + 'ab'.repeat(65)
-              },
-              0n,
-              '0x'
-            ]
-          }
-        ]
+        fields: createFields(),
+        tests: createCases(PULL_VAULT).map(({ description, args }) => ({ description, args }))
+      },
+      // The create the app sends since 2026-11-07: `createLegacyV2` plus the
+      // highest claim fee the creator accepts. The new legacy stores the
+      // rate `Payment.getFee()` gives at that moment (basis points of
+      // 10,000) for good, and the create reverts `FeeAboveMax` when that
+      // rate is above `maxFeeBps_`. Nothing is paid at the create: the
+      // stored rate is taken from what is claimed, at each claim, for the
+      // `Payment` contract.
+      createLegacyV2WithMaxFee: {
+        intent: 'Create legacy, approve tokens',
+        fields: createFields([pctBps('maxFeeBps_', 'Maximum claim fee')]),
+        tests: createCases(PULL_VAULT_V2).map(({ withMaxFee, args }) => ({ description: withMaxFee.description, args: [...args, withMaxFee.maxFeeBps] }))
       },
       avtiveAlive: {
         intent: 'Check in',
@@ -326,6 +360,16 @@ const SPECS = [
         fields: [legacyId],
         tests: [{ description: 'Delete legacy 12', args: [12n] }]
       },
+      // A wallet may have one legacy at a time (`isCreateLegacy`). This call
+      // clears that mark for the owner of a legacy that is no longer live
+      // (claimed or deleted) where the router has not cleared it already. It
+      // reverts for anyone but the owner and while the legacy is live,
+      // changes nothing in the legacy itself and moves nothing.
+      releaseCreateFlag: {
+        intent: 'Allow creating a new legacy',
+        fields: [raw('legacyId_', 'Ended legacy')],
+        tests: [{ description: 'Let the owner of the ended legacy 12 create a new one', args: [12n] }]
+      },
       activeLegacy: {
         intent: 'Claim legacy',
         fields: [legacyId, tokenAddr('assets_.[]', 'Token claimed'), raw('isETH_', 'Include ETH')],
@@ -375,102 +419,129 @@ const SPECS = [
     name: 'ShieldVault',
     abiFile: 'abis/ShieldVault.json',
     deployments: [{ chainId: 1, address: '0xA1EA2F8C0518458975E09ED63bf5D48980f76C38' }],
-    formats: {
-      open: {
-        intent: 'Open Shield Vault holding',
-        fields: [
-          tokAmt('amount', 'Amount', 'token'),
-          dur('config.exitDelay', 'Withdrawals wait'),
-          dur('config.silencePeriod', 'Silence (0=off)'),
-          shieldBeneficiaries,
-          pctBps('maxFeeBps', 'Maximum exit fee'),
-          raw('vetoIndex', 'Recovery (max=off)'),
-          heldShares,
-          never('token', 'Token')
-        ],
-        tests: [
-          {
-            description: 'Open a 10 wstETH holding for two beneficiaries',
-            args: [WSTETH, parseEther('10'), { exitDelay: 7 * 86400, silencePeriod: 365 * 86400, beneficiaries: [ALICE, BOB], sharesBps: [7000, 3000], holdMask: 2 }, 0n, 25]
-          },
-          {
-            description: 'Open a 5 wstETH holding with no fallback and no recovery sheet',
-            args: [WSTETH, parseEther('5'), { exitDelay: 30 * 86400, silencePeriod: 0, beneficiaries: [], sharesBps: [], holdMask: 0 }, NO_VETO, 25]
-          }
-        ]
-      },
-      deposit: {
-        intent: 'Add to Shield Vault holding',
-        fields: [raw('id', 'Holding'), raw('amount', 'Amount (base units)')],
-        tests: [{ description: 'Add to holding 3', args: [3n, parseEther('1')] }]
-      },
-      checkIn: {
-        intent: 'Check in',
-        interpolatedIntent: 'Check in on holding {id}',
-        fields: [raw('id', 'Holding')],
-        tests: [{ description: 'Check in on holding 3', args: [3n] }]
-      },
-      requestWithdraw: {
-        intent: 'Request withdrawal (exit fee)',
-        fields: [
-          raw('id', 'Holding'),
-          raw('amount', 'Before fee (max=all)'),
-          person('to', 'To')
-        ],
-        tests: [
-          { description: 'Request a withdrawal of everything from holding 3', args: [3n, maxUint256, DAVE] },
-          { description: 'Request a partial withdrawal from holding 3', args: [3n, parseEther('2'), DAVE] }
-        ]
-      },
-      cancelPending: {
-        intent: 'Cancel pending request',
-        fields: [raw('id', 'Holding')],
-        tests: [{ description: 'Cancel the pending request on holding 3', args: [3n] }]
-      },
-      executePending: {
-        intent: 'Complete request (fee on exit)',
-        fields: [raw('id', 'Holding')],
-        tests: [{ description: 'Complete the pending request on holding 3', args: [3n] }]
-      },
-      executeFallback: {
-        intent: 'Release to beneficiaries (fee)',
-        fields: [raw('id', 'Holding')],
-        tests: [{ description: 'Release holding 3 to its beneficiaries', args: [3n] }]
-      },
-      requestChange: {
-        intent: 'Request settings change',
-        fields: [
-          raw('id', 'Holding'),
-          dur('config.exitDelay', 'Withdrawals wait'),
-          dur('config.silencePeriod', 'Silence (0=off)'),
-          shieldBeneficiaries,
-          raw('vetoIndex', 'Recovery (max=off)'),
-          heldShares
-        ],
-        tests: [
-          {
-            description: 'Change holding 3 to one beneficiary who claims with a card',
-            args: [3n, { exitDelay: 30 * 86400, silencePeriod: 730 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 1 }, 1n]
-          },
-          {
-            description: 'Split holding 3 in two and remove its recovery sheet',
-            args: [3n, { exitDelay: 7 * 86400, silencePeriod: 365 * 86400, beneficiaries: [ALICE, BOB], sharesBps: [5000, 5000], holdMask: 0 }, NO_VETO]
-          }
-        ]
-      },
-      veto: {
-        intent: 'Send all to recovery wallet',
-        fields: [raw('id', 'Holding'), person('recoveryTo', 'Recovery wallet'), never('secret', 'Recovery secret')],
-        tests: [{ description: 'Stop holding 3 and move it to the recovery wallet', args: [3n, '0x' + '11'.repeat(32), CAROL] }]
-      },
-      claimOwed: {
-        intent: 'Claim held share',
-        fields: [raw('id', 'Holding'), person('beneficiary', 'Paid to')],
-        tests: [{ description: 'Pay the held share of holding 3', args: [3n, BOB] }]
-      }
-    }
+    formats: shieldVaultFormats({ v3: false })
+  },
+  {
+    name: 'ShieldVaultV3',
+    abiFile: 'abis/ShieldVaultV3.json',
+    deployments: [{ chainId: 1, address: '0x1610DC8D25475959D5ba9395c4CE02456B51EB59' }],
+    formats: shieldVaultFormats({ v3: true })
   }
 ];
+
+// Shield Vault v2 and v3 have the same ABI, selector for selector, but not
+// the same fee, so each has its own descriptor. v2 takes a holding's rate
+// from a completed withdrawal and from a release to the beneficiaries. v3
+// takes it from the release only (`_takeFee` has one caller there,
+// `executeFallback`): a withdrawal pays out the amount requested, completing
+// a request costs nothing, and `maxFeeBps` bounds the release fee. A second
+// deployment on v2's descriptor would tell a v3 signer of a fee that is
+// never taken.
+function shieldVaultFormats({ v3 }) {
+  return {
+    open: {
+      intent: 'Open Shield Vault holding',
+      fields: [
+        tokAmt('amount', 'Amount', 'token'),
+        dur('config.exitDelay', 'Withdrawals wait'),
+        dur('config.silencePeriod', 'Silence (0=off)'),
+        shieldBeneficiaries,
+        pctBps('maxFeeBps', v3 ? 'Maximum release fee' : 'Maximum exit fee'),
+        raw('vetoIndex', 'Recovery (max=off)'),
+        heldShares,
+        never('token', 'Token')
+      ],
+      tests: [
+        {
+          description: 'Open a 10 wstETH holding for two beneficiaries',
+          args: [WSTETH, parseEther('10'), { exitDelay: 7 * 86400, silencePeriod: 365 * 86400, beneficiaries: [ALICE, BOB], sharesBps: [7000, 3000], holdMask: 2 }, 0n, 25]
+        },
+        {
+          description: 'Open a 5 wstETH holding with no fallback and no recovery sheet',
+          // 50 is the vault's ceiling (MAX_FEE_BPS).
+          args: [WSTETH, parseEther('5'), { exitDelay: 30 * 86400, silencePeriod: 0, beneficiaries: [], sharesBps: [], holdMask: 0 }, NO_VETO, v3 ? 50 : 25]
+        },
+        ...(v3
+          ? [
+              {
+                description: 'Open a 2,500 USDC holding that accepts no release fee',
+                args: [USDC, parseUnits('2500', 6), { exitDelay: 90 * 86400, silencePeriod: 180 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 0 }, 2n, 0]
+              }
+            ]
+          : [])
+      ]
+    },
+    deposit: {
+      intent: 'Add to Shield Vault holding',
+      fields: [raw('id', 'Holding'), raw('amount', 'Amount (base units)')],
+      tests: [{ description: 'Add to holding 3', args: [3n, parseEther('1')] }]
+    },
+    checkIn: {
+      intent: 'Check in',
+      interpolatedIntent: 'Check in on holding {id}',
+      fields: [raw('id', 'Holding')],
+      tests: [{ description: 'Check in on holding 3', args: [3n] }]
+    },
+    requestWithdraw: {
+      intent: v3 ? 'Request withdrawal' : 'Request withdrawal (exit fee)',
+      fields: [
+        raw('id', 'Holding'),
+        raw('amount', v3 ? 'Amount (max=all)' : 'Before fee (max=all)'),
+        person('to', 'To')
+      ],
+      tests: [
+        { description: 'Request a withdrawal of everything from holding 3', args: [3n, maxUint256, DAVE] },
+        { description: 'Request a partial withdrawal from holding 3', args: [3n, parseEther('2'), DAVE] }
+      ]
+    },
+    cancelPending: {
+      intent: 'Cancel pending request',
+      fields: [raw('id', 'Holding')],
+      tests: [{ description: 'Cancel the pending request on holding 3', args: [3n] }]
+    },
+    executePending: {
+      intent: v3 ? 'Complete pending request' : 'Complete request (fee on exit)',
+      fields: [raw('id', 'Holding')],
+      tests: [{ description: 'Complete the pending request on holding 3', args: [3n] }]
+    },
+    executeFallback: {
+      intent: 'Release to beneficiaries (fee)',
+      fields: [raw('id', 'Holding')],
+      tests: [{ description: 'Release holding 3 to its beneficiaries', args: [3n] }]
+    },
+    requestChange: {
+      intent: 'Request settings change',
+      fields: [
+        raw('id', 'Holding'),
+        dur('config.exitDelay', 'Withdrawals wait'),
+        dur('config.silencePeriod', 'Silence (0=off)'),
+        shieldBeneficiaries,
+        raw('vetoIndex', 'Recovery (max=off)'),
+        heldShares
+      ],
+      tests: [
+        {
+          description: 'Change holding 3 to one beneficiary who claims with a card',
+          args: [3n, { exitDelay: 30 * 86400, silencePeriod: 730 * 86400, beneficiaries: [CAROL], sharesBps: [10000], holdMask: 1 }, 1n]
+        },
+        {
+          description: 'Split holding 3 in two and remove its recovery sheet',
+          args: [3n, { exitDelay: 7 * 86400, silencePeriod: 365 * 86400, beneficiaries: [ALICE, BOB], sharesBps: [5000, 5000], holdMask: 0 }, NO_VETO]
+        }
+      ]
+    },
+    veto: {
+      intent: 'Send all to recovery wallet',
+      fields: [raw('id', 'Holding'), person('recoveryTo', 'Recovery wallet'), never('secret', 'Recovery secret')],
+      tests: [{ description: 'Stop holding 3 and move it to the recovery wallet', args: [3n, '0x' + '11'.repeat(32), CAROL] }]
+    },
+    claimOwed: {
+      intent: 'Claim held share',
+      fields: [raw('id', 'Holding'), person('beneficiary', 'Paid to')],
+      tests: [{ description: 'Pay the held share of holding 3', args: [3n, BOB] }]
+    }
+  };
+}
 
 function timelockCreate(arg, intent, durationField, durationLabel, subject = intent) {
   const b = arg;
@@ -607,7 +678,12 @@ for (const spec of SPECS) {
   writeFileSync(
     `${OUT}/testsv2/calldata-${spec.name}.tests.json`,
     JSON.stringify(
-      { $schema: '../../../specs/erc7730-tests-v2.schema.json', descriptor: `../calldata-${spec.name}.json`, dataProvider, tests },
+      {
+        $schema: '../../../specs/erc7730-tests-v2.schema.json',
+        descriptor: `../calldata-${spec.name}.json`,
+        dataProvider: spec.addressNames ? { ...dataProvider, addressNames: { ...dataProvider.addressNames, ...spec.addressNames } } : dataProvider,
+        tests
+      },
       null,
       2
     ) + '\n'

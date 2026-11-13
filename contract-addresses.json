@@ -361,8 +361,7 @@
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",
-      "implementation": "0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1",
-      "pendingImplementation": "0x8F8971289e35adF8f9123BF142120D21109974eb"
+      "implementation": "0x8F8971289e35adF8f9123BF142120D21109974eb"
     },
     "PremiumAutomationManager": {
       "address": "0x03db2dcED84AEcb21F9e399f4dC7B71302537265",
@@ -387,6 +386,9 @@
     },
     "TokenWhiteList": {
       "address": "0x7812777A23877159861d3De567DD97f9d9f64FE9"
+    },
+    "NftCollectionWhiteList": {
+      "address": "0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623"
     },
     "Banner": {
       "address": "0x4F2fcaFaCD6FAEE5F6Aa8FD862f985420C3eBCe8",
@@ -413,7 +415,7 @@
       "implementation": "0x497DaDFf357fAA825ceE310E473f628Db03C0F5A"
     },
     "TransferEOALegacyImpl": {
-      "address": "0x2E2dE6475fcBE77E7930499981850d37b237924C"
+      "address": "0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9"
     },
     "_deprecated": {
       "_note": "Replaced or superseded contracts kept for historical reference.",
@@ -430,6 +432,11 @@
       "TransferEOALegacyImpl_pre_2026_11_07": {
         "address": "0xdDea11D92dDD0746Dbe2899f35A79a145660a7C3",
         "replacedBy": "TransferEOALegacyImpl"
+      },
+      "TransferEOALegacyImpl_pre_2026_11_13": {
+        "address": "0x2E2dE6475fcBE77E7930499981850d37b237924C",
+        "replacedBy": "TransferEOALegacyImpl",
+        "note": "The clone of legacies created from 2026-11-07 to 2026-11-13 (wave A of the 2026-11 train). Their clones pin it forever; it stays allowed in LegacyPullVault."
       }
     },
     "PremiumReminderView": {
@@ -469,10 +476,6 @@
     },
     "ShieldVaultV1": {
       "address": "0x83074f8519F54AF05f7C48911E432e0C44dBEE69"
-    },
-    "train202611": {
-      "NftCollectionWhiteList": "0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623",
-      "TransferEOALegacyV3Impl": "0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9"
     },
     "ShieldVaultV3": {
       "address": "0x1610DC8D25475959D5ba9395c4CE02456B51EB59"

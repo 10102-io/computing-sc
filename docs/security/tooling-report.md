@@ -27,11 +27,11 @@ is tests, configuration, CI and documentation.
 | Coverage, ShieldVault.sol | **100% lines (224/224), 100% statements (180/180), 100% functions (42/42), 98.84% branches (170/172)**; the two uncovered branch arms are unreachable by construction (section 2) | `npm run coverage` |
 | Coverage, QuantumRecoveryRegistry.sol | 100% lines (10/10), statements (9/9), functions (6/6), branches (2/2) | `npm run coverage` |
 | Slither 0.11.6 | ShieldVault: 7 results, 0 vulnerabilities (3 false positives at Medium/High, 3 Low by design, 1 Informational); registry: 0 results | `docs/security/static-analysis.md` |
-| Aderyn 0.6.8 | 0 High, 5 Low (all informational in substance) | `docs/security/static-analysis.md` |
+| Aderyn 0.6.8 (retired by its maintainer on 2026-11-13; last run 2026-11-12) | 0 High, 5 Low (all informational in substance) | `docs/security/static-analysis.md`, `docs/security/aderyn-2026-11-12/` |
 | Foundry stateless fuzz | 13 properties, each 2,000 runs in CI and 20,000 runs locally, 0 counterexamples | `test/foundry/ShieldVault.fuzz.t.sol` |
 | Foundry invariants | 9 invariant functions over a 25-operation handler, 256 runs x depth 200 (51,200 calls) in CI and 768 runs x depth 250 (192,000 calls) locally, 0 counterexamples | `test/foundry/ShieldVault.invariants.t.sol`, `ShieldVaultHandler.sol` |
 | Invariants of the audit package covered | 19 of 19 have at least one automated check; section 4 says how strong each is | section 4 |
-| CI | tests, coverage with thresholds, Slither and Aderyn, fuzz and invariants on every PR | `.github/workflows/security.yml` |
+| CI | tests, coverage with thresholds, Slither (and Aderyn until 2026-11-13), fuzz and invariants on every PR | `.github/workflows/security.yml` |
 
 **Findings against the contract: none.** Every counterexample the fuzzers
 produced during development was a mistake in the harness (section 4.4
@@ -342,7 +342,7 @@ never hides another's result:
 |---|---|---|
 | `hardhat tests` | `npm ci`, `npx hardhat compile`, `npx hardhat test` (263 specs) | any spec fails |
 | `coverage` | `npm run coverage`, then a threshold check on the review targets (since 2026-11-09 ShieldVault v3 too); uploads HTML/lcov | ShieldVault v2 or v3 below 100% lines, statements, functions or 98% branches; registry below 100% anywhere |
-| `slither and aderyn` | Slither on each file with the deployed compiler settings and the triage database, `--fail-medium`; Aderyn on the two files; since round 7 also, report only, Slither and Aderyn on the three legacy v3 files (section 8); uploads every report | a new Slither result at Medium or above on ShieldVault (v2 or v3, since 2026-11-09) or the registry; any Aderyn High there (the legacy v3 steps never fail) |
+| `slither` (named `slither and aderyn` until 2026-11-13, when Aderyn was retired and its steps were removed) | Slither on each file with the deployed compiler settings and the triage database, `--fail-medium`; Aderyn on the two files; since round 7 also, report only, Slither and Aderyn on the three legacy v3 files (section 8); uploads every report | a new Slither result at Medium or above on ShieldVault (v2 or v3, since 2026-11-09) or the registry; any Aderyn High there (the legacy v3 steps never fail) |
 | `foundry fuzz and invariants` | `forge test` on `test/foundry/**` with the CI profile, prints per-operation reach, uploads the summary | any counterexample or any handler revert |
 
 Everything runs with `HARDHAT_NO_FORK=1` so a stray `fork-block.json` can
@@ -383,7 +383,6 @@ npx hardhat compile
 npm run test:shield          # the three ShieldVault / registry spec files
 npm run coverage             # coverage/index.html, coverage/coverage-summary.json
 npm run slither:shield       # needs: pip install slither-analyzer solc-select; solc-select install 0.8.35; solc-select use 0.8.35
-npm run aderyn:shield        # needs: aderyn 0.6.8 (https://github.com/Cyfrin/aderyn)
 npm run fuzz                 # needs: foundryup; git submodule update --init
 ```
 

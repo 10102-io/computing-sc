@@ -44,8 +44,9 @@ Legacies that exist keep their code.
   (`scripts/compiler-bugs/tree-version-diff.mjs 0.8.36 0.8.37 0.8.38`
   shows which; `ir-diff.mjs` shows why). The contract sizes move by a few
   bytes: check the v3 clone against the 24,576-byte limit.
-- The whole suite, coverage, the Foundry fuzz and invariant suites, Slither
-  and Aderyn on the new build.
+- The whole suite, coverage, the Foundry fuzz and invariant suites and
+  Slither on the new build (Aderyn was retired on 2026-11-13; decide on a
+  second analyser before this train).
 - `scripts/check-clone-reproducible.ts` for both clones, then the list of
   known bugs again for the release chosen
   (`scripts/compiler-bugs/known-bugs.mjs 0.8.38`): if a later release is
