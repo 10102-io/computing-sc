@@ -21,6 +21,74 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-16 — First NFT collections on the mainnet list, terms v2026-12
+
+[On-chain configuration only; no contract or bytecode change. Unreleased
+on main, already live on mainnet.]
+
+- **Three collections are on the mainnet NFT list**
+  (`0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623`), so a legacy v3 can name
+  NFTs on mainnet: CryptoPunks 721, the ERC-721 wrapper for CryptoPunks
+  (`0x000000000000003607fce1aC9e043a86675C5C2F`, tx `0xb6043af0…44eb`,
+  block 26429835), Bored Ape Yacht Club
+  (`0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D`, tx `0xd586d9ce…02f0`,
+  block 26429841) and Pudgy Penguins
+  (`0xBd3531dA5CF5857e7CfAA92426877b022e612cf8`, tx `0xfc847a44…dc58`,
+  block 26429842), from the deployer key, read back from the chain. The
+  founder chose the three largest by market value that the list accepts;
+  the original CryptoPunks contract is not ERC-721 and the list refuses it.
+- **Each was walked to a claim first**, on a fork of mainnet
+  (`scripts/vet-nft-collections.ts`, no key): a real token of each
+  collection in a fresh wallet, a legacy v3 created through the router,
+  the vault approved, the token named, the deadline passed, the claim,
+  and the token with the beneficiary at the end. The record, with what the
+  source of each collection says and what an owner should know (a punk
+  must be in that wrapper; Pudgy Penguins has an owner key that can pause
+  transfers, and a paused item is skipped by a claim and stays owed until
+  the pause ends): `docs/security/nft-collections.md`, with the walk's
+  output beside it. `scripts/add-nft-collections.ts`
+  sends the adds: it checks that the list is the one in the code of the
+  clones the router creates, simulates each add and skips what is listed.
+- **Terms v2026-12.** The EIP712LegacyVerifier's active terms move from
+  `v2026-11` to **`v2026-12`** on mainnet and Sepolia (`setActiveTerms`,
+  keccak256
+  `0x51f85836971aaab3d0fd4c4fc6df98f107cfe5a17279bb48fc5c36860ba177a9` of
+  `docs/tos/v2026-12.md`, 26,877 characters): Sepolia tx `0x3e74f6ed…832f`
+  in block 12149534, mainnet tx `0x883c338a…7b3f` in block 26429833, both
+  read back from the chain, after the app that publishes the new text
+  (`app.10102.io/terms/current.json`) was live. The page the app's terms
+  links open, `10102.io/disclosures`, still showed `v2026-11` then and
+  needs a rebuild of the website (computing `docs/OPS-CHECKLIST.md` 0t):
+  until then a consent is recorded against `v2026-12` while the linked
+  page shows `v2026-11`. None was recorded on either network up to 20:36
+  UTC (the verifier's and the routers' logs). `set-active-terms.ts` now
+  checks both addresses before it sends, and sends nothing when either
+  shows another version. The text adds a "Legacy Risks" section (backup beneficiaries, the
+  executor's confirmation that nobody verifies, NFTs and their list, what
+  a change resets, what a move to a new version does, no independent
+  audit of the version in use since 2026-11-13), states the delivery fee
+  as the contracts charge it (Shield Vault only on a release to the named
+  people, a moved legacy at the rate of that day, none on NFTs for now),
+  names the contracts of NFT collections among the third parties and adds
+  a privacy line for saved names and the watch list kept across devices.
+  Everything else is word for word `v2026-11`, apart from the Markdown
+  markup, `©` for `(c)` and the form of the links.
+- **The terms text is Markdown from this version on**
+  (`docs/tos/v2026-12.md`, LF line endings pinned in `.gitattributes`):
+  the website renders the very text the hash is of, instead of a plain
+  snapshot of its own page. `scripts/set-active-terms.ts` can rehearse on
+  a local fork as the verifier's owner with no key (`TERMS_FORK`); both
+  networks were rehearsed before the real calls. Sepolia charged 161,680
+  gas for the call that takes 64,960 on mainnet and on the forks; the
+  result is the same.
+- Status lines in the train plan, the checklist audit, the wave B review
+  scope and the solc plan now say what happened: wave B executed on
+  2026-11-13 without an external review (founder decision 2026-11-10,
+  risk accepted), and that review is still open and not commissioned. The
+  upgrade runbook has the rule the checklist audit asked for (L-2): an
+  operation that will not run is cancelled the same day, never left in
+  the queue.
+
 ## 2026-11-13 — Legacy v3 live on mainnet
 
 [Unreleased on main, already live on mainnet. Not independently audited:
@@ -58,6 +126,22 @@ accepted.]
 - **Clear signing:** descriptors for Shield Vault v3 and for the legacy
   create with a claim fee bound are submitted to the registry
   (`erc7730/README.md`).
+
+## 2026-11-12 — Known compiler bugs checked for every mainnet contract
+
+[No contract or bytecode change.]
+
+- `docs/security/compiler-known-bugs.md` assesses every known solc bug
+  (the compiler team's list as of 0.8.38) against every contract of ours
+  on mainnet, each rebuilt from source to the bytes on the chain. None is
+  found to apply; the optimizer bug fixed in 0.8.38 is answered by an
+  indication (identical bytecode before and after the fix for 40 of 41),
+  not a proof. The checks are in `scripts/compiler-bugs/`.
+- The clone implementations of April and May 2026 and the first 22 EOA
+  legacies, which no verifier could match before, are verified on
+  Sourcify and Etherscan.
+- `scripts/rehearse-timelock-op.ts` rehearses a scheduled timelock
+  operation on a local fork and prints every value its execution changes.
 
 ## 2026-11-11 — Shield Vault v3 on mainnet, legacy v3 scheduled
 

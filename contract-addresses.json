@@ -461,7 +461,7 @@
       "address": "0xaB3C8C69fD17ba980b3D11064200c866904e360E"
     },
     "governance": {
-      "_note": "docs/plans/round-2026-09.md. safe = PROPOSER and operational owner (Safe 1.5.0, threshold 1 to start, read live 2026-09-22: owners = the guardian hardware wallet and the maintainer EOA). guardians = CANCELLER keys. Founder decision 2026-09-22: the guardian is the actively used and monitored hardware wallet that is also a Safe owner; separation from the EOA holds now, separation from the Safe holds once the threshold is 2. Pending: a third Safe owner, a Sepolia deployment of the same Safe for rehearsals, a little Sepolia ETH on the guardian.",
+      "_note": "docs/plans/round-2026-09.md. safe = PROPOSER and operational owner (Safe 1.5.0, threshold 1 to start, read live 2026-09-22: owners = the guardian hardware wallet and the maintainer EOA). guardians = CANCELLER keys. Founder decision 2026-09-22: the guardian is the actively used and monitored hardware wallet that is also a Safe owner; separation from the EOA holds now, separation from the Safe holds once the threshold is 2. Pending: a third Safe owner. Done 2026-09-22: the same Safe is deployed on Sepolia for rehearsals (sepolia.governance), and the guardian rehearsed a cancel there.",
       "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"

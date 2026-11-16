@@ -1,6 +1,6 @@
 # Solidity Compiler Upgrade Plan
 
-**Status**: Landed on `feat/create-flow-v2` (2026-07-23) — ships with the v2 redeploy  
+**Status**: 0.8.35 landed on `feat/create-flow-v2` (2026-07-23) and is on mainnet for everything deployed since 2026-07-27. Next: 0.8.38 with the next contract train (planned 2026-11-12, section below; not started on 2026-11-16)  
 **Priority**: Low (no functional impact today)  
 **Created**: 2026-04-10
 
@@ -25,7 +25,8 @@
   still fits under the cap, but only barely at ~15–16M estimate — one more
   reason the EIP-1167 clone path stays the default.
 - The vendored `SignatureCheckerLite` swap back to OZ `SignatureChecker`
-  (needs ≥0.8.24) rides the next commit, per its inline TODO(deferred).
+  (needs ≥0.8.24) was done the same day (`29d53b4`, 2026-07-23): the
+  vendored file and its inline TODO(deferred) are gone from `contracts/`.
 
 ## Next: 0.8.35 to 0.8.38, with the next contract train (planned 2026-11-12)
 

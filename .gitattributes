@@ -1,5 +1,7 @@
-# Terms snapshots are hashed on-chain byte for byte (scripts/set-active-terms.ts).
+# Terms texts are hashed on-chain byte for byte (scripts/set-active-terms.ts):
+# plain snapshots up to v2026-11, Markdown from v2026-12 on.
 docs/tos/*.txt text eol=lf
+docs/tos/*.md text eol=lf
 # The ERC-7730 registry requires LF; these folders are copied into it as is.
 erc7730/registry/** text eol=lf
 erc7730/tooling/expected/** text eol=lf

@@ -14,11 +14,14 @@ new deployment. v2 went live on 2026-09-29: mainnet
 (`contract-addresses.json` `ShieldVault`; v1 kept as `ShieldVaultV1`). Adversarially reviewed twice,
 not independently audited (package: `shield-vault-audit.md`).
 
-**v3 is built, not deployed (2026-11-09, `feat/shield-vault-v3`).** v2 has
-never held a position on mainnet, and its fee for new holdings is 0 since
-the founder decision of 2026-11-09 below. v3 is internally reviewed and
-tooling-verified (`docs/security/tooling-report.md` section 9), not
-independently audited and with no adversarial review of its own yet.
+**v3 was built on 2026-11-09 (`feat/shield-vault-v3`) and is on mainnet
+since 2026-11-11 (`ShieldVaultV3`,
+`0x1610DC8D25475959D5ba9395c4CE02456B51EB59`), where it takes every new
+holding.** The Safe paused deposits on v2 that day; exits there keep
+working. v3 went to mainnet ahead of an external review (founder decision
+2026-11-10, risk accepted): it is internally reviewed and tooling-verified
+(`docs/security/tooling-report.md` sections 9 and 10), not independently
+audited.
 
 ## v3 (2026-11-09)
 

@@ -59,7 +59,7 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 | Contract | Purpose |
 |----------|---------|
 | **TokenWhiteList** | Access-controlled whitelist of ERC20 token addresses. Admin adds/removes tokens; used by TimeLockRouter to restrict which tokens can be timelocked. `getWhitelist()` returns currently whitelisted tokens. |
-| **NftCollectionWhiteList** | Admin-managed list of NFT collections with their kind (ERC-721 or ERC-1155) that legacy v3 owners may name (`getCollections()`). Admin: the deployer key, with the governance Safe as co-admin (`add-safe-admin.ts`). Its address is an immutable of the v3 implementation; the list is never read at claim, so a delisting cannot stop an heir. Sepolia `0x0d9B2E96B225f5329841605363E02f35fb50f73B`; mainnet `0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623` (2026-11-11, empty until collections are vetted). |
+| **NftCollectionWhiteList** | Admin-managed list of NFT collections with their kind (ERC-721 or ERC-1155) that legacy v3 owners may name (`getCollections()`). Admin: the deployer key, with the governance Safe as co-admin (`add-safe-admin.ts`). Its address is an immutable of the v3 implementation; the list is never read at claim, so a delisting cannot stop an heir. Sepolia `0x0d9B2E96B225f5329841605363E02f35fb50f73B`; mainnet `0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623` (2026-11-11; three collections since 2026-11-16: CryptoPunks 721, Bored Ape Yacht Club, Pudgy Penguins, each vetted on a fork first, `docs/security/nft-collections.md`). |
 
 ---
 

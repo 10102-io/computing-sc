@@ -2,9 +2,9 @@
 
 Sections 1 to 7 are ShieldVault v2 and the registry (2026-10-27). Section 8
 is legacy v3, wave B of the 2026-11 train (2026-11-05). Section 9 is
-ShieldVault v3 (2026-11-09), built and not deployed. Section 10 is round
-11 (2026-11-09): the fixes after two cross-model reviews of both, and the
-whole suite rerun on the merged branch.
+ShieldVault v3 (built 2026-11-09; on mainnet since 2026-11-11). Section 10
+is round 11 (2026-11-09): the fixes after two cross-model reviews of both,
+and the whole suite rerun on the merged branch.
 
 Status of `contracts/shield/ShieldVault.sol` (v2) and
 `contracts/common/QuantumRecoveryRegistry.sol`: **internally reviewed,
@@ -705,8 +705,11 @@ rerun at the round 11 code (section 10): 3 suites, 9 tests, 0 failures.
 ## 9. ShieldVault v3, 2026-11-09
 
 Status of `contracts/shield/ShieldVaultV3.sol`: **internally reviewed,
-tooling-verified, not independently audited, not deployed**, and with no
-adversarial review by a second reviewer yet (v2 had two). What v3 changes
+tooling-verified, not independently audited, not deployed** (at that
+date; on mainnet since 2026-11-11,
+`0x1610DC8D25475959D5ba9395c4CE02456B51EB59`), and with no
+adversarial review by a second reviewer yet (v2 had two; section 10
+records the two reviews that followed). What v3 changes
 and why: `docs/plans/shield-vault.md`, "v3". Target: commit `df19774` on
 `feat/shield-vault-v3`. Sections 1 to 7 still describe v2, whose source is
 not edited: its artifact keeps the recorded 14,375 runtime bytes and
@@ -869,7 +872,9 @@ round 10 (section 8.9) and ShieldVault v3 (section 9) at `d988e6b`, the
 merge of both with `dev`. No Critical or High. What was done, with the
 reasons and the known issues: `wave-b-audit-scope.md` ("What changed since
 4f58e6b", K-13, K-14, K-17, "ShieldVault v3"). Status unchanged: internally
-reviewed, tooling-verified, not independently audited, not deployed.
+reviewed, tooling-verified, not independently audited, not deployed (at
+that date; ShieldVault v3 is on mainnet since 2026-11-11, legacy v3 since
+2026-11-13).
 
 | Finding | Change | Evidence |
 |---|---|---|

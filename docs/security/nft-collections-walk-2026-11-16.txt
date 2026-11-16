@@ -1,0 +1,43 @@
+Fork walk of the first three collections, before they were added to the mainnet list.
+Command: npx hardhat run scripts/vet-nft-collections.ts (VET_COLLECTIONS, VET_ADMIN, VET_TOKENS as in docs/security/nft-collections.md).
+The holders of the three tokens are third parties: their addresses are shortened here. The two fresh wallets exist on the fork only.
+
+Fork of mainnet at block 26429682 (2026-11-16T19:28:23.000Z). Nothing here reaches mainnet.
+Router 0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b creates clones of 0xF9B6241Ab7513181C9Ed4F0920E0B008fB9264e9; their NFT list is 0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623, their vault 0xC6640962618f9D729032487EC5DEf226BF6F43E3.
+
+CryptoPunks 721  0x000000000000003607fce1aC9e043a86675C5C2F
+  code 9617 bytes, no EIP-1967 proxy; ERC-721 true, ERC-1155 false
+  no owner(); no paused()
+  addCollection: accepted, 118279 gas
+  the list records kind 1 (ERC-721)
+
+BoredApeYachtClub  0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D
+  code 16790 bytes, no EIP-1967 proxy; ERC-721 true, ERC-1155 false
+  owner renounced; no paused()
+  addCollection: accepted, 103488 gas
+  the list records kind 1 (ERC-721)
+
+PudgyPenguins  0xBd3531dA5CF5857e7CfAA92426877b022e612cf8
+  code 18878 bytes, no EIP-1967 proxy; ERC-721 true, ERC-1155 false
+  owner 0xf54c9A0E44a5F5aFd27C7aC8a176A843b9114F1d (a single key); paused() false
+  addCollection: accepted, 101723 gas
+  the list records kind 1 (ERC-721)
+
+Fresh wallets: owner 0x7b344784924f9E9641e0ab7bBEe9eb33379741DE, beneficiary 0x30B3B82272495aCCf1CD1146996d491D65a4626d
+  CryptoPunks 721 #6096: its holder 0x6E69...487c gave it to the fresh owner
+  BoredApeYachtClub #1: its holder 0x46EF...2496 gave it to the fresh owner
+  PudgyPenguins #1: its holder 0xcce9...4f2A gave it to the fresh owner
+
+Legacy v3 #46 at 0xa4CB7d236068868BeF7D26adBd014bDfB803299F, owned by the fresh owner
+  CryptoPunks 721: vault approved as operator, 46047 gas
+  BoredApeYachtClub: vault approved as operator, 46280 gas
+  PudgyPenguins: vault approved as operator, 46725 gas
+  setNftItems with 3 item(s): 379485 gas
+  claimNfts for 3 item(s): 377747 gas
+
+Result:
+  PASS CryptoPunks 721 0x000000000000003607fce1aC9e043a86675C5C2F: #6096 named, claimed through the vault, now the beneficiary's
+  PASS BoredApeYachtClub 0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D: #1 named, claimed through the vault, now the beneficiary's
+  PASS PudgyPenguins 0xBd3531dA5CF5857e7CfAA92426877b022e612cf8: #1 named, claimed through the vault, now the beneficiary's
+
+All walked collections passed. Nothing was sent to mainnet.

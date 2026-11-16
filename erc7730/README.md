@@ -13,7 +13,7 @@ needs one before wallets show it.
 
 | Descriptor | Contract (mainnet) | Functions |
 |---|---|---|
-| `calldata-TransferEOALegacyRouter.json` | `0x4E81E1Ed…6275b` (proxy) | create (v2, and v2 with a claim fee bound, which the app sends since 2026-11-07), check-in, edits, auto-renew, gas-free claims switch, ETH conversion, withdraw, delete, release for a new create, claim |
+| `calldata-TransferEOALegacyRouter.json` | `0x4E81E1Ed…6275b` (proxy) | create (v2, and v2 with a claim fee bound, which the app sends since 2026-11-09), check-in, edits, auto-renew, gas-free claims switch, ETH conversion, withdraw, delete, release for a new create, claim |
 | `calldata-TimeLockRouter.json` | `0x2B947E3c…76A42` (proxy) | create (regular, soft, gift), soft unlock, withdraw |
 | `calldata-ShieldVault.json` | `0xA1EA2F8C…76C38` (Shield Vault v2; deposits paused since 2026-11-11, exits work) | open, deposit, check-in, withdrawal request, cancel, execute, release, change, veto, held-share claim |
 | `calldata-ShieldVaultV3.json` | `0x1610DC8D…1EB59` (Shield Vault v3; every new holding since 2026-11-11) | the same ten functions as v2, worded for v3's fee: only a release to the beneficiaries takes one |
@@ -26,7 +26,7 @@ the same day and waiting for a maintainer's review:
   2026-10-26): held shares and who renews a legacy, and since 2026-11-13
   the legacy router's two new formats, `createLegacyV2WithMaxFee` and
   `releaseCreateFlag`. The app's create calls `createLegacyV2WithMaxFee`
-  since 2026-11-07, so until this is merged a hardware wallet shows a
+  since 2026-11-09, so until this is merged a hardware wallet shows a
   legacy create as raw data;
 - [PR #3223](https://github.com/ethereum/clear-signing-erc7730-registry/pull/3223)
   (branch `10102-shield-vault-v3`): the Shield Vault v3 descriptor. Until it

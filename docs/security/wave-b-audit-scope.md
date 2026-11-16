@@ -3,9 +3,13 @@
 10102 Computing Legacy lets an Ethereum account name heirs for its tokens,
 ETH and now NFTs, and hands them over when the owner has been inactive for
 a chosen period. Version 3 of the per-owner legacy contract adds three
-optional features. This document is the scope for an external review before
-v3 goes to mainnet, together with ShieldVault v3 (its own section near the
-end). Status: internally reviewed twice, then two independent
+optional features. This document is the scope for an external review of
+v3, together with ShieldVault v3 (its own section near the end). It was
+written for a review before v3 went to mainnet. Both went to mainnet
+without one (ShieldVault v3 on 2026-11-11, legacy v3 on 2026-11-13 20:42
+UTC; founder decision 2026-11-10, risk accepted). On 2026-11-16 the review
+is still wanted, not commissioned and not scheduled, and this document is
+what a reviewer is handed. Status: internally reviewed twice, then two independent
 read-only reviews by other model families (a GPT-family and a
 Gemini-family reviewer). Their first pass at `88838a4` found one High, two
 Mediums and several Lows, fixed in rounds 7 and 8 or listed below; both
@@ -253,7 +257,9 @@ From the Foundry suite (`test/foundry/LegacyV3*`), checked after every call:
 - **K-9. Static analysis.** Slither is triaged in `static-analysis.md`. CI
   runs Slither and Aderyn on the three files on every PR, report only
   (Slither's ids for one v3 result are not stable across runs, so it cannot
-  gate). Aderyn was not run locally (no Windows build).
+  gate). Aderyn was not run locally (no Windows build). Since 2026-11-13
+  CI runs Slither alone: Aderyn's maintainer retired it that day, and its
+  last reports (2026-11-12, 0 High) are in `docs/security/aderyn-2026-11-12/`.
 - **K-10. Executor and auto-renew (deploy precondition).** An attestation
   sets the deadline to 30 days later, which is exactly the router's
   `AUTO_RENEW_WINDOW`, so the worker's auto-renew attestor (trusted,
@@ -390,7 +396,11 @@ position, not upgradeable. v3 is a new deployment next to the deployed v2
 (mainnet `0xA1EA2F8C0518458975E09ED63bf5D48980f76C38`, which has never held
 a position and whose fee for new holdings is 0). Status: internally
 reviewed, tooling-verified, read by the two cross-model reviews of round 11
-(one Info, fixed), not independently audited, not deployed. Built on
+(one Info, fixed), not independently audited. Deployed since this section
+was written: Sepolia `0xf62c6Ce336D1b4f14Bd4BA57cc207CFCEFe98C82`
+(2026-11-10) and mainnet `0x1610DC8D25475959D5ba9395c4CE02456B51EB59`
+(2026-11-11), where it takes new holdings and the Safe paused deposits on
+v2. Built on
 `feat/shield-vault-v3` (`df19774`), merged at `d988e6b`; the commit to
 audit is the one above. Spec and reasons: `docs/plans/shield-vault.md`,
 "v3"; evidence: `tooling-report.md` section 9 and `static-analysis.md`,
@@ -480,7 +490,8 @@ no reentrancy succeeded. Plus 15 stateless properties, among them
   `EIP712` constructor and accessors; covered by the constructor and domain
   specs (`static-analysis.md`). CI gates v3 with `--fail-medium` over
   `slither.db.json` (v2's three false positives under v3's names) and with
-  Aderyn's "no High".
+  Aderyn's "no High" (until Aderyn was retired on 2026-11-13; Slither's
+  gate stays).
 
 ## Out of scope
 

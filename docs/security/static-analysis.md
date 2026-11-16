@@ -124,7 +124,9 @@ Run on 2026-11-09 on `feat/shield-vault-v3` against
 `contracts/shield/ShieldVaultV3.sol` (`tooling-report.md` section 9), with
 the tools and settings above (Slither 0.11.6, solc 0.8.35, the deployed
 compiler settings, `--filter-paths node_modules`). Status: internally
-reviewed, tooling-verified, not independently audited, not deployed.
+reviewed, tooling-verified, not independently audited, not deployed (at
+that date; on mainnet since 2026-11-11,
+`0x1610DC8D25475959D5ba9395c4CE02456B51EB59`).
 
 ### Verdict
 

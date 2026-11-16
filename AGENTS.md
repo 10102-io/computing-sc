@@ -65,7 +65,9 @@ you add is still the whole safety net for that path.
  exits there keep working). On mainnet since 2026-11-13 20:42 UTC: wave B
  executed through the timelock, so the router creates legacy v3 clones
  (`TransferEOALegacyImpl`); legacies created from 2026-11-07 to then keep
- the wave A clone. Say so
+ the wave A clone. Its NFT list holds three collections on mainnet since
+ 2026-11-16 (`docs/security/nft-collections.md`: vet a collection on a
+ fork before it is added). Say so
  plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
@@ -96,7 +98,7 @@ you add is still the whole safety net for that path.
 - Since 2026-09-22 the timelock vaults are owned by `UpgradeTimelock` and
  `TimeLockRouter` by the governance Safe (`contract-addresses.json`
  `governance` key). The Safe is PROPOSER, the guardian hardware key is the
- only CANCELLER (mainnet batch executes 2026-09-24). Since 2026-09-29
+ only CANCELLER (mainnet batch executed 2026-09-24). Since 2026-09-29
  every `Payment` role (claim fee, fee and Premium treasury) is on the
  Safe too, and the deployer holds none (`scripts/handover-payment-roles.ts`).
  The deployer keeps day-to-day ops (plan prices, Premium grants, banners,
@@ -183,6 +185,16 @@ you add is still the whole safety net for that path.
 - `docs/security/wave-b-audit-scope.md`: the external review scope for
  legacy v3 (wave B); its tooling evidence is `tooling-report.md` section 8
  and the Foundry suite `test/foundry/LegacyV3*`.
+- `docs/security/nft-collections.md`: the collections on the mainnet NFT
+  list, how each was vetted (`scripts/vet-nft-collections.ts`, a fork walk
+  to the claim) and added (`scripts/add-nft-collections.ts`).
+- `docs/tos/`: the terms text per version; the active one's hash is on the
+  verifier (`scripts/set-active-terms.ts`, with a fork rehearsal). A terms
+  change is one release with the app and the website: the app that
+  publishes the new text is live and `10102.io/disclosures`, the page its
+  terms links open, shows the new version; then `setActiveTerms` on both
+  networks. The script checks both and sends nothing otherwise
+  (`computing/AGENTS.md` convention 15).
 - `docs/security/checklist-audit-2026-11.md`: the checklist audit of the
   unaudited riders, with each finding's status; its "Left" column is the
   input to the next contract train.

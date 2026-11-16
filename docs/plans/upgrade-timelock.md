@@ -220,11 +220,23 @@ CANCELLER (the guardian). From a hardware wallet without a script: the
 address with value 0 (Etherscan "Write Contract" → `cancel(id)` works
 too).
 
+**Rule: cancel what is superseded.** A ready operation never expires, and
+anyone may execute it once its delay has passed. So an operation that is
+not going to run (a newer one replaces it, the plan changed, it was queued
+by mistake) is cancelled by the guardian the same day, never left in the
+queue: left there, it stays a valid upgrade to code we decided against,
+for good. `verify-governance.ts` fails on a ready, unexecuted operation
+that the worker's ledger knows (`GET /upgrades`, mainnet; on Sepolia the
+row reads "not tracked here" and passes), so a forgotten one shows up at
+the next mainnet check (checklist audit L-2). An operation the worker
+never saw is not found this way: check it with `timelock-op.ts`
+(`TL_ACTION=status` and the operation's params).
+
 ## Emergency posture
 
 - Bad implementation about to execute / queued by mistake: **cancel** (instant,
-  from the guardian hardware key, the only CANCELLER once the 2026-09-22
-  batch executes).
+  from the guardian hardware key, the only CANCELLER since the 2026-09-22
+  batch executed on 2026-09-24).
 - Compromised Safe signer: the guardian cancels whatever gets queued; the
   Safe's other owners rotate the signer. Compromised guardian: it can only
   cancel, never queue; the Safe queues `revokeRole(CANCELLER, guardian)` +
