@@ -95,10 +95,14 @@ async function main() {
     if (!ok) failures.push(what);
     console.log(`  ${ok ? "ok  " : "FAIL"} ${what}${detail ? `: ${detail}` : ""}`);
   };
+  // A clone's own errors come back as bare selectors (hardhat does not know the code behind an EIP-1167 clone).
+  const CLONE_ERRORS = ["LegacyIsDeleted()", "LegacyNotActive()", "NotEnoughContitionalActive()", "NotBeneficiary()", "OnlyOwner()"];
+  const bySelector: Record<string, string> = Object.fromEntries(CLONE_ERRORS.map((s) => [ethers.utils.id(s).slice(0, 10), s]));
   const short = (e: any) => {
     const m = String(e?.error?.message ?? e?.reason ?? e?.message ?? e);
     const named = m.match(/custom error '([^']+)'/) ?? m.match(/reverted with reason string '([^']+)'/) ?? m.match(/return data: (0x[0-9a-fA-F]{8})/);
-    return `reverts (${named ? named[1] : m.slice(0, 60)})`;
+    const what = named ? bySelector[named[1].toLowerCase()] ?? named[1] : m.slice(0, 60);
+    return `reverts (${what})`;
   };
 
   // ── The router as the network runs it ───────────────────────────────────
@@ -291,7 +295,7 @@ async function main() {
   for (const l of live) {
     const b = before[l.id];
     const a = await walk(l);
-    console.log(`  #${l.id} ${l.address}`);
+    console.log(`  #${l.id}`);
     console.log(`    first claim:   ${b.firstClaim}, flag ${b.flagAfterFirst}  →  ${a.firstClaim}, flag ${a.flagAfterFirst}`);
     console.log(`    later claim:   ${b.laterClaim}, flag ${b.flagAfterLater}  →  ${a.laterClaim}, flag ${a.flagAfterLater}`);
     console.log(`    owner release: ${b.release}  →  ${a.release}`);
