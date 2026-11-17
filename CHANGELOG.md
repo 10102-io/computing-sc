@@ -21,10 +21,91 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-16 — Router: only the claim that ends a legacy releases the create flag
+
+[Unreleased on main. Live on Sepolia since 2026-11-16 23:34 UTC. On
+mainnet the implementation is deployed and the upgrade is scheduled: it
+can be executed from **2026-11-18 23:50:59 UTC**, by anyone. One router
+implementation: no storage, ABI, event or address change, and no legacy
+or vault is touched. Not independently audited: an independent internal
+review, tests with negative controls, tooling, and a walk of every live
+legacy on forks of both networks.]
+
+- **What was wrong** (checklist audit RC-L). The wallet legacy router
+  cleared `isCreateLegacy[owner]` on every claim, also on a later claim
+  on a legacy that had ended before. An owner who had created a new
+  legacy in between was forgotten, and the router would accept another
+  create from that wallet. The pull vault refused it while the live
+  legacy was bound in the router's current vault, and no funds moved
+  differently. In the router since 2026-05-04, found on Sepolia with real
+  transactions on 2026-11-11; the app has confirmed a false flag against
+  the vaults since then.
+- **The change.** Before the clone is called, the router asks it
+  `isLive()` and releases the flag only when the legacy is live, which is
+  when the claim about to run ends it (`_releaseCreateFlagBeforeClaim`,
+  on `activeLegacy`, `activeLegacyFor` and `activeLegacyAndUnswap`). The
+  read is a plain `staticcall`: a legacy that reverts, answers with less
+  than one word or with anything but zero counts as live, so the read
+  can never stand between a recipient and a claim. The flag is written
+  before the clone call, so a failed claim reverts it, and a create made
+  by an owner contract while the claim runs sets a flag that nothing
+  clears afterwards. `releaseCreateFlag` now also reverts
+  `LegacyStillActive` when the router's current vault holds a live legacy
+  for the caller.
+- **What it does not change.** A legacy v3 ended by `claimNfts` (the
+  clone's own function) keeps the flag until its owner calls
+  `releaseCreateFlag`, as before. The vault check sees the router's
+  current vault only: a live legacy bound in an earlier vault, or created
+  without one, is not seen there. A flag that was cleared wrongly before
+  the upgrade stays cleared, so the app's vault check stays.
+- **Evidence.** `test/RouterCreateFlag.spec.ts` (23 cases: the ending
+  claim and a later claim over the three claim paths, a second-line
+  ending claim, failed claims, an owner contract that creates inside the
+  ending claim, four odd `isLive()` answers, the release cases); 16 of
+  them fail on the router as it was. Full suite 493 passing, Foundry 39
+  passing. Storage layout byte-identical. Runtime 23,631 bytes (945
+  spare). Slither on the router: 46 results before, 45 after
+  (`docs/security/static-analysis.md`). The walk
+  (`scripts/rehearse-router-create-flag.ts`, forks, no key) claimed on
+  every live legacy under the old and the new implementation, with a
+  later claim, the owner's release, a delete and a second delete, and
+  compared every getter and every owner's flag: mainnet 45 legacies (7
+  live), Sepolia 65 (17 live), both passed, with the smoke.
+- **Sepolia.** Implementation
+  `0xa6c23ef73731f8C796bCbE299219D950B60c708d` (tx `0xdd03ad81…3abc`,
+  verified). Scheduled through the Safe (id `0xd00c206c…092c`, tx
+  `0xd7fcf18b…64d6`), rehearsed on a fork while it waited (one of 56
+  values changes: the implementation), executed at 23:34:36 UTC in block
+  12150602 (tx `0x09a5ad8c…e674`). Artifacts refreshed, the smoke with
+  real transactions 5 of 5 (legacies #66 to #68), `verify-governance`
+  30 of 30.
+- **Mainnet.** Implementation
+  `0x4251A1EC6D88995d82D7b4397ef74867A8d3F8DC` (tx `0x53db5714…915b`,
+  block 26430982, verified on Etherscan; its runtime code is byte for
+  byte the build, with the mainnet timelock as the immutable, and equals
+  Sepolia's but for that address). Scheduled through the Safe as a plain
+  `upgrade(proxy, implementation)` on `DefaultProxyAdmin`: id
+  `0x76e18d5f079960910c9d7d5889cebbc454a139690b4157261bcaa0341bbc5ad2`,
+  tx `0x8f9bebd6…9b4b`, block 26430994, executable from 2026-11-18
+  23:50:59 UTC. Rehearsed on a fork of mainnet right after: the pending
+  operation is the one in `docs/plans/batches/router-create-flag-mainnet.json`,
+  it is refused before its time, it executes from an address with no
+  role, and the implementation is the only value that changes; the smoke
+  passes on the upgraded fork. Left for after the wait: rehearse again,
+  execute, `refresh-impl-artifacts.ts`, `npm run sync-ui:check`,
+  `verify-governance.ts`, `verify-etherscan-status.ts`.
+- `rehearse-timelock-op.ts` now forks at the network's head. Left alone,
+  Hardhat forks 128 blocks behind on Sepolia (about 26 minutes), which is
+  older than an operation scheduled a moment before. `sync-ui:check` no
+  longer reports the subgraph's zero-address placeholders for `localhost`
+  as drift (they are the subgraph's own), so it is green again: the app's
+  ABIs and addresses match, and nothing in the sibling repos pins the
+  router's implementation.
+
 ## 2026-11-16 — First NFT collections on the mainnet list, terms v2026-12
 
-[On-chain configuration only; no contract or bytecode change. Unreleased
-on main, already live on mainnet.]
+[On-chain configuration only; no contract or bytecode change. Released in
+v2026.11.16.]
 
 - **Three collections are on the mainnet NFT list**
   (`0xF33e887c6BE3bA8Fb583E14164a9e74FD56c1623`), so a legacy v3 can name
@@ -91,7 +172,7 @@ on main, already live on mainnet.]
 
 ## 2026-11-13 — Legacy v3 live on mainnet
 
-[Unreleased on main, already live on mainnet. Not independently audited:
+[Released in v2026.11.16; live on mainnet before it. Not independently audited:
 internal reviews, tooling, a Sepolia walk of the app with real
 transactions and two rehearsals of this operation on a fork of mainnet.
 The founder moved it ahead of the external review on 2026-11-10, risk
@@ -145,7 +226,7 @@ accepted.]
 
 ## 2026-11-11 — Shield Vault v3 on mainnet, legacy v3 scheduled
 
-[Unreleased on main, already live on mainnet. Not independently audited:
+[Released in v2026.11.16; live on mainnet before it. Not independently audited:
 internal reviews, tooling and a Sepolia walk of the app with real
 transactions. The founder moved both ahead of the external review on
 2026-11-10, risk accepted.]

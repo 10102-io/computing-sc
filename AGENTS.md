@@ -67,8 +67,12 @@ you add is still the whole safety net for that path.
  (`TransferEOALegacyImpl`); legacies created from 2026-11-07 to then keep
  the wave A clone. Its NFT list holds three collections on mainnet since
  2026-11-16 (`docs/security/nft-collections.md`: vet a collection on a
- fork before it is added). Say so
- plainly when a change lands on those. ShieldVault and the registry also carry tooling
+  fork before it is added). One router implementation is **scheduled** on
+  mainnet (the create-flag fix, live on Sepolia since 2026-11-16): operation
+  `0x76e1…5ad2`, executable from 2026-11-18 23:50:59 UTC, with what is left
+  to do in the execution log of `docs/plans/train-2026-11.md`; until then
+  `contract-addresses.json` carries it as `pendingImplementation`. Say so
+  plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
 - Compilers on mainnet: solc 0.8.35 for everything deployed since

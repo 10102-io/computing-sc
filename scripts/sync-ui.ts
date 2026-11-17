@@ -458,7 +458,12 @@ function buildMergedSubgraphNetworks(
     const out: Record<string, { address: string; startBlock?: number }> = {};
     for (const [name, existingEntry] of Object.entries(existingEntries)) {
       const generatedEntry = generatedEntries[name];
-      if (!generatedEntry) continue;
+      if (!generatedEntry) {
+        // A zero address is the subgraph's own placeholder (its manifest names every data
+        // source on every network it builds for): the address book has nothing to say about it.
+        if (/^0x0{40}$/i.test(existingEntry.address)) out[name] = existingEntry;
+        continue;
+      }
       const startBlock =
         generatedEntry.startBlock !== undefined ? generatedEntry.startBlock : existingEntry.startBlock;
       out[name] = startBlock !== undefined ? { address: generatedEntry.address, startBlock } : { address: generatedEntry.address };
