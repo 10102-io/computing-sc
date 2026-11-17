@@ -4,6 +4,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 import { increase } from "./utils/time";
 import { SHIELD_VARIANTS } from "./utils/shieldVariants";
+import { revertedWith } from "./utils/revert";
 
 // ShieldVault (docs/plans/shield-vault.md). Each block pins one invariant of
 // the spec's threat model; the property test at the end drives random
@@ -18,12 +19,6 @@ const SCHEME_HASH_PREIMAGE = 5;
 const E18 = ethers.constants.WeiPerEther;
 /** `open`'s maxFeeBps: the contract's cap, so no test trips on it unless it means to. */
 const MAX_FEE = 50;
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.id(signature).slice(0, 10);
-  const raw = (JSON.stringify(err ?? "") + " " + (err?.message ?? "")).toLowerCase();
-  return raw.includes(selector.toLowerCase()) || raw.includes(signature.replace("()", "").toLowerCase());
-}
 
 async function expectRevert(p: Promise<unknown>, signature: string, label = ""): Promise<void> {
   let caught: any;

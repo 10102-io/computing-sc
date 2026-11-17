@@ -149,6 +149,11 @@ you add is still the whole safety net for that path.
 - **Amounts and durations are `uint256`/`uint128` with explicit casts**;
   the frontend passes `bigint`. Percentages are basis points scaled by
   10,000.
+- **A spec checks a revert's reason with `revertedWith` from
+  `test/utils/revert.ts`.** Never search an error as JSON or text of your
+  own: Hardhat's stack trace carries the contracts' source, so every error
+  they declare matches, and until 2026-11-16 the reason checks proved only
+  "reverted".
 - **Never commit `.env`, keys, or signed payloads.** The deployer
   (maintainer) key lives in the founder's password manager only, never in
   Railway. Railway holds the worker's hot keys (attestor and fee relayer,

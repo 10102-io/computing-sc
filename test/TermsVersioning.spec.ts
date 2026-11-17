@@ -5,6 +5,7 @@ import { strict as assert } from "node:assert";
 import { currentTime } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
+import { revertedWith } from "./utils/revert";
 
 // Versioned terms acceptance (deferred item `legacy-tos-version`).
 // The verifier now binds each consent record to the exact ToS document in
@@ -21,12 +22,6 @@ const ZERO32 = ethers.constants.HashZero;
 
 function versionedMessage(tag: string, ts: number): string {
   return `By proceeding with creating a new contract, I agree to 10102's Terms of Service (version ${tag}) at timestamp ${ts}.`;
-}
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
 }
 
 describe("EIP712LegacyVerifier — versioned terms acceptance", function () {

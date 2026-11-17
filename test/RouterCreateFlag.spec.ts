@@ -137,13 +137,41 @@ describe("Router create flag", function () {
       assert.equal(await router.isCreateLegacy(owner.address), true);
     });
 
+    it("legacy v3 with a backup line: the first share claimed ends the legacy and releases; the backup's later claim leaves the next legacy's flag", async function () {
+      const f = await loadFixture(v3Fixture);
+      const { owner, bene, bene2, bene3, other, router, usdc } = f;
+      const a = await createLegacyV2(router, owner, halves(bene, bene2), { contractName: "TransferEOALegacyV3" });
+      await a.legacy.connect(owner).setBackupLines(30 * DAY, [{ primary: bene.address, second: bene3.address, third: ZERO }]);
+      await usdc.connect(owner).approve(a.legacy.address, ethers.constants.MaxUint256);
+      await increase(DAY + 1);
+
+      // bene2 takes its own share only, and that claim is the one that ends the legacy.
+      await router.connect(bene2).activeLegacy(a.legacyId, [usdc.address], false);
+      assert((await usdc.balanceOf(bene2.address)).gt(0));
+      assert.equal((await usdc.balanceOf(bene.address)).toString(), "0", "the other share waits for its own claim");
+      assert.equal(await a.legacy.isLive(), false);
+      assert.equal(await router.isCreateLegacy(owner.address), false);
+      const b = await createLegacyV2(router, owner, all(other), { contractName: "TransferEOALegacyV3" });
+
+      // The backup is refused before its delay, then claims the waiting share: both are later claims.
+      await expectRevert(router.connect(bene3).activeLegacy(a.legacyId, [usdc.address], false), "BackupNotYet(uint256)");
+      assert.equal(await router.isCreateLegacy(owner.address), true);
+      await increase(30 * DAY);
+      await router.connect(bene3).activeLegacy(a.legacyId, [usdc.address], false);
+      assert((await usdc.balanceOf(bene3.address)).gt(0));
+      await expectRevert(router.connect(bene).activeLegacy(a.legacyId, [usdc.address], false), "ShareOwned(address)");
+      assert.equal(await router.isCreateLegacy(owner.address), true);
+      assert.equal(await b.legacy.isLive(), true);
+    });
+
     it("a claim that fails releases nothing", async function () {
       const f = await loadFixture(fixture);
       const { owner, bene, attacker, router } = f;
       const a = await createLegacyV2(router, owner, all(bene));
       await expectRevert(router.connect(bene).activeLegacy(a.legacyId, [], true), "NotEnoughContitionalActive()");
       await increase(DAY + 1);
-      await expectRevert(router.connect(attacker).activeLegacy(a.legacyId, [], true), "OnlyBeneficaries()");
+      // A stranger is refused by the clone, before the router's own OnlyBeneficaries check.
+      await expectRevert(router.connect(attacker).activeLegacy(a.legacyId, [], true), "LayerInvalid()");
       await expectRevert(router.connect(bene).activeLegacy(a.legacyId, [], false), "NumAssetsInvalid()");
       assert.equal(await a.legacy.isLive(), true);
       assert.equal(await router.isCreateLegacy(owner.address), true);

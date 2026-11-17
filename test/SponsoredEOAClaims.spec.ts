@@ -6,6 +6,7 @@ import { currentTime, increase } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
 import { wireRouters } from "./fixtures/wiring";
+import { revertedWith } from "./utils/revert";
 
 // Create-flow v2 — sponsored ("…For") entrypoints (docs/plans/create-flow-v2.md §12a).
 // A relayer pays gas to submit a beneficiary's signed claim / an owner's signed
@@ -13,12 +14,6 @@ import { wireRouters } from "./fixtures/wiring";
 
 const uniRouter = "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008";
 const weth = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 const CLAIM_TYPES = {
   ClaimAuth: [
@@ -313,8 +308,10 @@ describe("TransferEOALegacyRouter — sponsored (…For) entrypoints", function 
     const { owner, bene, relayer, transferEOALegacyRouter, domain } = await loadFixture(deployFixture);
     const { legacy, legacyId } = await createNonPremiumLegacy(transferEOALegacyRouter, owner, bene);
 
-    // Owner signs a check-in with a long deadline, then changes their mind.
-    const deadline = (await currentTime()) + 30 * 86400;
+    // Owner signs a check-in, then changes their mind. The deadline stays inside
+    // CHECKIN_AUTH_MAX_TTL (1 hour): a longer one is refused for its deadline,
+    // before the nonce is looked at.
+    const deadline = (await currentTime()) + 3000;
     const value = { owner: owner.address, legacyId, nonce: 0, deadline };
     const signature = await owner._signTypedData(domain, CHECKIN_TYPES, value);
     const auth = { owner: owner.address, nonce: 0, deadline, signature };

@@ -4,6 +4,7 @@ import { strict as assert } from "node:assert";
 
 import { currentTime, increase } from "./utils/time";
 import { deployProxy } from "./utils/proxy";
+import { revertedWith } from "./utils/revert";
 
 // Create-flow v2 — Permit2 single-confirm timelock create (create-flow-v2.md §12 / §5.5).
 // Unlike the legacy side (claim-time pulls), timelock escrow at create IS the
@@ -34,12 +35,6 @@ const EMPTY_BUNDLE = {
 };
 
 const NO_SWAP = { storageToken: ethers.constants.AddressZero, amountOutMin: 0, deadline: 0 };
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 describe("TimeLockRouter — Permit2 single-confirm create variants", function () {
   this.timeout(150000);

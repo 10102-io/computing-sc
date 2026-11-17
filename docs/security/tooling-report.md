@@ -109,6 +109,18 @@ CI enforces the figures above as thresholds (lines, statements, functions
 100%; branches 98% for ShieldVault, 100% for the registry) and uploads the
 HTML and lcov reports as an artifact.
 
+A limit of these specs that held until 2026-11-16: coverage says a branch
+ran, and the specs' revert-reason checks said less than they read. Each
+spec's `revertedWith` searched the whole error as JSON, where Hardhat's
+stack-trace frames carry the contract's source text, so a check for
+`InvalidAddress()` passed on any revert of a contract that declares it.
+The specs now share one helper that decides by the selector of the return
+data (`test/utils/revert.ts`, held by `test/RevertHelper.spec.ts`). Under
+it every reason expected in the ShieldVault (v2 and v3) and registry specs
+is the one the contract gives; in the whole Hardhat suite three
+expectations were wrong, all in router specs (`CHANGELOG.md`, 2026-11-16).
+The Foundry suites never used that helper.
+
 ## 3. Static analysis
 
 Full triage in `docs/security/static-analysis.md`. In one paragraph:

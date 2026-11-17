@@ -6,6 +6,7 @@ import { currentTime, increase } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
 import { wireRouters } from "./fixtures/wiring";
+import { revertedWith } from "./utils/revert";
 
 // Create-flow v2 §12c — tx-based consent + consent parity + create pause.
 //
@@ -31,12 +32,6 @@ const EMPTY_BUNDLE = {
   signature: "0x",
 };
 const NO_SWAP = { storageToken: ethers.constants.AddressZero, amountOutMin: 0, deadline: 0 };
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 async function expectRevert(p: Promise<any>, sig: string) {
   let caught: any = null;

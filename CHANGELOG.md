@@ -27,9 +27,10 @@ the headline story lives.
 mainnet the implementation is deployed and the upgrade is scheduled: it
 can be executed from **2026-11-18 23:50:59 UTC**, by anyone. One router
 implementation: no storage, ABI, event or address change, and no legacy
-or vault is touched. Not independently audited: an independent internal
-review, tests with negative controls, tooling, and a walk of every live
-legacy on forks of both networks.]
+or vault is touched. Not independently audited: two independent internal
+reviews (the second after scheduling, with no finding above Low), tests
+with negative controls, tooling, and a walk of every live legacy on
+forks of both networks.]
 
 - **What was wrong** (checklist audit RC-L). The wallet legacy router
   cleared `isCreateLegacy[owner]` on every claim, also on a later claim
@@ -58,11 +59,12 @@ legacy on forks of both networks.]
   current vault only: a live legacy bound in an earlier vault, or created
   without one, is not seen there. A flag that was cleared wrongly before
   the upgrade stays cleared, so the app's vault check stays.
-- **Evidence.** `test/RouterCreateFlag.spec.ts` (23 cases: the ending
+- **Evidence.** `test/RouterCreateFlag.spec.ts` (24 cases: the ending
   claim and a later claim over the three claim paths, a second-line
-  ending claim, failed claims, an owner contract that creates inside the
-  ending claim, four odd `isLive()` answers, the release cases); 16 of
-  them fail on the router as it was. Full suite 493 passing, Foundry 39
+  ending claim, a legacy v3 with a backup line whose shares are claimed
+  one by one, failed claims, an owner contract that creates inside the
+  ending claim, four odd `isLive()` answers, the release cases); 17 of
+  them fail on the router as it was. Full suite 499 passing, Foundry 39
   passing. Storage layout byte-identical. Runtime 23,631 bytes (945
   spare). Slither on the router: 46 results before, 45 after
   (`docs/security/static-analysis.md`). The walk
@@ -94,6 +96,29 @@ legacy on forks of both networks.]
   passes on the upgraded fork. Left for after the wait: rehearse again,
   execute, `refresh-impl-artifacts.ts`, `npm run sync-ui:check`,
   `verify-governance.ts`, `verify-etherscan-status.ts`.
+- **The second review** read the final diff after the upgrade was
+  scheduled and found nothing above Low, and no reason to cancel. Its two
+  Low findings on the contract are the limits named above (a legacy v3
+  ended by `claimNfts`, and the vault check seeing the current vault
+  only). The two things it could not check were read from mainnet
+  afterwards: `upgradeTimelock()` on the new implementation is the
+  mainnet timelock, and the pending operation id is the timelock's own
+  hash of `upgrade(router proxy, 0x4251…F8DC)` on `DefaultProxyAdmin`
+  with the batch file's salt.
+- **Revert reasons in the specs are checked for real now.** The review's
+  third finding was in the tests: each spec's `revertedWith` searched the
+  whole error as JSON, and Hardhat's stack-trace frames carry the source
+  text of every contract on the way, so a reason check passed for any
+  error those sources declare and proved only that the call reverted. One
+  shared helper (`test/utils/revert.ts`) now decides by the selector of
+  the return data, or by the message for a reason string, and has its own
+  spec (`test/RevertHelper.spec.ts`). Three expectations across the suite
+  were wrong and are corrected, none in a contract: a stranger's claim is
+  refused by the clone with `LayerInvalid()` before the router's
+  `OnlyBeneficaries()` (two specs), and the cancelled check-in case
+  signed a 30-day deadline, which the router refuses for the deadline
+  before it looks at the nonce (it signs within the hour now and proves
+  `InvalidSponsorNonce()`). Every other reason in the suite held.
 - `rehearse-timelock-op.ts` now forks at the network's head. Left alone,
   Hardhat forks 128 blocks behind on Sepolia (about 26 minutes), which is
   older than an operation scheduled a moment before. `sync-ui:check` no

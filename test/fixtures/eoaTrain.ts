@@ -10,6 +10,7 @@ import { ethers, artifacts } from "hardhat";
 import { currentTime } from "../utils/time";
 import { genMessage } from "../../scripts/utils/genMsg";
 import { deployProxy } from "../utils/proxy";
+import { revertedWith } from "../utils/revert";
 import { wireRouters } from "./wiring";
 
 export const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -36,19 +37,7 @@ export const EMPTY_BUNDLE = {
 
 export const ZERO_DIST = { user: ethers.constants.AddressZero, percent: 0 };
 
-export function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = (
-    (err?.message ?? "") +
-    " " +
-    JSON.stringify(err ?? "") +
-    " " +
-    (err?.data ?? "") +
-    " " +
-    (err?.error?.message ?? "")
-  ).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
+export { revertedWith };
 
 export async function expectRevert(p: Promise<any>, signature: string): Promise<void> {
   let caught: any;

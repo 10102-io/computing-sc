@@ -6,6 +6,7 @@ import { currentTime, increase } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
 import { wireRouters } from "./fixtures/wiring";
+import { revertedWith } from "./utils/revert";
 
 // Dummy Uniswap router + WETH. autoSwap/unswap/activeLegacyAndUnswap are not
 // exercised here; the lifecycle we assert on goes through the non-swap paths.
@@ -17,12 +18,6 @@ const weth = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 // Total = 45 bytes.
 const EIP1167_PREFIX = "363d3d373d3d3d363d73";
 const EIP1167_SUFFIX = "5af43d82803e903d91602b57fd5bf3";
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 describe("TransferEOALegacyRouter — EIP-1167 clone path", function () {
   this.timeout(150000);

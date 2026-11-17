@@ -3,6 +3,7 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 import { increase } from "./utils/time";
+import { revertedWith } from "./utils/revert";
 
 // ShieldVault v3 (docs/plans/shield-vault.md "v3"): what it does differently
 // from v2. The shared behaviour runs against both versions in
@@ -13,12 +14,6 @@ const NO_VETO = ethers.constants.MaxUint256;
 const SCHEME_HASH_PREIMAGE = 5;
 const E18 = ethers.constants.WeiPerEther;
 const MAX_FEE = 50;
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.id(signature).slice(0, 10);
-  const raw = (JSON.stringify(err ?? "") + " " + (err?.message ?? "")).toLowerCase();
-  return raw.includes(selector.toLowerCase()) || raw.includes(signature.replace("()", "").toLowerCase());
-}
 
 async function expectRevert(p: Promise<unknown>, signature: string, label = ""): Promise<void> {
   let caught: any;
