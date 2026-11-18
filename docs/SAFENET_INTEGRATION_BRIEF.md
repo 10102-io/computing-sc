@@ -15,7 +15,7 @@
 - Docs: https://docs.10102.io
 - FAQ: https://www.10102.io/apps/computing-legacy/faq/
 - Contracts: https://github.com/10102-io/computing-sc (verified on Etherscan)
-- Frontend: https://github.com/10102-io/computing
+- Frontend: https://app.10102.io (its repository is not public)
 
 We support three legacy shapes:
 
