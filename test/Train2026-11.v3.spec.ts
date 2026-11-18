@@ -706,7 +706,8 @@ describe("Train 2026-11 — wave B legacy v3", function () {
       const now = (await ethers.provider.getBlock("latest")).timestamp;
       assert.equal(deadline.toNumber(), now + 30 * DAY);
       await increase(30 * DAY);
-      await expectRevert(router.connect(executor).activeLegacy(legacyId, [usdc.address], false), "OnlyBeneficaries()");
+      // The clone refuses whoever is no beneficiary, before the router's own OnlyBeneficaries check.
+      await expectRevert(router.connect(executor).activeLegacy(legacyId, [usdc.address], false), "LayerInvalid()");
       await router.connect(bene).activeLegacy(legacyId, [usdc.address], false);
       assert.equal((await usdc.balanceOf(bene.address)).toString(), "997500000");
       assert.equal((await usdc.balanceOf(executor.address)).toString(), "0");

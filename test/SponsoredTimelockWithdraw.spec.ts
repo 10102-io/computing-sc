@@ -4,6 +4,7 @@ import { strict as assert } from "node:assert";
 
 import { currentTime, increase } from "./utils/time";
 import { deployProxy } from "./utils/proxy";
+import { revertedWith } from "./utils/revert";
 
 // Create-flow v2 — gas-sponsored timelock withdrawal (create-flow-v2.md §12a,
 // timelock leg), domain version "2" (docs/plans/round-2026-09.md B1). The
@@ -38,12 +39,6 @@ const LEGACY_WITHDRAW_AUTH_TYPES = {
     { name: "deadline", type: "uint256" },
   ],
 };
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 async function expectRevert(p: Promise<unknown>, signature: string, label = ""): Promise<void> {
   let caught: any;

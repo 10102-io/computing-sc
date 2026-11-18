@@ -25,14 +25,16 @@
  *                      network as it is then
  *   REHEARSE_AS      = address the smoke runs as (impersonated on the fork;
  *                      the maintainer EOA, for its roles)
+ *   REHEARSE_BLOCK   = block to fork at (default: the network's head)
  *
  * PowerShell:
  *   $env:TL_BATCH='docs\plans\batches\train-2026-11-wave-b-mainnet.json'
  *   npx hardhat run scripts/rehearse-timelock-op.ts
  *
- * The fork is taken at the latest block through MAINNET_RPC_URL or
- * SEPOLIA_RPC_URL. A provider without archive state serves it for about
- * half an hour, which is far longer than a run.
+ * The fork is taken at the network's head through MAINNET_RPC_URL or
+ * SEPOLIA_RPC_URL, so an operation scheduled a minute ago is in it. A
+ * provider without archive state serves that block for about half an hour,
+ * which is far longer than a run.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -143,7 +145,13 @@ async function main() {
   const timelockAddr: string | undefined = book?.UpgradeTimelock?.address;
   if (!timelockAddr) throw new Error(`No UpgradeTimelock recorded for ${net}.`);
 
-  await rpc("hardhat_reset", [{ forking: { jsonRpcUrl: url } }]);
+  // Hardhat left alone forks well behind the head (128 blocks on Sepolia, about 26 minutes), which
+  // is older than an operation scheduled a moment ago. So the head is asked for and named.
+  const head = process.env.REHEARSE_BLOCK
+    ? Number(process.env.REHEARSE_BLOCK)
+    : await new ethers.providers.StaticJsonRpcProvider(url).getBlockNumber();
+  if (!Number.isInteger(head) || head <= 0) throw new Error("REHEARSE_BLOCK must be a block number.");
+  await rpc("hardhat_reset", [{ forking: { jsonRpcUrl: url, blockNumber: head } }]);
   const forkBlock = await provider.getBlock("latest");
   console.log(`Fork of ${net} at block ${forkBlock.number} (${new Date(forkBlock.timestamp * 1000).toISOString()}). Nothing here reaches ${net}.`);
   // Reads at the fork block itself see the forked network's chain id, reads

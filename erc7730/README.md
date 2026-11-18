@@ -124,7 +124,8 @@ build stops at `dlltool`).
   The app passes the fee it showed, and 0 when it showed none. A new legacy
   refuses a rate above 0.5% whatever the bound.
 - `releaseCreateFlag` ("Allow creating a new legacy") names the legacy
-  that ended as "Ended legacy": it reverts while that legacy is live and
+  that ended as "Ended legacy": it reverts while that legacy is live, while
+  the router's current vault holds a newer live legacy of the wallet, and
   for anyone but its owner, and it changes only the router's mark that the
   wallet already has a legacy.
 - Beneficiaries and recipients have no address `types`: they may be

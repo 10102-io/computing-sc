@@ -6,6 +6,7 @@ import { currentTime, increase } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
 import { wireRouters } from "./fixtures/wiring";
+import { revertedWith } from "./utils/revert";
 
 // Create-flow v2 — Permit2 single-confirm create (docs/plans/create-flow-v2.md §6.8).
 // `createLegacyV2` registers the creator's signed AllowanceTransfer batch in
@@ -40,12 +41,6 @@ const EMPTY_BUNDLE = {
   permitBatch: { details: [], spender: ethers.constants.AddressZero, sigDeadline: 0 },
   signature: "0x",
 };
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 describe("TransferEOALegacyRouter — createLegacyV2 (Permit2 single-confirm create)", function () {
   this.timeout(150000);

@@ -240,6 +240,15 @@ not touch. The changed `activeLegacyAndUnswap` has one `reentrancy-benign`
 result, the same before and after: `isCreateLegacy` is written after the
 clone call, under the router's `nonReentrant`.
 
+The create-flag change (2026-11-16, implementation `0x4251…F8DC`) writes
+`isCreateLegacy` before the clone call. The router's run went from 46
+results to 45: the two `reentrancy-benign` results in `_runActiveLegacy`
+and `activeLegacyAndUnswap` are gone (five to three), and one
+Informational `low-level-calls` is new, the `staticcall` of `isLive()` in
+`_releaseCreateFlagBeforeClaim`, which is meant: a `try` would revert in
+the router on short or malformed return data, and this read must never
+stop a claim. The two Medium `unused-return` results are unchanged.
+
 Round 11 (2026-11-09, the direct rail through a self-call and the
 whole-estate fee after the beneficiaries) added five results to v3's run,
 all in the inherited base: 86 (21 in v3, 65 inherited); the router is

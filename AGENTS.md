@@ -67,8 +67,11 @@ you add is still the whole safety net for that path.
  (`TransferEOALegacyImpl`); legacies created from 2026-11-07 to then keep
  the wave A clone. Its NFT list holds three collections on mainnet since
  2026-11-16 (`docs/security/nft-collections.md`: vet a collection on a
- fork before it is added). Say so
- plainly when a change lands on those. ShieldVault and the registry also carry tooling
+  fork before it is added). On mainnet since 2026-11-18 23:55 UTC (Sepolia
+  since 2026-11-16): the router's create-flag fix, one implementation
+  (`0x4251…F8DC`), so only the claim that ends a legacy releases the
+  owner's create flag; nothing is left in the timelock queue. Say so
+  plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
 - Compilers on mainnet: solc 0.8.35 for everything deployed since
@@ -145,6 +148,11 @@ you add is still the whole safety net for that path.
 - **Amounts and durations are `uint256`/`uint128` with explicit casts**;
   the frontend passes `bigint`. Percentages are basis points scaled by
   10,000.
+- **A spec checks a revert's reason with `revertedWith` from
+  `test/utils/revert.ts`.** Never search an error as JSON or text of your
+  own: Hardhat's stack trace carries the contracts' source, so every error
+  they declare matches, and until 2026-11-16 the reason checks proved only
+  "reverted".
 - **Never commit `.env`, keys, or signed payloads.** The deployer
   (maintainer) key lives in the founder's password manager only, never in
   Railway. Railway holds the worker's hot keys (attestor and fee relayer,
@@ -182,6 +190,9 @@ you add is still the whole safety net for that path.
 - `docs/security/compiler-known-bugs.md`: every known solc bug against
   every contract on mainnet, with the evidence and its limits; the scripts
   behind it are `scripts/compiler-bugs/` (read-only, plain Node).
+- `scripts/early-mainnet.mjs`: the 2024 routers on mainnet and the first
+  legacy (2024-08-19), checked against the commits the README names
+  (read-only, no key). State a date of 2024 only as far as it passes.
 - `docs/security/wave-b-audit-scope.md`: the external review scope for
  legacy v3 (wave B); its tooling evidence is `tooling-report.md` section 8
  and the Foundry suite `test/foundry/LegacyV3*`.

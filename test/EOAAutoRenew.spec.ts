@@ -6,6 +6,7 @@ import { currentTime, increase } from "./utils/time";
 import { genMessage } from "../scripts/utils/genMsg";
 import { deployProxy } from "./utils/proxy";
 import { wireRouters } from "./fixtures/wiring";
+import { revertedWith } from "./utils/revert";
 
 // EOA activity auto-renew, Phase 1 (ROADMAP track 4). Owner-opt-in,
 // attestor-driven inactivity-timer renewal with four hard bounds: opt-in
@@ -23,12 +24,6 @@ const EMPTY_BUNDLE = {
 };
 
 const DAY = 86400;
-
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(signature)).slice(0, 10).toLowerCase();
-  const blob = ((err?.message ?? "") + " " + JSON.stringify(err ?? "") + " " + (err?.data ?? "") + " " + (err?.error?.message ?? "")).toLowerCase();
-  return blob.includes(signature.toLowerCase()) || blob.includes(selector);
-}
 
 describe("EOA activity auto-renew (Phase 1)", function () {
   this.timeout(150000);

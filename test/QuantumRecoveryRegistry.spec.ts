@@ -1,13 +1,7 @@
 import { strict as assert } from "node:assert";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
-
-/** Matches the repo idiom: check a custom error selector inside revert data. */
-function revertedWith(err: any, signature: string): boolean {
-  const selector = ethers.utils.id(signature).slice(0, 10);
-  const raw = JSON.stringify(err ?? "");
-  return raw.includes(selector) || raw.includes(signature.replace("()", ""));
-}
+import { revertedWith } from "./utils/revert";
 
 describe("QuantumRecoveryRegistry", function () {
   this.timeout(120000);

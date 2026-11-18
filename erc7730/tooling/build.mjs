@@ -363,7 +363,8 @@ const SPECS = [
       // A wallet may have one legacy at a time (`isCreateLegacy`). This call
       // clears that mark for the owner of a legacy that is no longer live
       // (claimed or deleted) where the router has not cleared it already. It
-      // reverts for anyone but the owner and while the legacy is live,
+      // reverts for anyone but the owner, while the legacy is live and while
+      // the router's current vault holds a newer live legacy of the wallet,
       // changes nothing in the legacy itself and moves nothing.
       releaseCreateFlag: {
         intent: 'Allow creating a new legacy',

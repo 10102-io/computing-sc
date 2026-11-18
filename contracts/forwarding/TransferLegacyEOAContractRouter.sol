@@ -981,6 +981,7 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
   function _runActiveLegacy(uint256 legacyId_, address[] calldata assets_, bool isETH_, address actor_) internal {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     if (isETH_ == false && assets_.length == 0) revert NumAssetsInvalid();
+    _releaseCreateFlagBeforeClaim(legacyAddress);
 
     //Active legacy
     ITransferEOALegacy(legacyAddress).activeLegacy(assets_, isETH_, actor_);
@@ -997,17 +998,36 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       emit EmailActivatedNotCompleted(legacyAddress);
     }
 
-    // Activation is a one-way state change: the legacy's `_isActive` flips
-    // to 2 inside the call above and the contract becomes a tombstone
-    // (`deleteLegacy` is blocked from here on). Release the owner's
-    // create-flag so they can spin up a new legacy without coordinating
-    // with us. Idempotent — repeat calls (multi-tranche claims that
-    // re-enter activeLegacy) are no-ops. We read the owner via
-    // IPremiumLegacy because GenericLegacy's `getLegacyOwner` is non-virtual
-    // and ITransferEOALegacy can't redeclare it without an override clash.
-    isCreateLegacy[IPremiumLegacy(legacyAddress).getLegacyOwner()] = false;
-
     emit TransferEOALegacyActivated(legacyId_, beneLayer, block.timestamp);
+  }
+
+  /**
+   * @dev Releases the owner's create flag when the claim about to run is the
+   * one that ends `legacyAddress_`, so the owner can create a new legacy
+   * without coordinating with us. Activation is one-way: a legacy's first
+   * successful claim flips its `_isActive` to 2 and the contract becomes a
+   * tombstone (`deleteLegacy` is blocked from then on).
+   *
+   * Only a claim that finds the legacy live releases. A later claim on it
+   * (another heir, another token) leaves the flag alone, because by then it
+   * may stand for the owner's next legacy.
+   *
+   * The flag is written before the claim, not after: a claim that fails
+   * reverts this write with it, and a create made while the claim runs (an
+   * owner contract called from a payout) sets a flag that nothing clears
+   * afterwards.
+   *
+   * `isLive()` is read with a plain staticcall. A legacy that reverts or
+   * returns less than one word counts as live, which is what every claim
+   * assumed before this check, so the read never stands between a
+   * beneficiary and a claim. The owner is read via IPremiumLegacy because
+   * GenericLegacy's `getLegacyOwner` is non-virtual and ITransferEOALegacy
+   * can't redeclare it without an override clash.
+   */
+  function _releaseCreateFlagBeforeClaim(address legacyAddress_) private {
+    (bool answered, bytes memory word) = legacyAddress_.staticcall(abi.encodeCall(IPremiumLegacy.isLive, ()));
+    if (answered && word.length >= 32 && abi.decode(word, (uint256)) == 0) return;
+    isCreateLegacy[IPremiumLegacy(legacyAddress_).getLegacyOwner()] = false;
   }
 
   /**
@@ -1042,6 +1062,8 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
       }
     }
 
+    // As in activeLegacy: only the claim that ends the legacy releases the owner.
+    _releaseCreateFlagBeforeClaim(legacyAddress);
     ITransferEOALegacy(legacyAddress).activeLegacyAndUnswap(
       assets_,
       msg.sender,
@@ -1059,10 +1081,6 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
     {} catch {
       emit EmailActivatedNotCompleted(legacyAddress);
     }
-
-    // Same one-way-state-change reasoning as activeLegacy — release the
-    // owner so they aren't permanently locked out of creating a fresh one.
-    isCreateLegacy[IPremiumLegacy(legacyAddress).getLegacyOwner()] = false;
 
     emit TransferEOALegacyActivatedWithUnswap(legacyId_, beneLayer, block.timestamp);
   }
@@ -1090,17 +1108,29 @@ contract TransferEOALegacyRouter is LegacyRouter, EOALegacyFactory, Initializabl
    * `isLive()` check on the child contract returns false for both the
    * `_isActive == 2` (claimed) and `_isLive == 2` (deleted) terminal
    * states, so this covers every case where `isCreateLegacy[owner]` could
-   * have been left dangling.
+   * have been left dangling (among them a v3 legacy that an NFT claim
+   * activated: that claim does not pass through the router).
    *
-   * Idempotent and chain-safe: re-entering on a fresh legacy reverts
-   * `LegacyStillActive`; re-entering on the same dead legacy is a no-op
-   * write that keeps the flag false.
+   * The flag may by now stand for the owner's next legacy, so an ended
+   * legacy is not enough: when the pull vault holds a live legacy for the
+   * caller, the call reverts `LegacyStillActive` too. Only the router's
+   * current vault is asked: a live legacy bound in an earlier vault, or
+   * created without one, is not seen here.
+   *
+   * Repeatable: on a live legacy it reverts `LegacyStillActive`; on the
+   * same ended legacy again it writes a flag that is already false and
+   * emits the event again.
    */
   function releaseCreateFlag(uint256 legacyId_) external {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     IPremiumLegacy legacy = IPremiumLegacy(legacyAddress);
     if (legacy.getLegacyOwner() != msg.sender) revert OnlyOwner();
     if (legacy.isLive()) revert LegacyStillActive();
+    address vault = pullVault;
+    if (vault != address(0)) {
+      address bound = ILegacyPullVault(vault).boundLegacy(msg.sender);
+      if (bound != address(0) && IPremiumLegacy(bound).isLive()) revert LegacyStillActive();
+    }
     isCreateLegacy[msg.sender] = false;
     emit TransferEOALegacyCreateFlagReleased(legacyId_, msg.sender, block.timestamp);
   }
