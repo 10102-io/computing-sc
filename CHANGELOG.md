@@ -64,6 +64,13 @@ networks, and three rehearsals of this operation on a fork of mainnet.]
   repeats the checks with no key. The README no longer calls 2024-10-25
   the first mainnet deployment, and says the repository used before
   January 2026 is archived and kept private.
+- **Clear signing needs no change** (checked 2026-11-19, after the
+  release). The descriptor names the router's proxy, and the new
+  implementation's ABI is the previous one's, fragment for fragment, so
+  the rebuilt descriptors are byte for byte the ones here. The two
+  submissions waiting at the registry (#3147, #3223) carry the same
+  files. The tooling now names the new implementation
+  (`erc7730/tooling/fetch-abis.mjs`).
 
 ## 2026-11-16 — Router: only the claim that ends a legacy releases the create flag
 

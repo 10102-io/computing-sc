@@ -6,12 +6,13 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 
 // The routers are proxies: Sourcify holds the ABI under the implementation.
 // TransferEOALegacyRouter names the implementation live since the timelock
-// installed it on 2026-11-13. Its ABI is the same, fragment for fragment,
-// as that of the one before it (0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1,
-// 2026-11-07), so the descriptor held on both sides of the upgrade. After
-// an upgrade, name the new implementation here.
+// installed it on 2026-11-18. Its ABI is the same, fragment for fragment,
+// as that of the two before it (0x8F8971289e35adF8f9123BF142120D21109974eb,
+// 2026-11-13, and 0xe3d1bc20b92cd38D3C154F1B97A1A288b0e706A1, 2026-11-07),
+// so the descriptor held on both sides of each upgrade. After an upgrade,
+// name the new implementation here.
 const contracts = {
-  TransferEOALegacyRouter: '0x8F8971289e35adF8f9123BF142120D21109974eb',
+  TransferEOALegacyRouter: '0x4251A1EC6D88995d82D7b4397ef74867A8d3F8DC',
   TimeLockRouter: '0x82f3148cc4836f03110F9B7139588B0563AF5005',
   ShieldVault: '0xA1EA2F8C0518458975E09ED63bf5D48980f76C38',
   ShieldVaultV3: '0x1610DC8D25475959D5ba9395c4CE02456B51EB59'

@@ -46,10 +46,12 @@ behind gas-free check-ins and claims are a possible follow-up.
 Format keys are built from the Sourcify ABIs of the deployed contracts, so
 a selector cannot be mistyped. The routers are proxies: `fetch-abis.mjs`
 names an implementation, and the descriptor names the proxy. For the legacy
-router it names `0x8F897128…974eb`, the implementation the timelock
-installs on 2026-11-13; its ABI is the same, fragment for fragment, as that
-of `0xe3d1bc20…706A1`, live since 2026-11-07, so the descriptor holds
-before and after that upgrade. For the timelock router it still names the
+router it names `0x4251A1EC…3F8DC`, the implementation the timelock
+installed on 2026-11-18; its ABI is the same, fragment for fragment, as
+that of `0x8F897128…974eb` (2026-11-13) and of `0xe3d1bc20…706A1`
+(2026-11-07), so the descriptor held before and after each of those
+upgrades and the two open submissions need no change. For the timelock
+router it still names the
 implementation of the October submission: the functions described are
 unchanged in the live one (the linter checks the descriptor against the
 live implementation), and the next change to that descriptor moves it.
