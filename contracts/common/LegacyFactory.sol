@@ -4,6 +4,7 @@ pragma solidity 0.8.35;
 
 import "@openzeppelin/contracts/utils/Create2.sol";
 import {ISafeWallet} from "../interfaces/ISafeWallet.sol";
+import {ISafeGuard} from "../interfaces/ISafeGuard.sol";
 import {ILegacyDeployer} from "../interfaces/ILegacyDeployer.sol";
 contract LegacyFactory {
 
@@ -14,6 +15,7 @@ contract LegacyFactory {
   error GuardNotFound();
   error GuardSafeWalletInvalid();
   error ModuleSafeWalletInvalid();
+  error GuardBehindSafeWallet();
 
   /* State variable */
   uint256 internal _legacyId;
@@ -82,11 +84,7 @@ contract LegacyFactory {
     address moduleAddress = _checkLegacyExisted(legacyId_);
 
     //Check safe wallet exist guard created by system
-    bytes memory guardBytes = ISafeWallet(safeWallet_).getStorageAt(uint256(GUARD_STORAGE_SLOT), 1);
-    bytes32 rawBytes = abi.decode(guardBytes, (bytes32));
-    address guardSafeWalletAddress = address(uint160(uint256(rawBytes)));
-
-     if (guardAddress != guardSafeWalletAddress) revert GuardSafeWalletInvalid();
+    if (guardAddress != _guardOfSafeWallet(safeWallet_)) revert GuardSafeWalletInvalid();
 
     //Check safe wallet exist legacy created by system
     if (ISafeWallet(safeWallet_).isModuleEnabled(moduleAddress) == false) revert ModuleSafeWalletInvalid();
@@ -98,11 +96,43 @@ contract LegacyFactory {
    * @return bool true if guard exist, false otherwise
    */
   function _checkExistGuardInSafeWallet(address safeWallet_) internal view returns (bool) {
+    return _guardOfSafeWallet(safeWallet_) != address(0);
+  }
+
+  /**
+   * @dev The transaction guard a Safe runs now, read from the Safe's guard
+   * slot (the same slot in Safe 1.3.0 to 1.5.0; a Safe has no getter for it).
+   * @param safeWallet_ safe wallet address
+   * @return address the guard, or zero when the Safe has none
+   */
+  function _guardOfSafeWallet(address safeWallet_) internal view returns (address) {
     bytes memory guardBytes = ISafeWallet(safeWallet_).getStorageAt(uint256(GUARD_STORAGE_SLOT), 1);
-    bytes32 rawBytes = abi.decode(guardBytes, (bytes32));
-    address guardSafeWalletAddress = address(uint160(uint256(rawBytes)));
-    if (guardSafeWalletAddress == address(0)) return false;
-    return true;
+    return address(uint160(uint256(abi.decode(guardBytes, (bytes32)))));
+  }
+
+  /**
+   * @dev Whether a legacy is set up on its Safe: its guard is the Safe's
+   * guard and the legacy is one of the Safe's modules. The same two
+   * conditions as `_checkSafeWalletValid`, without the reverts.
+   */
+  function _isSetUpOnSafeWallet(address guardAddress_, address legacyAddress_, address safeWallet_) internal view returns (bool) {
+    return _guardOfSafeWallet(safeWallet_) == guardAddress_ && ISafeWallet(safeWallet_).isModuleEnabled(legacyAddress_);
+  }
+
+  /**
+   * @dev Whether the guard's clock stands for the Safe as it is now: the
+   * nonce the guard noted when its clock last moved is the Safe's nonce, so
+   * the Safe has executed nothing since. A guard misses the transaction
+   * that sets it and everything the Safe does while the guard is off;
+   * `sync()` on the guard counts those. A version 1 guard (before 2026-11)
+   * keeps no nonce and is taken at its word.
+   */
+  function _guardSawLastTransaction(address guardAddress_, address safeWallet_) internal view returns (bool) {
+    try ISafeGuard(guardAddress_).lastNonce() returns (uint256 seen) {
+      return seen == ISafeWallet(safeWallet_).nonce();
+    } catch {
+      return true;
+    }
   }
 
   /**

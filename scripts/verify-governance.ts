@@ -104,6 +104,25 @@ async function main() {
   const paOwner = await proxyAdmin.owner();
   push("DefaultProxyAdmin.owner", timelockAddr, paOwner, same(paOwner, timelockAddr));
 
+  // The LegacyDeployer's owner names the routers that may deploy a legacy at
+  // the address a router announced: behind the timelock since 2026-11-19
+  // (scripts/handover-legacy-deployer.ts).
+  const legacyDeployerEntry = (book as any).LegacyDeployer;
+  if (legacyDeployerEntry?.address) {
+    const expectDeployerOwner = phase === "baseline" ? MAINTAINER : timelockAddr;
+    const legacyDeployer = at(legacyDeployerEntry.address, [
+      ...ownable,
+      "function multisigLegacyRouter() view returns (address)",
+      "function transferEOALegacyRouter() view returns (address)",
+    ]);
+    const [ldOwner, ldSafeRouter, ldEoaRouter] = await Promise.all([legacyDeployer.owner(), legacyDeployer.multisigLegacyRouter(), legacyDeployer.transferEOALegacyRouter()]);
+    push("LegacyDeployer.owner", expectDeployerOwner, ldOwner, same(ldOwner, expectDeployerOwner));
+    const safeRouterAddr: string | undefined = (book as any).MultisigLegacyRouter?.address;
+    const eoaRouterAddr: string | undefined = (book as any).TransferEOALegacyRouter?.address;
+    push("LegacyDeployer serves the recorded Safe router", safeRouterAddr ?? "MultisigLegacyRouter", ldSafeRouter, same(ldSafeRouter, safeRouterAddr));
+    push("LegacyDeployer serves the recorded EOA router", eoaRouterAddr ?? "TransferEOALegacyRouter", ldEoaRouter, same(ldEoaRouter, eoaRouterAddr));
+  }
+
   const delay = (await timelock.getMinDelay()).toNumber();
   push("UpgradeTimelock.getMinDelay", String(expectDelay), String(delay), delay === expectDelay);
 

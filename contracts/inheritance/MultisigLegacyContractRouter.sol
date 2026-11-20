@@ -9,7 +9,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {LegacyRouter} from "../common/LegacyRouter.sol";
 import {LegacyFactory} from "../common/LegacyFactory.sol";
 import {MultisigLegacy} from "./MultisigLegacyContract.sol";
-import {SafeGuard} from "../SafeGuard.sol";
 import {IMultisigLegacy} from "../interfaces/IMultisigLegacyContract.sol";
 import {ISafeGuard} from "../interfaces/ISafeGuard.sol";
 import {ISafeWallet} from "../interfaces/ISafeWallet.sol";
@@ -24,6 +23,7 @@ contract MultisigLegacyRouter is Initializable, LegacyRouter, LegacyFactory, Ree
   /* Error */
   error ExistedGuardInSafeWallet(address);
   error SignerIsNotOwnerOfSafeWallet();
+  error SenderIsNotSafeWalletOfLegacy();
   error NumBeneficiariesInvalid();
   error BeneficiariesInvalid();
   error MinRequiredSignaturesInvalid();
@@ -74,7 +74,13 @@ contract MultisigLegacyRouter is Initializable, LegacyRouter, LegacyFactory, Ree
   event PrivateCodeSetupNotCompleted(address legacyAddress);
 
   /* Modifier */
+  /// @dev The Safe of this legacy, with the legacy set up on it. The Safe is
+  /// named by the legacy: a guard slot and a module list are questions any
+  /// contract can answer the way a Safe would, and until 2026-11 such a
+  /// contract passed here and could rename a legacy and emit a note for it
+  /// (`setNameNote`; the other setters asked the legacy for its owner).
   modifier onlySafeWallet(uint256 legacyId_) {
+    if (msg.sender != MultisigLegacy(_checkLegacyExisted(legacyId_)).getLegacyOwner()) revert SenderIsNotSafeWalletOfLegacy();
     _checkSafeWalletValid(legacyId_, msg.sender);
     _;
   }
@@ -100,13 +106,24 @@ contract MultisigLegacyRouter is Initializable, LegacyRouter, LegacyFactory, Ree
 
   /* External function */
   /**
-   * @dev Check activation conditions. This activation conditions is current time >= last transaction of safe wallet + lackOfOutgoingTxRange.
+   * @dev Whether `activeLegacy` would go through now: the legacy has not
+   * been activated, it is set up on its Safe (its guard is the Safe's guard,
+   * the legacy one of the Safe's modules), the guard has seen the Safe's
+   * last transaction, and current time >= last transaction of the Safe +
+   * lackOfOutgoingTxRange. False where `activeLegacy` reverts.
    * @param legacyId_ legacy id
    * @return bool true if eligible for activation, false otherwise
    */
   function checkActiveLegacy(uint256 legacyId_) external view returns (bool) {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     address guardAddress = _checkGuardExisted(legacyId_);
+
+    // The conditions of activeLegacy, as an answer instead of a revert.
+    // (Until 2026-11 an activated legacy went on answering true.)
+    if (MultisigLegacy(legacyAddress).getIsActiveLegacy() == 2) return false;
+    address safeWallet = MultisigLegacy(legacyAddress).getLegacyOwner();
+    if (!_isSetUpOnSafeWallet(guardAddress, legacyAddress, safeWallet)) return false;
+    if (!_guardSawLastTransaction(guardAddress, safeWallet)) return false;
 
     return IMultisigLegacy(legacyAddress).checkActiveLegacy(guardAddress);
   }
@@ -297,6 +314,19 @@ contract MultisigLegacyRouter is Initializable, LegacyRouter, LegacyFactory, Ree
   function activeLegacy(uint256 legacyId_) external nonReentrant {
     address legacyAddress = _checkLegacyExisted(legacyId_);
     address guardAddress = _checkGuardExisted(legacyId_);
+
+    // The guard is the legacy's clock, and it only runs while it is the
+    // Safe's guard. A Safe that took the guard off, or never set it, goes on
+    // working with the clock stopped, so the time since the last recorded
+    // transaction says nothing about that Safe: the legacy activates only
+    // while it is set up on its Safe, and only when the guard has seen the
+    // Safe's last transaction (anyone can have it counted: `sync()` on the
+    // guard, after which the wait starts again).
+    // (Since 2026-11; before, a Safe that left the module enabled and dropped
+    // the guard could be taken over by its beneficiaries while in daily use.)
+    address safeWallet = MultisigLegacy(legacyAddress).getLegacyOwner();
+    _checkSafeWalletValid(legacyId_, safeWallet);
+    if (!_guardSawLastTransaction(guardAddress, safeWallet)) revert GuardBehindSafeWallet();
 
     //trigger reminder
     try 

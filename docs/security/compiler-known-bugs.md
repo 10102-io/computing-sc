@@ -1,17 +1,19 @@
 # Known compiler bugs and the contracts on mainnet
 
 Checked 2026-11-12 against the compiler team's list as of solc 0.8.38
-(released 2026-10-22). Scope: every contract of ours on Ethereum mainnet,
-live or retired, and every legacy the two routers ever created. Scripts:
-`scripts/compiler-bugs/` (section 7). None of them sends a transaction or
-reads a signing key.
+(released 2026-10-22), and again on 2026-11-19 against the list as of solc
+0.8.39, released that day with two new entries that reach every earlier
+version (section 3; what was run that day is section 10). Scope: every
+contract of ours on Ethereum mainnet, live or retired, and every legacy
+the two routers ever created. Scripts: `scripts/compiler-bugs/`
+(section 7). None of them sends a transaction or reads a signing key.
 
 ## 1. Result
 
 **No known compiler bug is found to apply to any contract of ours on
-mainnet.** Nine of the ten are excluded outright. For the tenth the
-compiler team's own check finds nothing, which is a strong indication and
-not a proof (section 5).
+mainnet.** Eleven of the twelve are excluded outright. For the twelfth
+the compiler team's own check finds nothing, which is a strong indication
+and not a proof (section 5).
 
 - Every contract was **rebuilt from source and equals the code on the
   chain**: 41 contracts (21 on solc 0.8.35, 20 on solc 0.8.20), among them
@@ -19,8 +21,10 @@ not a proof (section 5).
   three multisig legacies) equals the chain in everything but the metadata
   hash. So each statement below is about the code that runs, not about a
   source tree that may have drifted from it.
-- The ten known bugs of the two compilers fall in three groups. Seven
-  cannot occur with our settings or sources (section 3). The two "spill"
+- The twelve known bugs of the two compilers fall in three groups. Nine
+  cannot occur with our settings or sources (section 3), among them the
+  two of 2026-11-19, which need a struct that holds an array of its own
+  type: no source we ever compiled has one. The two "spill"
   bugs corrupt a variable the compiler moved to memory in code with mutual
   recursion: no contract has both (section 4). For the optimizer bug fixed
   in 0.8.38, which no source pattern excludes, compiling with and without
@@ -156,11 +160,14 @@ not, and no input with that hash was found.
 
 ## 3. The known bugs, one by one
 
-0.8.35 has six known bugs, 0.8.20 has eight; four are shared, ten in all
-(`known-bugs.mjs`; the full texts with `--text`).
+0.8.35 has eight known bugs, 0.8.20 has ten; six are shared, twelve in
+all (`known-bugs.mjs`; the full texts with `--text`). The first two rows
+were added to the list on 2026-11-19, with solc 0.8.39.
 
 | Bug | Severity | In | Needs | Ours |
 |---|---|---|---|---|
+| OverlappingRecursiveStorageStructCopyCorruptionViaIR | medium | 0.8.35, 0.8.20 | viaIR; a struct that holds a dynamic array of its own type (directly or through other structs), and a storage copy whose target contains its source | no struct reaches its own type in any source of any input, in the tree, in any version of any file in the repository's history or in the sources hardhat-deploy ships (`recursive-structs.mjs`: 800 files, 74 struct names on a clean build) |
+| OverlappingRecursiveStorageStructCopyCorruption | medium | 0.8.35, 0.8.20 | the same, under the old code generator (viaIR off) | every build of ours is viaIR; and no such struct |
 | UnsoundSpillInMutualRecursion | medium | 0.8.35, 0.8.20 | viaIR; mutually recursive functions with intersecting cycles, one of them with a variable moved to memory | section 4 |
 | SpillSlotCollisionAcrossMutualRecursion | low/medium | 0.8.35, 0.8.20 | viaIR; a cycle of two or more functions that reaches a function with variables moved to memory | section 4 |
 | YulOptimizerKnowledgeBaseStaleBookkeeping | low | 0.8.35, 0.8.20 | the optimizer; cannot be judged from the source | section 5 |
@@ -263,13 +270,14 @@ release a contract was built with and compare. It needs solc 0.8.35 and
   `proxy-artifacts.mjs` shows that all 16 proxies equal the shipped
   `OptimizedTransparentUpgradeableProxy` except for its one immutable,
   which holds the `DefaultProxyAdmin` address in each, and that the
-  ProxyAdmin equals the shipped `ProxyAdmin` exactly. 0.8.10 has 11 known
+  ProxyAdmin equals the shipped `ProxyAdmin` exactly. 0.8.10 has 12 known
   bugs (the optimizer bug of section 5 is not among them: it came with
   0.8.19). Two need viaIR, which this build does not use. For the other
-  nine the script counts, in the shipped sources, what each needs:
+  ten the script counts, in the shipped sources, what each needs:
   `delete`, `.selector`, `verbatim`, an array in calldata, an array, bytes
   or string state variable, an override with parameters, an own optimizer
-  step sequence. All zero.
+  step sequence, a struct with an array member (the bug of 2026-11-19).
+  All zero.
 - **The governance Safe (solc 0.7.6)** is Safe's canonical proxy in front
   of Safe's singleton, the code every Safe runs. Not assessed here.
 - Permit2, WETH, the Uniswap router and the tokens are other parties'
@@ -285,6 +293,9 @@ there, and what it needs decides which of the checks below answers it.
 npx hardhat compile
 node scripts/compiler-bugs/known-bugs.mjs 0.8.35 0.8.20 0.8.10 0.7.6
 node scripts/compiler-bugs/get-compilers.mjs 0.8.36 0.8.37 0.8.38 nightly
+
+# every source we ever compiled, for the recursive struct bug of 0.8.39 (no network)
+node scripts/compiler-bugs/recursive-structs.mjs
 
 # what is on mainnet
 node scripts/compiler-bugs/live-compilers.mjs mainnet
@@ -347,9 +358,46 @@ together.
 
 ## 9. What is left
 
-- **The next train compiles with 0.8.38** (`docs/plans/solc-upgrade.md`),
-  whose list is empty today. Legacies that exist keep the code they have:
-  a clone pins its implementation.
+- **A contract deployed after 2026-11-19 compiles with 0.8.39 or later**
+  (`docs/plans/solc-upgrade.md`), whose list is empty today (0.8.38, the
+  release planned until 2026-11-19, now carries the two recursive struct
+  entries). No further contract train is planned: what is deployed stays
+  on its compiler, with every known bug of it assessed here. Legacies
+  that exist keep the code they have: a clone pins its implementation.
 - **The definitive check for the optimizer bug** (section 5): solc 0.8.35
   and 0.8.20 built from source with the fix, compared with the releases
   for the 41 contracts. A build job on a Linux runner; open.
+
+## 10. The Safe legacy fix of 2026-11-19
+
+Two implementations went to mainnet that day, `LegacyDeployer`
+`0xb7744Fd8Cc4728515aCE415dDc51d9244b9E89bA` and `MultisigLegacyRouter`
+`0x062195561F4892F9AC472714c28515553D2FA14F`, scheduled to replace the
+live ones from 2026-11-21 23:00 UTC
+(`docs/plans/safe-legacy-guard-2026-11.md`). With them come the two
+contracts the deployer and the router create per legacy, `SafeGuard`
+(version 2) and `MultisigLegacy`. All four are compiled with solc 0.8.35,
+the settings of section 2.1, and were checked on a clean build of the
+commit that was deployed, the same day and before the schedule:
+
+- **The code on the chain is that build.** Both implementations equal the
+  build's runtime code byte for byte on mainnet and on Sepolia
+  (`scripts/check-impl-code.ts`), and Etherscan verified both sources.
+- **The eight known bugs of 0.8.35**, as in section 3. The source
+  patterns are counted over the whole tree, which now holds 68 contracts:
+  nothing new. No struct refers to its own type
+  (`recursive-structs.mjs`: 23 compiler inputs of that build, the proxies'
+  35 shipped artifacts, the tree and 501 file versions of its history,
+  800 distinct source files, 74 struct names).
+- **The two spill bugs** (section 4): `tree-call-graph.mjs` finds no cycle
+  of two or more functions in any of the 68 contracts, in the unoptimized
+  and in the optimized IR, and no function that calls itself.
+  `tree-version-diff.mjs 0.8.36`: all 68 are identical under 0.8.35 and
+  0.8.36, the release that fixed both.
+- **The optimizer bug fixed in 0.8.38** (section 5):
+  `tree-nightly-pair.mjs`, the nightly before and the nightly after the
+  fix, gives identical runtime and creation code for all 68. An
+  indication, as in section 5, not a proof.
+- For the record, under 0.8.39 the code of 61 of the 68 differs
+  (`tree-version-diff.mjs 0.8.38 0.8.39`), which is why a compiler change
+  is its own piece of work and did not ride with this fix.

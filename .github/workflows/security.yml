@@ -152,6 +152,23 @@ jobs:
               --fail-none \
               --json "slither-v3-$(basename "$f" .sol).json" 2>&1 | tee -a slither-v3.txt
           done
+      # The Safe legacy contracts (the 2026-11-19 fix), report only, for the
+      # same reason: each file's report repeats what it imports, and one
+      # result in the verifier comes and goes between identical runs. Every
+      # result is triaged in docs/security/static-analysis.md ("Safe legacy
+      # contracts").
+      - name: slither (Safe legacy, report only)
+        if: always()
+        run: |
+          for f in contracts/SafeGuard.sol contracts/common/LegacyDeployer.sol contracts/inheritance/MultisigLegacyContract.sol contracts/inheritance/MultisigLegacyContractRouter.sol; do
+            slither "$f" \
+              --compile-force-framework solc \
+              --solc-remaps "@openzeppelin=node_modules/@openzeppelin" \
+              --solc-args "--via-ir --optimize --optimize-runs 200 --evm-version cancun" \
+              --filter-paths "node_modules" \
+              --fail-none \
+              --json "slither-safe-$(basename "$f" .sol).json" 2>&1 | tee -a slither-safe.txt
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -160,6 +177,7 @@ jobs:
             slither.txt
             slither-*.json
             slither-v3.txt
+            slither-safe.txt
           retention-days: 30
 
   fuzz:

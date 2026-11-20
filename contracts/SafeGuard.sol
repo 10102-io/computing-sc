@@ -2,203 +2,169 @@
 // OpenZeppelin Contracts v5.x
 pragma solidity 0.8.35;
 
-import {ISafeWallet} from "./interfaces/ISafeWallet.sol";
 import {Enum} from "@safe-global/safe-smart-account/contracts/common/Enum.sol";
-import {ISignatureValidator} from "@safe-global/safe-smart-account/contracts/interfaces/ISignatureValidator.sol";
 import {BaseGuard} from "@safe-global/safe-smart-account/contracts/base/GuardManager.sol";
-import {SafeMath} from "@safe-global/safe-smart-account/contracts/external/SafeMath.sol";
 
+/**
+ * @title SafeGuard
+ * @notice The activity clock of a Safe-based legacy. One guard is deployed
+ * per legacy and set as the Safe's transaction guard. The Safe calls it
+ * before every transaction it executes, and the guard notes the time and
+ * the Safe's nonce.
+ *
+ * Version 2 (2026-11). Version 1 also accepted a call from any address that
+ * carried signatures over the Safe's previous transaction, and its copy of
+ * the signature check never asked whether the signers were owners of the
+ * Safe, so anyone could move the clock and keep a legacy from activating.
+ * Version 2 moves the clock on two occasions only:
+ *
+ *  - the Safe calls a hook, which it does for a transaction its owners
+ *    signed (and, on Safe 1.5.0 with this guard set as the module guard too,
+ *    for a transaction of one of its modules);
+ *  - anyone calls `sync` while the Safe's nonce is not the one noted, which
+ *    is proof that the Safe executed a transaction the guard did not see.
+ *
+ * The second covers what a guard cannot see. A Safe reads its guard before
+ * it executes, so the transaction that sets the guard is not seen by it,
+ * and neither is anything the Safe does while the guard is off. The router
+ * activates a legacy only when the nonce noted is the Safe's nonce, so an
+ * old time never stands for a Safe that has been active since.
+ *
+ * No hook reverts, so the guard cannot stand between a Safe and its
+ * transactions. Guards are not upgradeable; a legacy created before
+ * version 2 keeps its guard.
+ */
 contract SafeGuard is BaseGuard {
-  using SafeMath for uint256;
-
-  /*Error */
+  /* Error */
   error SafeGuardInitialized();
-  error ThresholdOfSafeWalletIsInvalid();
 
-  /*State */
-  uint256 public lastTimestampTxs;
-  ISafeWallet public safeWallet;
+  /* State */
+  /// @notice 2 since 2026-11. A version 1 guard has no such getter.
+  uint256 public constant GUARD_VERSION = 2;
 
-  /*Modifier */
-  modifier initialized() {
-    if (lastTimestampTxs != 0) revert SafeGuardInitialized();
-    _;
-  }
+  /// @dev Safe 1.5.0's module guard interface: `checkModuleTransaction`
+  /// xor `checkAfterModuleExecution`.
+  bytes4 private constant MODULE_GUARD_INTERFACE_ID = 0x58401ed8;
+
+  // One slot: both change with every transaction of the Safe.
+  uint128 private _lastTimestamp;
+  uint128 private _lastNonce;
+
+  /// @notice The Safe this guard keeps time for.
+  address public safeWallet;
 
   /* Function */
   /**
-   * @dev initialize last timestamp transaction
+   * @dev Bind the guard to its Safe and start the clock. Called once by the
+   * router, in the transaction that deploys the guard.
    */
-  function initialize(address _safeWallet) external initialized {
-    lastTimestampTxs = block.timestamp;
-    safeWallet = ISafeWallet(_safeWallet);
+  function initialize(address _safeWallet) external {
+    if (_lastTimestamp != 0) revert SafeGuardInitialized();
+    safeWallet = _safeWallet;
+    _noteNow();
   }
 
   /**
-   * @dev check transaction
-   * @param to  target address
-   * @param value value
-   * @param data data
-   * @param operation call or delegateCall
-   * @param safeTxGas safeTxGas
-   * @param baseGas baseGas
-   * @param gasPrice gasPrice
-   * @param gasToken gasToken
-   * @param refundReceiver refundReceiver
-   * @param signatures signatures
-   * @param msgSender sender
+   * @dev The Safe's hook before a transaction executes. The Safe has checked
+   * its owners' signatures by then, and the transaction counts whether or
+   * not its inner call succeeds. A call from any other address changes
+   * nothing.
    */
   function checkTransaction(
-    address to,
-    uint256 value,
-    bytes memory data,
-    Enum.Operation operation,
-    uint256 safeTxGas,
-    uint256 baseGas,
-    uint256 gasPrice,
-    address gasToken,
-    address payable refundReceiver,
-    bytes memory signatures,
-    address msgSender
-  ) external {
-    if (msg.sender == address(safeWallet)) {
-      lastTimestampTxs = block.timestamp;
-    } else {
-      if (msg.sender == msgSender) {
-        uint256 nonce = safeWallet.nonce();
-        nonce--;
-        bytes32 dataHash = keccak256(
-          safeWallet.encodeTransactionData(to, value, data, operation, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver, nonce)
-        );
-        uint256 requiredSignatures = safeWallet.getThreshold();
-
-        checkNSignatures(msgSender, dataHash, data, signatures, requiredSignatures);
-        lastTimestampTxs = block.timestamp;
-      }
-    }
+    address,
+    uint256,
+    bytes calldata,
+    Enum.Operation,
+    uint256,
+    uint256,
+    uint256,
+    address,
+    address payable,
+    bytes calldata,
+    address
+  ) external override {
+    if (msg.sender == safeWallet) _noteNow();
   }
 
   /**
-   * @dev check after execution
-   * @param hash safe transaction hash
-   * @param success true is success false otherwise
+   * @dev The Safe's hook after execution. Nothing to do.
    */
-  function checkAfterExecution(bytes32 hash, bool success) external {}
+  function checkAfterExecution(bytes32, bool) external override {}
+
+  /**
+   * @dev Safe 1.5.0's hook before a module's transaction executes, called
+   * only when the Safe set this guard as its module guard. A module acts
+   * for the Safe without its owners' signatures and without a nonce, so
+   * this is how a Safe that is used through a module stays active.
+   */
+  function checkModuleTransaction(address, uint256, bytes calldata, Enum.Operation, address) external returns (bytes32) {
+    if (msg.sender == safeWallet) _noteNow();
+    return bytes32(0);
+  }
+
+  /**
+   * @dev Safe 1.5.0's hook after a module's transaction. Nothing to do.
+   */
+  function checkAfterModuleExecution(bytes32, bool) external {}
+
+  /**
+   * @notice Count a transaction the guard did not see. Open to anyone and
+   * without effect unless the Safe's nonce has moved since the guard last
+   * noted it; then the Safe was active at some time up to now, and the
+   * clock starts again now.
+   */
+  function sync() external {
+    (bool known, uint256 nonce) = _safeNonce();
+    if (known && uint128(nonce) != _lastNonce) _note(known, nonce);
+  }
+
+  /**
+   * @dev The transaction guard and, for Safe 1.5.0, the module guard.
+   */
+  function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
+    return
+      interfaceId == 0xe6d7a83a || // the transaction guard (Guard in 1.4.1, ITransactionGuard in 1.5.0)
+      interfaceId == MODULE_GUARD_INTERFACE_ID ||
+      interfaceId == 0x01ffc9a7; // ERC-165
+  }
+
+  /// @notice Time of the last transaction of the Safe that the guard knows
+  /// of (of the guard's initialization before the first one).
+  function lastTimestampTxs() external view returns (uint256) {
+    return _lastTimestamp;
+  }
 
   /**
    * @dev get last timestamp transaction
    */
   function getLastTimestampTxs() external view returns (uint256) {
-    return lastTimestampTxs;
+    return _lastTimestamp;
   }
 
-  /**
-   * @notice Checks whether the signature provided is valid for the provided data and hash. Reverts otherwise.
-   * @dev Since the EIP-1271 does an external call, be mindful of reentrancy attacks.
-   * @param dataHash Hash of the data (could be either a message hash or transaction hash)
-   * @param data That should be signed (this is passed to an external validator contract)
-   * @param signatures Signature data that should be verified.
-   *                   Can be packed ECDSA signature ({bytes32 r}{bytes32 s}{uint8 v}), contract signature (EIP-1271) or approved hash.
-   * @param requiredSignatures Amount of required valid signatures.
-   */
-  function checkNSignatures(address sender, bytes32 dataHash, bytes memory data, bytes memory signatures, uint256 requiredSignatures) public view {
-    // Check that the provided signature data is not too short
-    require(signatures.length >= requiredSignatures.mul(65), "GS020");
-    // There cannot be an owner with address 0.
-    address lastOwner = address(0);
-    address currentOwner;
-    uint8 v;
-    bytes32 r;
-    bytes32 s;
-    uint256 i;
-    for (i = 0; i < requiredSignatures; i++) {
-      (v, r, s) = signatureSplit(signatures, i);
-      if (v == 0) {
-        require(keccak256(data) == dataHash, "GS027");
-        // If v is 0 then it is a contract signature
-        // When handling contract signatures the address of the contract is encoded into r
-        currentOwner = address(uint160(uint256(r)));
-
-        // Check that signature data pointer (s) is not pointing inside the static part of the signatures bytes
-        // This check is not completely accurate, since it is possible that more signatures than the threshold are send.
-        // Here we only check that the pointer is not pointing inside the part that is being processed
-        require(uint256(s) >= requiredSignatures.mul(65), "GS021");
-
-        // Check that signature data pointer (s) is in bounds (points to the length of data -> 32 bytes)
-        require(uint256(s).add(32) <= signatures.length, "GS022");
-
-        // Check if the contract signature is in bounds: start of data is s + 32 and end is start + signature length
-        uint256 contractSignatureLen;
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-          contractSignatureLen := mload(add(add(signatures, s), 0x20))
-        }
-        require(uint256(s).add(32).add(contractSignatureLen) <= signatures.length, "GS023");
-
-        // Check signature
-        bytes memory contractSignature;
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-          // The signature data for contract signatures is appended to the concatenated signatures and the offset is stored in s
-          contractSignature := add(add(signatures, s), 0x20)
-        }
-        require(
-          ISignatureValidator(currentOwner).isValidSignature(data, contractSignature) == bytes4(ISignatureValidator.isValidSignature.selector),
-          "GS024"
-        );
-      } else if (v == 1) {
-        // If v is 1 then it is an approved hash
-        // When handling approved hashes the address of the approver is encoded into r
-        currentOwner = address(uint160(uint256(r)));
-        // Hashes are automatically approved by the sender of the message or when they have been pre-approved via a separate transaction
-        require(sender == currentOwner || safeWallet.approvedHashes(currentOwner, dataHash) != 0, "GS025");
-      } else if (v > 30) {
-        // If v > 30 then default va (27,28) has been adjusted for eth_sign flow
-        // To support eth_sign and similar we adjust v and hash the messageHash with the Ethereum message prefix before applying ecrecover
-        currentOwner = _recover(keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash)), v - 4, r, s);
-      } else {
-        // Default is the ecrecover flow with the provided data hash
-        // Use ecrecover with the messageHash for EOA signatures
-        currentOwner = _recover(dataHash, v, r, s);
-      }
-      require(currentOwner > lastOwner, "GS026");
-      lastOwner = currentOwner;
-    }
+  /// @notice The Safe's nonce as the guard last read it, which it does each
+  /// time the clock moves. Equal to the Safe's nonce as long as the guard
+  /// has seen every transaction the Safe's owners signed.
+  function lastNonce() external view returns (uint256) {
+    return _lastNonce;
   }
 
-  /**
-   * @notice Splits signature bytes into `uint8 v, bytes32 r, bytes32 s`.
-   * @dev Make sure to perform a bounds check for @param pos, to avoid out of bounds access on @param signatures
-   *      The signature format is a compact form of {bytes32 r}{bytes32 s}{uint8 v}
-   *      Compact means uint8 is not padded to 32 bytes.
-   * @param pos Which signature to read.
-   *            A prior bounds check of this parameter should be performed, to avoid out of bounds access.
-   * @param signatures Concatenated {r, s, v} signatures.
-   * @return v Recovery ID or Safe signature type.
-   * @return r Output value r of the signature.
-   * @return s Output value s of the signature.
-   */
-  function signatureSplit(bytes memory signatures, uint256 pos) internal pure returns (uint8 v, bytes32 r, bytes32 s) {
-    // solhint-disable-next-line no-inline-assembly
-    assembly {
-      let signaturePos := mul(0x41, pos)
-      r := mload(add(signatures, add(signaturePos, 0x20)))
-      s := mload(add(signatures, add(signaturePos, 0x40)))
-      /**
-       * Here we are loading the last 32 bytes, including 31 bytes
-       * of 's'. There is no 'mload8' to do this.
-       * 'byte' is not working due to the Solidity parser, so lets
-       * use the second best option, 'and'
-       */
-      v := and(mload(add(signatures, add(signaturePos, 0x41))), 0xff)
-    }
+  /* Internal */
+  /// @dev The Safe's nonce, read without a way to revert: a hook must go
+  /// through whatever the address behind `safeWallet` answers.
+  function _safeNonce() private view returns (bool known, uint256 nonce) {
+    (bool ok, bytes memory out) = safeWallet.staticcall(abi.encodeWithSignature("nonce()"));
+    if (ok && out.length == 32) return (true, abi.decode(out, (uint256)));
   }
 
-  function _recover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) internal pure returns (address) {
-    // enforce EIP-2 lower s
-    require(uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0, "Invalid s value");
-    if (v < 27) v += 27;
-    require(v == 27 || v == 28, "Invalid v");
-    return ecrecover(hash, v, r, s);
+  /// @dev Note the time and the Safe's nonce as they are now.
+  function _noteNow() private {
+    (bool known, uint256 nonce) = _safeNonce();
+    _note(known, nonce);
+  }
+
+  function _note(bool known, uint256 nonce) private {
+    _lastTimestamp = uint128(block.timestamp);
+    // A Safe's nonce counts its transactions: 2^128 is out of reach.
+    if (known) _lastNonce = uint128(nonce);
   }
 }

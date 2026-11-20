@@ -1,0 +1,10 @@
+[
+  {
+    "proxy": "LegacyDeployer",
+    "impl": "0xA4CFf62DA7D09739C4171a8622c4c279F374F825"
+  },
+  {
+    "proxy": "MultisigLegacyRouter",
+    "impl": "0xf1b33394C35a2e507147cbeB33dD5eafC27FdfD3"
+  }
+]

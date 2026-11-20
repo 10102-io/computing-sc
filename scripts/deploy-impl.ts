@@ -35,6 +35,9 @@ const ALLOWED = [
   "EIP712LegacyVerifier",
   "PremiumRegistry",
   "PremiumSetting",
+  // Carries the Safe guard's creation code: a guard change is a new
+  // LegacyDeployer implementation (2026-11, guard version 2).
+  "LegacyDeployer",
 ];
 
 async function main() {
