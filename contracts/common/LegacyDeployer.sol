@@ -24,13 +24,23 @@ contract LegacyDeployer is OwnableUpgradeable, ILegacyDeployer {
 
   error InvalidParam();
 
+  /// @dev The three routers `setParams` names, and nobody else. Until 2026-11
+  /// the owner passed too, and could deploy a legacy at the address a router
+  /// had announced to a user and initialise it as its own. The owner still
+  /// names the routers: on the live networks it is the UpgradeTimelock
+  /// (since 2026-11-19), so a change of router waits out its delay in public.
   modifier onlyRouter() {
-    require(
-      msg.sender == transferLegacyRouter || msg.sender == transferEOALegacyRouter || msg.sender == multisigLegacyRouter || msg.sender == owner(),
-      "Router only"
-    );
+    require(msg.sender == transferLegacyRouter || msg.sender == transferEOALegacyRouter || msg.sender == multisigLegacyRouter, "Router only");
     _;
   }
+
+  /// @dev The implementation behind the proxy takes no owner: before
+  /// 2026-11 anyone could initialise it and own it.
+  /// That never reached the proxy's state, and is closed all the same.
+  constructor() {
+    _disableInitializers();
+  }
+
   function initialize() public initializer {
     __Ownable_init(msg.sender);
   }

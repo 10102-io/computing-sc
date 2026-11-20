@@ -9,11 +9,11 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 | Contract | Purpose |
 |----------|---------|
 | **Payment** | Central fee and withdrawal contract. Holds claim fee (basis points), WITHDRAWER/OPERATOR roles; withdraws ERC20 and ETH. Other contracts send fees here; operators set `claimFee` and `isActive`. |
-| **LegacyDeployer** | Create2 factory for legacy contracts. Only callable by the three routers (Multisig, Transfer, TransferEOA). Deploys user legacy contracts and optional SafeGuard from deterministic salts; exposes `getNextAddress` for pre-computing addresses. |
+| **LegacyDeployer** | Create2 factory for legacy contracts. Only callable by the three routers (Multisig, Transfer, TransferEOA); its owner, the UpgradeTimelock since 2026-11-19, names them and, from the implementation scheduled that day, cannot deploy through it itself. Deploys user legacy contracts and optional SafeGuard from deterministic salts; exposes `getNextAddress` for pre-computing addresses. |
 | **LegacyRouter** | Base contract (not deployed alone). Holds `BENEFICIARIES_LIMIT` (32) and internal helper for beneficiary count checks; inherited by the three legacy routers. |
 | **LegacyFactory** | Base factory logic used by Multisig and Transfer routers to interact with LegacyDeployer (Create2, nonce). |
 | **EOALegacyFactory** | Factory logic for EOA-based legacies (no Safe/Guard); used by TransferEOALegacyRouter. |
-| **SafeGuard** | Safe (Gnosis) Guard contract. Attached to a Safe wallet; tracks `lastTimestampTxs`, enforces rules on outgoing txs (e.g. inactivity triggers). Used by multisig and transfer legacies that use a Safe. |
+| **SafeGuard** | The activity clock of a Safe legacy: one per legacy, set as the Safe's transaction guard, it keeps the time of the Safe's last transaction (`getLastTimestampTxs`). It never blocks a transaction. Version 2 (`GUARD_VERSION`, for legacies created after the upgrade scheduled on 2026-11-19; live on Sepolia) also keeps the Safe's nonce: its clock moves when the Safe calls a hook, or when anyone calls `sync()` while the Safe's nonce shows a transaction the guard missed. A legacy created before keeps version 1, whose clock anyone could move (`docs/plans/safe-legacy-guard-2026-11.md`). |
 
 ---
 
@@ -29,7 +29,7 @@ Quick reference for what each deployed and core contract does in the 10102 Compu
 
 | Contract | Purpose |
 |----------|---------|
-| **MultisigLegacyRouter** | Router for multisig (Safe-based) legacies. Creates legacies with multiple beneficiaries and min required signatures; uses LegacyDeployer + SafeGuard. Integrates EIP712LegacyVerifier (ToS) and PremiumSetting; emits creation/config/beneficiary/trigger updates. |
+| **MultisigLegacyRouter** | Router for multisig (Safe-based) legacies. Creates legacies with multiple beneficiaries and min required signatures; uses LegacyDeployer + SafeGuard. Integrates EIP712LegacyVerifier (ToS) and PremiumSetting; emits creation/config/beneficiary/trigger updates. From the implementation scheduled on 2026-11-19 (live on Sepolia): activates a legacy only while it is set up on its Safe (its guard is the Safe's guard, the legacy an enabled module) and the guard has seen the Safe's last transaction; `checkActiveLegacy` answers false wherever `activeLegacy` reverts; the setters take calls from the legacy's own Safe only. |
 | **MultisigLegacyContract** | Per-user legacy logic (created via router + LegacyDeployer). Implements multisig distribution and activation rules. |
 
 ---

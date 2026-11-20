@@ -63,7 +63,8 @@ Who owns what, after the same day:
 | `TimelockERC20/721/1155` | `UpgradeTimelock` | `setUniswapRouter`, `setRouterAddresses` are queued |
 | `TimeLockRouter` | governance Safe | `setCreatePaused`, `setUniswapRouter`, `setTimelock`, `setTokenWhitelist`, `setConsentVerifier` run from the Safe |
 | `TransferEOALegacyRouter` codeAdmin | governance Safe (since 2026-11-07, `initializeV4`) | instant from the Safe: `setCreatePaused` and `setActivityAttestor(address(0))`; through the UpgradeTimelock: `setLegacyImplementation`, `setPullVault`, a non-zero attestor |
-| `TokenWhiteList`, `Payment`, premium stack, `EIP712LegacyVerifier`, `LegacyDeployer` | maintainer EOA | unchanged this round; move to the Safe once it is 2-of-3 and the ops scripts drive it |
+| `LegacyDeployer` | `UpgradeTimelock` (since 2026-11-19, `scripts/handover-legacy-deployer.ts`) | `setParams`, which names the three routers that may deploy through it, is queued |
+| `TokenWhiteList`, `Payment`, premium stack, `EIP712LegacyVerifier` | as recorded in `AGENTS.md` ("What is live"): the Safe holds every `Payment` role and owns `PremiumSetting`, the maintainer EOA keeps day-to-day ops with the Safe as co-admin | `scripts/verify-governance.ts` reads each one |
 
 While the Safe has threshold 1 and the EOA is an owner, scripts act
 through it with `TL_VIA_SAFE=1` (Safe `execTransaction` with a
