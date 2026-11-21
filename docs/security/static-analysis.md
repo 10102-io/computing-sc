@@ -17,8 +17,7 @@ the record of runs made while it existed. Its last reports, from the
 workflow of commit `8e32e70` on 2026-11-12 (0 High on ShieldVault v2 and
 v3 and the registry), are kept in `aderyn-2026-11-12/`; no contract source
 changed between that run and the retirement. A second analyser beside
-Slither is an open choice for the next contract train, not a gap in what
-is deployed.
+Slither is an open choice, not a gap in what is deployed.
 
 Status of these contracts: internally reviewed, tooling-verified, not
 independently audited. This file is one piece of that tooling evidence; the
@@ -312,3 +311,46 @@ a new result is seen in review and triaged here.
 | N1 | `assembly` | Informational | `getCollections`: `mstore(allowed, count)` | **By design**: a memory-safe shrink of the returned array to the allowed entries, in a view. |
 | N2 | `cache-array-length` | Optimization | `getCollections` loop | **Informational**: a view over an admin-curated list; no change. |
 | V1, V2 | `naming-convention` | Informational | `IPremiumLegacy.LEGACY_TYPE()`, `IAllowanceTransfer.DOMAIN_SEPARATOR()` | **Informational**: interface names fixed by the contracts they describe. Nothing in the vault itself. |
+
+## Safe legacy contracts (2026-11-19): SafeGuard, LegacyDeployer, MultisigLegacy, MultisigLegacyRouter
+
+Slither 0.11.6, the same command and settings as above with `--fail-none`,
+on the four files of the Safe legacy fix
+(`docs/plans/safe-legacy-guard-2026-11.md`), on the commit whose build is
+the code deployed on both networks, and on the commit before it
+(`601a794`) for the difference. In CI since that day as a report-only
+step, like legacy v3: each file's report repeats the results of what it
+imports, and one result below comes and goes between identical runs, so a
+triage database cannot gate it.
+
+| File | Results before | Results now | High or Medium now |
+|---|---|---|---|
+| `SafeGuard.sol` | 8 | 4 | none |
+| `MultisigLegacyContract.sol` | 11 | 12 | 2 Medium (S1) |
+| `MultisigLegacyContractRouter.sol` | 44 or 45 | 36 or 37 | 2 Medium (S1), at times 1 High (S2) |
+| `LegacyDeployer.sol` | 79 | 76 | S1, and the wallet legacy's own (below) |
+
+**Verdict: no result is a vulnerability, and the fix adds none at Medium
+or above.** What it adds, all Low or Informational: `missing-zero-check`
+on the guard's `initialize(_safeWallet)` (the router passes the Safe that
+is creating the legacy, in the transaction that deploys the guard),
+`timestamp` on the same function (it stores the block time, which is the
+guard's purpose), `low-level-calls` on `_safeNonce` (a `staticcall` on
+purpose: a Safe that cannot answer must never make a hook revert), and
+one `calls-loop` in `MultisigLegacy._addOwnerWithThreshold` (the new
+`isOwner` read beside the module call that was there, over at most 32
+beneficiaries). What it removes: the version 1 guard's copy of the Safe's
+signature check, with its four `calls-loop` and two `assembly` results.
+
+| # | Detector | Slither severity | Where | Triage | Reason |
+|---|---|---|---|---|---|
+| S1 | `unused-return` (2) | Medium / Medium | `MultisigLegacy._setBeneficiaries`, `_clearBeneficiaries`: the booleans of `EnumerableSet.add` and `remove` | **By design** | The count is read from the set's length afterwards, so a beneficiary named twice counts once; the removal takes an element just read from the set. Unchanged by the fix. |
+| S2 | `encode-packed-collision` | High / High | `EIP712LegacyVerifier._getEthSignedMessageHash`: `abi.encodePacked` of the EIP-191 prefix, the length in decimal and the message | **False positive** | The message is built by the contract and starts with fixed text, never a digit, so the length and the message cannot be split another way. Not touched by the fix; it shows in the router's report in some runs and not in others, and always when the verifier is analysed alone. |
+| S3-S14 | `calls-loop` (2), `missing-zero-check` (3), `timestamp` (2), `events-access`, `reentrancy-benign`, `reentrancy-events` and the guard's two above | Low | the router's `initialize`, `LegacyFactory._createLegacy`, `setNameNote`, the verifier's `setRouterAddresses`, `MultisigLegacy` | **Informational** | The initialiser ran once at deployment. Creates and the setters that touch beneficiaries or the wait run under `nonReentrant`; `setNameNote` does not, and calls only the legacy's `setLegacyName`, which stores a string and calls nothing, before its event. The contracts called are the deployer, the legacy and the verifier, which the timelock names. Block time is the product's clock. |
+| the rest | `naming-convention`, `too-many-digits`, `unindexed-event-address`, `dead-code`, `unused-state`, `missing-inheritance`, `boolean-equal`, `assembly`, `low-level-calls` | Informational | all four files | **Informational** | Style and events as deployed; an event is the subgraph's API and is not changed for an index. |
+
+`LegacyDeployer.sol` imports the wallet legacy for its creation code, so
+its report carries that contract's results too: five rated High and eight
+Medium in `TransferLegacyEOAContract.sol`. Each is in the table "inherited
+wave A code" above (A-W1 to A-W13) or is R11-1 (`pullDirect`), and none is
+in code this fix touches.

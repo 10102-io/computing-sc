@@ -103,3 +103,16 @@ fallback stay as recorded: no contract change.
 - **QuantumRecoveryRegistry:** writes only to the caller's own history,
   append only, no admin, no proxy; events complete; the app's hashing
   matches the contract.
+
+## Outside this pass: the Safe legacy contracts (added 2026-11-19)
+
+The scope above is the contracts that never had a third-party audit.
+`SafeGuard`, `MultisigLegacyRouter`, `MultisigLegacy` and `LegacyDeployer`
+were in both audits and so were not read here. On 2026-11-19 a flaw was
+found in the guard that both reports had passed over (anyone could move
+its clock), and with it a gap in the router (activation on a stopped
+clock). Both are fixed in the implementations scheduled on mainnet that
+day and live there since 2026-11-21, with their own reviews, spec,
+planted bugs and fork walks:
+`docs/plans/safe-legacy-guard-2026-11.md`. An audit report on a contract
+is not a reason to leave it out of the next pass.

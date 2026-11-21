@@ -70,7 +70,16 @@ you add is still the whole safety net for that path.
   fork before it is added). On mainnet since 2026-11-18 23:55 UTC (Sepolia
   since 2026-11-16): the router's create-flag fix, one implementation
   (`0x4251…F8DC`), so only the claim that ends a legacy releases the
-  owner's create flag; nothing is left in the timelock queue. Say so
+  owner's create flag. On mainnet since 2026-11-21 23:05 UTC (Sepolia
+  since 2026-11-19): the Safe legacy fix, two implementations
+  (`LegacyDeployer`, `MultisigLegacyRouter`;
+  `docs/plans/safe-legacy-guard-2026-11.md`).
+  New Safe legacies get guard version 2, whose clock moves only with the
+  Safe's own transactions (or `sync()` when the Safe's nonce proves one
+  was missed); the router activates a Safe legacy only while it is set up
+  on its Safe and its guard has seen the Safe's last transaction. Safe
+  legacies created before keep their version 1 guard until their owners
+  create them again. Say so
   plainly when a change lands on those. ShieldVault and the registry also carry tooling
   evidence (`docs/security/tooling-report.md`): internally reviewed and
   tooling-verified, still not independently audited.
@@ -83,8 +92,10 @@ you add is still the whole safety net for that path.
   Sourcify and Etherscan. The optimizer bug fixed in 0.8.38 is the one answered by an
   indication (the compiler team's nightly comparison), not a proof. On a
   new solc release or compiler bug notice, run
-  `scripts/compiler-bugs/known-bugs.mjs` first. The next train compiles
-  with 0.8.38 (`docs/plans/solc-upgrade.md`).
+  `scripts/compiler-bugs/known-bugs.mjs` first (2026-11-19: 0.8.39 came
+  with two new entries, assessed the same day). No further contract train
+  is planned; contracts deployed again compile with 0.8.39 or later
+  (`docs/plans/solc-upgrade.md`).
 - Proxies are hardhat-deploy `OptimizedTransparentProxy` behind
  `DefaultProxyAdmin`, whose owner is `UpgradeTimelock` (OpenZeppelin
  TimelockController, 48h on mainnet, 300s on Sepolia). Every
@@ -109,7 +120,10 @@ you add is still the whole safety net for that path.
  (`scripts/add-safe-admin.ts`), so it can revoke a leaked deployer key.
  Since 2026-11-07 the Safe is also the EOA router's code admin, and the
  router's rotation levers (`setLegacyImplementation`, `setPullVault`, a
- non-zero attestor) answer only to `UpgradeTimelock`. Scripts drive the
+ non-zero attestor) answer only to `UpgradeTimelock`. Since 2026-11-19
+ `LegacyDeployer` is owned by `UpgradeTimelock` too
+ (`scripts/handover-legacy-deployer.ts`), so naming another router to it
+ waits out the delay. Scripts drive the
  threshold-1 Safe with `TL_VIA_SAFE=1`; once it is 2-of-3, use
  `TL_ACTION=print` and Safe{Wallet}.
 - Storage: append only, never reorder or retype. The timelock vaults and
@@ -207,8 +221,19 @@ you add is still the whole safety net for that path.
   networks. The script checks both and sends nothing otherwise
   (`computing/AGENTS.md` convention 15).
 - `docs/security/checklist-audit-2026-11.md`: the checklist audit of the
-  unaudited riders, with each finding's status; its "Left" column is the
-  input to the next contract train.
+  unaudited riders, with each finding's status; its "Left" column is what
+  is still open (no further contract train is planned, founder,
+  2026-11-19).
+- `docs/plans/safe-legacy-guard-2026-11.md`: the Safe legacy fix (guard
+  version 2, the router's activation rules), with its execution log,
+  evidence, limits and the runbook for the mainnet execution. Its tools:
+  `scripts/rehearse-safe-guard.ts` (fork walk of every Safe legacy and of
+  new Safes 1.3.0 to 1.5.0), `scripts/check-impl-code.ts` (is the code at
+  an implementation address this checkout's), `scripts/safe-bytecode.mjs`
+  (the Safe bytecode the spec runs on), and
+  `scripts/mutations/safe-legacy.cjs` (27 planted bugs the spec must
+  catch; run it after any change to the guard, the Safe router or
+  `test/SafeGuard.spec.ts`).
 - `docs/plans/train-2026-11.md`: the current contract train (wave A live
  2026-11-07, wave B live 2026-11-13), with its
  execution log, runbooks and the follow-up table for the sibling repos.

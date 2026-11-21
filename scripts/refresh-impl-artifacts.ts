@@ -41,6 +41,7 @@ const KNOWN: Record<string, string> = {
   EIP712LegacyVerifier: "EIP712LegacyVerifier",
   PremiumRegistry: "PremiumRegistry",
   PremiumSetting: "PremiumSetting",
+  LegacyDeployer: "LegacyDeployer",
 };
 async function main() {
   const network = hre.network.name;

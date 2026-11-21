@@ -230,11 +230,12 @@ contract MultisigLegacy is GenericLegacy {
   function _addOwnerWithThreshold(address[] memory beneficiaries_) private returns (address[] memory newSigners, uint256 newThreshold) {
     address owner = getLegacyOwner();
     uint256 threshold = ISafeWallet(owner).getThreshold();
-    for (uint256 i = 0; i < beneficiaries_.length; ) {
+    for (uint256 i = 0; i < beneficiaries_.length; ++i) {
+      // A beneficiary the Safe made an owner after the legacy was set up is
+      // in already. The Safe refuses to add an owner twice, which used to
+      // fail the whole activation and lock every other beneficiary out.
+      if (ISafeWallet(owner).isOwner(beneficiaries_[i])) continue;
       bytes memory addOwnerData = abi.encodeWithSignature("addOwnerWithThreshold(address,uint256)", beneficiaries_[i], threshold);
-      unchecked {
-        ++i;
-      }
       bool successAddOwner = ISafeWallet(owner).execTransactionFromModule(owner, 0, addOwnerData, Enum.Operation.Call);
       if (!successAddOwner) revert ExecTransactionFromModuleFailed();
     }
@@ -254,7 +255,10 @@ contract MultisigLegacy is GenericLegacy {
    * @param beneficiary_ beneficiary address
    */
   function _checkBeneficiaries(address[] memory signers_, address owner_, address beneficiary_) private pure {
-    if (beneficiary_ == address(0) || beneficiary_ == owner_) revert BeneficiaryInvalid();
+    // Zero, the Safe itself, and the address a Safe keeps for the head of
+    // its owner list (1): a Safe refuses each as an owner, and one refusal
+    // would fail the activation for every beneficiary.
+    if (beneficiary_ == address(0) || beneficiary_ == address(1) || beneficiary_ == owner_) revert BeneficiaryInvalid();
 
     for (uint256 j = 0; j < signers_.length; ) {
       if (beneficiary_ == signers_[j]) revert BeneficiaryInvalid();

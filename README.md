@@ -56,7 +56,7 @@ The Computing ecosystem is a modular suite of smart contracts organised around d
 
 ### Core Components
 
-- **SafeGuard** — Gnosis Safe Guard that tracks `lastTimestampTxs` and enforces inactivity-trigger rules for Safe-based legacies.
+- **SafeGuard** — Safe transaction guard, one per Safe-based legacy, that keeps the time of the Safe's last transaction for the inactivity trigger. It never blocks a transaction.
 - **LegacyDeployer** — Create2 factory callable only by the three legacy routers; deploys per-user legacy contracts from deterministic salts.
 - **Payment** — Central fee and withdrawal contract with WITHDRAWER/OPERATOR roles, claim-fee basis points, and ERC-20/ETH withdrawal.
 - **Banner** — Configurable UI banner contract.

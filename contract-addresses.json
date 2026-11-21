@@ -18,7 +18,7 @@
     },
     "LegacyDeployer": {
       "address": "0x0D33b36836d05549Cbd18379BC488D1Db90CEB07",
-      "implementation": "0x726A374f01B16A52994f270e3ec3D874afC48F5a"
+      "implementation": "0xA4CFf62DA7D09739C4171a8622c4c279F374F825"
     },
     "PremiumSetting": {
       "address": "0xEA267a1F6D554dD416d26c60eFef9234ebfde95e",
@@ -26,7 +26,7 @@
     },
     "MultisigLegacyRouter": {
       "address": "0x5a160b5fBFeAd9CCE7276E108F7dE614B922C5f5",
-      "implementation": "0x1b3Bd777Ab62C42B3B74823Dc00361d0adD9A7a6"
+      "implementation": "0xf1b33394C35a2e507147cbeB33dD5eafC27FdfD3"
     },
     "TransferEOALegacyRouter": {
       "address": "0xF9Eb0EB6B547c67413484FBD9856684F950768A7",
@@ -349,7 +349,7 @@
     },
     "LegacyDeployer": {
       "address": "0xdb6B6487e020479120dd3e596Ff5A530eD7C88a7",
-      "implementation": "0xfBC58F0B910046c441ecC34C82321c7C26f1477d"
+      "implementation": "0xb7744Fd8Cc4728515aCE415dDc51d9244b9E89bA"
     },
     "PremiumSetting": {
       "address": "0x5223E0D4D1f0BE6Bf5De7cA6D2Fa9BFB6447013f",
@@ -357,7 +357,7 @@
     },
     "MultisigLegacyRouter": {
       "address": "0x7c7bf503DF70eBE3520f65Cc0Ff1aF093Fa85038",
-      "implementation": "0x0935720d098800Ca59567dde2D2BC3d74c80825e"
+      "implementation": "0x062195561F4892F9AC472714c28515553D2FA14F"
     },
     "TransferEOALegacyRouter": {
       "address": "0x4E81E1Ed3F6684EB948F8956b8787967b1a6275b",

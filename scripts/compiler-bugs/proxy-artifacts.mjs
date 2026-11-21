@@ -33,6 +33,7 @@ const NEEDS = {
   "array, bytes or string state variable (DirtyBytesArrayToStorage, LostStorageArrayWriteOnSlotOverflow)":
     /^\s*(bytes|string|[\w.]+\s*\[\d*\])\s+(public\s+|private\s+|internal\s+)?\w+\s*(=[^;]*)?;/gm,
   "override with parameters (DataLocationChangeInInternalOverride)": /function\s+\w+\s*\([^)]+\)[^{;]*\boverride\b/g,
+  "struct with an array member (OverlappingRecursiveStorageStructCopyCorruption)": /\bstruct\s+\w+\s*\{[^{}]*\[[^{}]*\}/g,
 };
 for (const [name, artifact] of [
   ["OptimizedTransparentUpgradeableProxy", proxyArtifact],

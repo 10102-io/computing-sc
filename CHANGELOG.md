@@ -21,6 +21,140 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-21 — The Safe legacy fix is live on mainnet
+
+[Released in v2026.11.21. Two implementations behind their proxies: no
+storage, event or address change, two new errors on the router. Not
+independently audited: three internal reviews, a spec on the Safe's
+mainnet bytecode, 27 planted bugs, fork walks of both networks before
+and after. The change itself is the entry of 2026-11-19 below; the whole
+record is `docs/plans/safe-legacy-guard-2026-11.md`.]
+
+- **The Safe legacy router runs
+  `0x062195561F4892F9AC472714c28515553D2FA14F` and `LegacyDeployer`
+  `0xb7744Fd8Cc4728515aCE415dDc51d9244b9E89bA`.** The operation
+  scheduled on 2026-11-19
+  (`0x10f2ba1f0446ba6c6c16c99eb7fc8881bd1ffe6949b925303a4577ee1fc10cb4`)
+  executed on 2026-11-21 23:05:23 UTC in block 26466652
+  (`0xd0eac00d1266de13751bc5523631245ba33b24d2dddf649516e8b6751003acf1`,
+  75,725 gas as rehearsed, about 0.00001 ETH), five minutes after it
+  became executable.
+- **From that block** a Safe legacy created on mainnet gets guard
+  version 2, whose clock moves only with the Safe's own transactions,
+  and the router activates a Safe legacy only while it is set up on its
+  Safe and its guard has seen the Safe's last transaction.
+- **Legacies created before keep their version 1 guard** until their
+  owners delete them and create them again. Three exist on mainnet, all
+  three the founder's own from testing: two are off their Safe, and one
+  stays set up on a test Safe that holds nothing. Nothing changed in
+  what can be activated for any of them.
+- **The app and the worker changed over by themselves**: both read from
+  the chain which router answers. The app took one file with this
+  release, the router's ABI with the two new errors, which it already
+  answered by their signatures.
+- Rehearsed once more on a fork of mainnet before the execution (two of
+  45 values change, the two implementations). After it: the artifacts
+  and `contract-addresses.json` name the new implementations
+  (`refresh-impl-artifacts.ts`), `verify-governance.ts` passes 34 of 34
+  with no operation left in the timelock, the router's new source is
+  verified on Etherscan, and `scripts/rehearse-safe-guard.ts` passes on
+  a fork taken after the execution, on the live implementations: every
+  getter, record and storage slot reads the same, each existing legacy
+  answers as before, a new Safe of each version (1.3.0, 1.4.1, 1.5.0)
+  goes from creation to activation through every refusal on the way,
+  and wallet legacies are created and claimed through the new deployer.
+- **Still open:** the first version 2 guard on mainnet is verified on
+  Etherscan and Sourcify once a Safe legacy is created there.
+
+## 2026-11-19 — Safe legacies: a clock only the Safe moves, scheduled on mainnet
+
+[Released in v2026.11.21, after the mainnet execution (entry above).
+Live on Sepolia since 2026-11-19 22:41 UTC. On mainnet the two
+implementations were deployed that day and the upgrade scheduled,
+executable from 2026-11-21 23:00:23 UTC, operation
+`0x10f2ba1f0446ba6c6c16c99eb7fc8881bd1ffe6949b925303a4577ee1fc10cb4`.
+Live on mainnet since that day: `LegacyDeployer` is owned by the
+UpgradeTimelock. Not independently audited: three internal reviews, a
+spec on the Safe's mainnet bytecode, 27 planted bugs, fork walks of both
+networks. The whole record is `docs/plans/safe-legacy-guard-2026-11.md`.]
+
+- **What was wrong.** A Safe legacy's guard keeps the time of the Safe's
+  last transaction, and the legacy can be activated when that time is
+  old enough. Version 1 of the guard also counted a call from any address
+  that carried signatures over the Safe's previous transaction, and its
+  copy of the Safe's signature check never asked whether the signers
+  were owners. Anyone could move the clock and keep a Safe legacy from
+  ever activating. Nothing could be activated early and nothing could be
+  moved. Second, the router activated on the guard's time alone: a Safe
+  that took the guard off and left the legacy enabled had a stopped
+  clock, and its beneficiaries could be added as owners while the Safe
+  was in daily use. No legacy on mainnet is in that state.
+- **Guard version 2, for legacies created after the upgrade.** The clock
+  moves when the Safe calls a hook (on Safe 1.5.0 also for a module's
+  transaction, once the guard is set as the module guard), or when anyone
+  calls `sync()` while the Safe's nonce shows a transaction the guard did
+  not see; then the wait starts again. No hook reverts, so the guard
+  cannot block a Safe.
+- **The router's rules reach every Safe legacy, also those that exist,
+  at the execution.** `activeLegacy` goes through only while the legacy
+  is set up on its Safe (its guard is the Safe's guard, the legacy an
+  enabled module) and the guard has seen the Safe's last transaction;
+  `checkActiveLegacy` answers `false` wherever `activeLegacy` reverts,
+  also for a legacy that was activated; the setters take calls from the
+  legacy's own Safe only (a contract that answered like a Safe could
+  rename a legacy before). Two new errors, `GuardBehindSafeWallet()` and
+  `SenderIsNotSafeWalletOfLegacy()`; no event, storage or address change.
+  For the three Safe legacies on mainnet nothing changes in what can be
+  activated (walked on a fork).
+- **A legacy created before the upgrade keeps its version 1 guard**,
+  because a guard cannot be upgraded. Its owners delete it and create it
+  again to get version 2. Three on mainnet that day: one off its Safe
+  already and two set up, all three the founder's own from testing.
+- **A new legacy** skips a beneficiary who is an owner of the Safe
+  already (the Safe's refusal used to fail the activation for everyone)
+  and refuses `address(1)` as a beneficiary.
+- **`LegacyDeployer`** serves the three routers only: its owner no longer
+  passes `onlyRouter`, its implementation cannot be initialised, and the
+  owner is the UpgradeTimelock on both networks (mainnet
+  `0x1e476cf4d2dc27f951fe97b6ad88660a2ae97c5f626de83969a63c5ab89817d9`).
+  `verify-governance.ts` checks it: 34 of 34 on mainnet.
+- **Mainnet, deployed and verified:** `LegacyDeployer` implementation
+  `0xb7744Fd8Cc4728515aCE415dDc51d9244b9E89bA`, `MultisigLegacyRouter`
+  implementation `0x062195561F4892F9AC472714c28515553D2FA14F`, the same
+  code as on Sepolia and as a clean build of this commit
+  (`scripts/check-impl-code.ts`). Scheduled through the Safe in
+  `0xc4d19159244662ab7c059157aa457574363218ffb2ec12ce5393e7b1e86df196`;
+  rehearsed on a fork: two of 45 values change, the two implementations.
+- **Evidence.** `test/SafeGuard.spec.ts`, 104 cases on the bytecode of
+  Safe 1.3.0, 1.4.1 and 1.5.0 as deployed and on the version 1 guard's,
+  among them a random walk against a model (two seeded runs of 60 steps
+  per Safe version, every fact checked after every step);
+  `scripts/mutations/safe-legacy.cjs`, 27 planted bugs, all caught, 17
+  of them by the random walk alone; the whole suite, 603 passing;
+  `scripts/rehearse-safe-guard.ts` on forks of both networks, on Sepolia
+  also after the execution; Slither on the four contracts before and
+  after, nothing new at Medium or above, every result triaged
+  (`docs/security/static-analysis.md`) and the run repeated in CI as a
+  report; the compiler checks of
+  `docs/security/compiler-known-bugs.md` section 10, which also covers
+  the two known bugs solc 0.8.39 added that day. Not done: a Foundry
+  fuzz suite for these contracts.
+- **Limits.** A Safe that is used only through a module looks idle to its
+  legacy on Safe 1.3.0 and 1.4.1. A guard that is behind its Safe waits
+  for someone to call `sync()`. The four routers of 2024 are not
+  upgradeable; they hold one legacy between them, and it is off its
+  Safe.
+- **Around the contracts** (`computing`, released the same day; the
+  set-up in three calls was live before the Sepolia execution): the app
+  sets a legacy up in three calls so that the guard is never behind,
+  four on Safe 1.5.0, where the guard also counts what a module does; it
+  says why a legacy cannot be activated, on the cards too; it tells the
+  owners of a legacy on a version 1 guard how to get version 2, from the
+  moment a network creates them; and the worker holds the reminder
+  emails of a Safe legacy that cannot be activated. The app and the
+  worker read from the chain which router answers, so mainnet changes
+  over when the upgrade executes, without a release.
+
 ## 2026-11-18 — The router's create-flag fix is live on mainnet
 
 [Released in v2026.11.18. One router implementation: no storage, ABI,
