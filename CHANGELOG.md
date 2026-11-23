@@ -21,6 +21,47 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-23 — The first version 2 guard on mainnet, verified
+
+[No contract or on-chain change of ours: the legacy is the founder's own
+create through the app.]
+
+- **The first Safe legacy with a version 2 guard exists on mainnet**
+  since 22:13:47 UTC (block 26480751, legacy 4 on the router), set up
+  by its Safe two minutes later. Its guard
+  `0x7794c2428D86c7C1b15B9a90789D27C55cb27ec4` and its contract
+  `0x14DB2dD5AA7F83e929C72Aa1b383113aC8a6ea9A` are exact matches on
+  Sourcify and verified on Etherscan, from the compiler input of the
+  build of 2026-11-19; so is Sepolia's first pair. The code at all four
+  addresses is that build's, byte for byte. On the chain the guard
+  reads version 2, the nonce it noted is the Safe's, it is the Safe's
+  transaction guard and module guard, and the router answers "not yet".
+  This closes what the entry of 2026-11-21 left open.
+- **`scripts/check-impl-code.ts` gives two passing answers**: "byte for
+  byte", or "the same code, other metadata" when only the hashes over
+  the source text differ. It failed `LegacyDeployer` today, on live
+  code that had not changed: `SafeGuard.sol` went into the build of
+  2026-11-19 with six line endings unlike the rest of the file, the
+  checkout writes them alike since, and the deployer carries the
+  guard's code with that hash in it. A checkout with LF line endings
+  (CI, any machine but Windows) has other hashes throughout, for the
+  same reason. Code that differs in anything that runs still fails.
+- **`scripts/verify-etherscan-status.ts` checks every contract in
+  `contract-addresses.json`**, and the chain says which of them is a
+  proxy. It went by a fixed list of names, and `LegacyDeployer`, one of
+  the two contracts upgraded on 2026-11-21, was not on it. Mainnet: 29
+  contracts, each verified, each proxy record at its live
+  implementation, `LegacyDeployer` included. The script exits 1 now
+  when something is unverified or a proxy record is stale.
+- **Sepolia: two implementations had no published source**
+  (`PremiumMailBeforeActivation`, `PremiumMailActivated`). Both are
+  verified on Etherscan and exact matches on Sourcify now, from the
+  compiler input in `deployments/sepolia/solcInputs/`, so the check
+  passes on both networks.
+- **`sync-ui` writes the app's Safe router ABI typed** (`as const`), so
+  the app's calls to that router are checked against the live ABI when
+  the app builds. The app's calls used a hand-kept ABI until today.
+
 ## 2026-11-21 — The Safe legacy fix is live on mainnet
 
 [Released in v2026.11.21. Two implementations behind their proxies: no
@@ -64,7 +105,8 @@ record is `docs/plans/safe-legacy-guard-2026-11.md`.]
   goes from creation to activation through every refusal on the way,
   and wallet legacies are created and claimed through the new deployer.
 - **Still open:** the first version 2 guard on mainnet is verified on
-  Etherscan and Sourcify once a Safe legacy is created there.
+  Etherscan and Sourcify once a Safe legacy is created there (done
+  2026-11-23, entry above).
 
 ## 2026-11-19 — Safe legacies: a clock only the Safe moves, scheduled on mainnet
 

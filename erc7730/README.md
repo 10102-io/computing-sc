@@ -41,6 +41,11 @@ app never sends it), and the vaults' `collectFees` (anyone may call it, it
 pays the fee recipient, and the app never sends it). The EIP-712 messages
 behind gas-free check-ins and claims are a possible follow-up.
 
+Not described yet: the Safe legacy router (`0x7c7bf503…85038`: create,
+activation, the edits a Safe sends). Its upgrade of 2026-11-21 changed no
+described contract and no selector, so the four descriptors and the two
+open submissions stand as they are.
+
 ## Regenerating
 
 Format keys are built from the Sourcify ABIs of the deployed contracts, so

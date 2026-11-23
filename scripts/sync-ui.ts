@@ -312,7 +312,7 @@ const ABI_MAPPINGS: Array<{
     { artifact: 'TimelockERC20_Implementation.json', outPath: 'constants/erc20TimelockAbi.ts', exportName: 'erc20TimelockAbi', style: 'const_as_const' },
     { artifact: 'TimelockERC721_Implementation.json', outPath: 'constants/erc721TimelockAbi.ts', exportName: 'erc721TimelockAbi', style: 'const_as_const' },
     { artifact: 'TimelockERC1155_Implementation.json', outPath: 'constants/erc1155TimelockAbi.ts', exportName: 'erc1155TimelockAbi', style: 'const_as_const' },
-    { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/multisigRouterAbi.ts', exportName: 'MultisigRouterAbi', style: 'default_export' },
+    { artifact: 'MultisigLegacyRouter_Implementation.json', outPath: 'configs/abis/multisigRouterAbi.ts', exportName: 'MultisigRouterAbi', style: 'default_export_as_const' },
     { artifact: 'TransferEOALegacyRouter_Implementation.json', outPath: 'configs/abis/transferLegacyEOA.ts', exportName: 'TransferLegacyEoaABI', style: 'default_export_as_const' },
     { artifact: 'TransferLegacyRouter_Implementation.json', outPath: 'configs/abis/legacyRouterAbi.ts', exportName: 'LegacyRouterAbi', style: 'default_export', ui: false },
     // Non-upgradeable, script-deployed contracts have no deployments/

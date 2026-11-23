@@ -34,11 +34,19 @@ which the app already answered by their signatures.
 
 The batch files are `docs/plans/batches/safe-legacy-guard-mainnet.json`
 and `safe-legacy-guard-sepolia.json`. The implementations on the two
-networks are the same code, byte for byte, and the code of a clean build
-of this commit (`scripts/check-impl-code.ts`: deployer 4,343 bytes,
+networks are the same code, byte for byte, the code of the build of
+2026-11-19 (`scripts/check-impl-code.ts`: deployer 4,343 bytes,
 `0x58e9ce1a593e91e5548cbd79024253e595909f3c71d7780e364a8c5b4d782b3f`;
 router 14,430 bytes,
 `0xc6f7fffa096877794864a571a6247bac68f39c39aae79c007c7690628bad2ffc`).
+A build of a later checkout gives the router byte for byte and the
+deployer with two other metadata hashes (read 2026-11-23):
+`SafeGuard.sol` went into that build with six line endings unlike the
+rest of the file, a checkout writes them alike, and the hash at the end
+of a contract's code covers the source text. Nothing that runs differs,
+the script names which of the two answers it found, and the guard's
+source exactly as it was compiled is published at the first guard's
+address (section 7).
 
 Until it executed, the guardian could stop the mainnet operation by
 sending to the timelock `0xc0Fee69ffAA1d62D701Bb277031CEc0d98AFA4Ad`,
@@ -290,6 +298,21 @@ npm run sync-ui:check
 
 Done with it: the claim guide in `computing-docs` names the new answers
 as live, the app took the router's ABI, and the pull request is merged.
-Still to come: the first version 2 guard on mainnet is verified on
-Etherscan and Sourcify once a Safe legacy is created there (every later
-guard is the same code).
+
+The first version 2 guard on mainnet exists since 2026-11-23 22:13:47
+UTC (block 26480751,
+`0x2f6bf5371deeacf37718507f064bf5b952e129173749e71d47e1b609fcedbf4c`):
+legacy 4 on the router, created by the founder on a Safe 1.5.0 of his
+and set up by that Safe at 22:15:59 UTC. Guard
+`0x7794c2428D86c7C1b15B9a90789D27C55cb27ec4` and legacy contract
+`0x14DB2dD5AA7F83e929C72Aa1b383113aC8a6ea9A` are exact matches on
+Sourcify and verified on Etherscan since the same hour, from the
+compiler input of the build of 2026-11-19, and the code at both
+addresses is that build's, byte for byte. Read on the chain after the
+set-up: `GUARD_VERSION` is 2, the nonce the guard noted is the Safe's,
+the guard is the Safe's transaction guard and its module guard, the
+legacy is a module of the Safe, and the router answers that it cannot
+be activated yet. Sepolia's first pair (legacy 11, guard
+`0x205599706E7f82030D1b0d4FA2Cc9f400befa7Bf`, contract
+`0x38DfB2950E6f9935ce39217FBe52dF9667f75f8f`) was published the same
+way that day. Every later guard and legacy contract is the same code.

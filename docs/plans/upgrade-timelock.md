@@ -189,8 +189,10 @@ Direct hardhat-deploy proxy upgrades from the deployer key **revert** now
    report no issues (CI runs it offline). Then `npm run sync-ui:check` (it compares
    the frontend's ABI modules too) and `--write` if it drifts. Finally
    `npx hardhat run scripts/verify-etherscan-status.ts --network mainnet`:
-   it confirms every live and pending implementation is source-verified
-   and that Etherscan's proxy record points at the live implementation
+   over every contract in `contract-addresses.json`, it confirms every
+   live and pending implementation and every standalone contract is
+   source-verified and that Etherscan's proxy record points at the live
+   implementation
    (`ES_FIX=1` re-submits a stale record so "Read as Proxy" shows the new
    ABI).
 7. If the deploy script would have replayed `initialize` on upgrade, fix it
