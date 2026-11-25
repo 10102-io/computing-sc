@@ -1,13 +1,17 @@
 /**
  * Minimal Safe{Wallet} execution helper for scripts.
  *
- * While the governance Safe has threshold 1 and the deployer key is one of
- * its owners (docs/plans/round-2026-09.md section 8), a script can drive the
- * Safe directly: `execTransaction` accepts a "pre-validated" signature for an
+ * While a Safe has threshold 1 and the deployer key is one of its owners
+ * (docs/plans/round-2026-09.md section 8), a script can drive the Safe
+ * directly: `execTransaction` accepts a "pre-validated" signature for an
  * owner that is also `msg.sender` (signature bytes = r: owner address padded
- * to 32 bytes, s: 0, v: 1). Once the threshold is raised this helper stops
- * working by design, and operations go through Safe{Wallet} with the
- * calldata printed by `timelock-op.ts` (`TL_ACTION=print`).
+ * to 32 bytes, s: 0, v: 1).
+ *
+ * The governance Safe is 2 of 3 since 2026-11-25 on both networks, so for
+ * it `execViaSafe` refuses with a message and sends nothing: its calls go
+ * through Safe{Wallet} with the calldata the scripts print
+ * (`timelock-op.ts` `TL_ACTION=print`, `safe-call.ts`). `readSafe` is what
+ * `verify-governance.ts` reads the threshold and the owners with.
  *
  * Nothing here holds a key: the signer comes from Hardhat's configured
  * account (DEPLOYER_PRIVATE_KEY in .env).

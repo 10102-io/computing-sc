@@ -10,8 +10,11 @@
  *               and canceller)
  *   interim   – after steps 1, 1b, 2a (vaults → timelock, TimeLockRouter →
  *               Safe, Safe + EOA propose, guardian cancels, EOA cannot cancel)
- *   final     – after the Safe is 2-of-3, step 2c and step 3 (EOA proposes
- *               nothing, delay 7 days)
+ *               and, since 2026-11-25, the Safe at 2 of 3. This is the
+ *               standing state: the EOA keeps PROPOSER and the delay stays
+ *               48 hours (founder, 2026-11-25; docs/plans/upgrade-timelock.md).
+ *   final     – step 2c and step 3 (EOA proposes nothing, delay 7 days).
+ *               Not planned; kept so the day it is decided has its check.
  * Default: interim.
  *
  * Pending operations come from the reminder-worker's ledger (`GET /upgrades`,
@@ -23,6 +26,7 @@ import { ethers, network } from "hardhat";
 import * as dotenv from "dotenv";
 import { getContracts } from "./utils";
 import { readEoaRouterAdmin } from "./utils/live-code";
+import { readSafe } from "./utils/safe";
 
 dotenv.config();
 
@@ -136,6 +140,15 @@ async function main() {
     push("Safe is PROPOSER", phase === "baseline" ? "false" : "true", String(safeProposer), safeProposer === (phase !== "baseline"));
     const safeCanceller = await has(CANCELLER, safe);
     push("Safe is CANCELLER", "false", String(safeCanceller), safeCanceller === false);
+    // The Safe's own setting, 2 of 3 since 2026-11-25 on both networks. One
+    // key alone can then do nothing the Safe holds; the maintainer key and
+    // the guardian are two of the three.
+    if (phase !== "baseline") {
+      const { owners, threshold } = await readSafe(provider, safe);
+      push("Safe threshold", "2", String(threshold), threshold === 2);
+      const known = [MAINTAINER, ...guardians].every((who) => owners.includes(who.toLowerCase()));
+      push("Safe owners", "3, the maintainer key and the guardian among them", `${owners.length}${known ? "" : ", a recorded key is missing"}`, owners.length === 3 && known);
+    }
   } else {
     push("governance.safe recorded", "address", "missing", false);
   }

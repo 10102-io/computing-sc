@@ -21,6 +21,38 @@ the headline story lives.
   [`computing/CHANGELOG.md`](../computing/CHANGELOG.md). This file only
   records what lands in the **contracts** repo and on-chain.
 
+## 2026-11-25 — The governance Safe is 2 of 3
+
+[No contract changed. A setting of the Safe, made by the founder on both
+networks.]
+
+- **The governance Safe takes two of three signatures** since 2026-11-25
+  18:53:23 UTC on mainnet (a third owner added with threshold 2, tx
+  `0xa5ede822c7469c2ce5cc19be2d68a517792aa01f399c90b15973177b0221d812`)
+  and 18:56:12 UTC on Sepolia. Its owners are the guardian hardware key,
+  the maintainer key and a third key. Until then either of two owners
+  could act alone. What the Safe holds now takes two keys: the instant
+  stops (pause new creates, stop renewals), every `Payment` role, the
+  TimeLockRouter's settings, `PremiumSetting`, the owner settings of
+  both Shield Vaults, and queueing an upgrade from the Safe. The
+  guardian, the only key that can cancel, can no longer queue through
+  the Safe alone.
+- **The maintainer key keeps its proposer role and the delay stays 48
+  hours** (founder, 2026-11-25). The plan of 2026-09 had the key give up
+  the role and the delay rise to 7 days once the Safe was 2 of 3. Not
+  planned now: more upgrades may come in the next months, and the public
+  48-hour wait with the guardian's cancel is judged enough for the time
+  being. So the limit stated before still holds for upgrades: the
+  maintainer key alone can queue one, it cannot cancel, skip the wait or
+  land anything unseen, and the worker emails on every `CallScheduled`.
+- **`verify-governance.ts` reads the Safe itself**: its threshold (2) and
+  its owners (three, the maintainer key and the guardian among them).
+  Mainnet 36/36, Sepolia 35/35 on 2026-11-25. The scripts that sent
+  through the Safe at threshold 1 (`TL_VIA_SAFE=1`, `SAFE_ACTION=send`)
+  refuse with a message, as built; the Safe's calls are printed for
+  Safe{Wallet}. A routine upgrade is scheduled by the maintainer key as
+  before (`docs/plans/upgrade-timelock.md`).
+
 ## 2026-11-23 — The first version 2 guard on mainnet, verified
 
 [No contract or on-chain change of ours: the legacy is the founder's own

@@ -5,9 +5,10 @@
  * implementation, pull vault, a non-zero attestor) goes through the
  * UpgradeTimelock with timelock-op.ts.
  *
- * Prints the call for Safe{Wallet}'s Transaction Builder. With
- * SAFE_ACTION=send it executes through a threshold-1 Safe from the configured
- * signer (an owner), then reads the result back.
+ * Prints the call for Safe{Wallet}'s Transaction Builder, where two of the
+ * Safe's three owners sign it (2 of 3 since 2026-11-25). SAFE_ACTION=send
+ * executes only through a threshold-1 Safe from the configured signer (an
+ * owner); on the governance Safe it refuses with a message.
  *
  *   $env:SAFE_CALL="pause-eoa"; npx hardhat run scripts/safe-call.ts --network mainnet
  *   presets: pause-eoa, unpause-eoa, stop-renewals, pause-timelock, unpause-timelock
@@ -52,7 +53,7 @@ async function main() {
   console.log(`  to    ${target}\n  value 0\n  data  ${data}`);
 
   if ((process.env.SAFE_ACTION ?? "print") !== "send") {
-    console.log("Printed only. Paste it into Safe{Wallet} (Transaction Builder, custom data), or rerun with SAFE_ACTION=send on a threshold-1 Safe.");
+    console.log("Printed only. Paste it into Safe{Wallet} (Transaction Builder, custom data), where two owners sign it (SAFE_ACTION=send works on a threshold-1 Safe only).");
     return;
   }
   const [signer] = await ethers.getSigners();

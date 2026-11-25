@@ -123,9 +123,15 @@ you add is still the whole safety net for that path.
  non-zero attestor) answer only to `UpgradeTimelock`. Since 2026-11-19
  `LegacyDeployer` is owned by `UpgradeTimelock` too
  (`scripts/handover-legacy-deployer.ts`), so naming another router to it
- waits out the delay. Scripts drive the
- threshold-1 Safe with `TL_VIA_SAFE=1`; once it is 2-of-3, use
- `TL_ACTION=print` and Safe{Wallet}.
+ waits out the delay. Since 2026-11-25 the Safe is 2 of 3 on both
+ networks (the guardian, the deployer and a third key), so one key alone
+ does nothing the Safe holds: a Safe call is printed (`TL_ACTION=print`,
+ `safe-call.ts`) and signed by two owners in Safe{Wallet}, and
+ `TL_VIA_SAFE=1` refuses. The deployer keeps PROPOSER and the delay stays
+ 48 hours (founder, 2026-11-25: enough for now, more upgrades may come):
+ a routine upgrade is scheduled by the deployer itself, `TL_ACTION=schedule`
+ without `TL_VIA_SAFE`. Do not propose revoking the role or raising the
+ delay unless asked.
 - Storage: append only, never reorder or retype. The timelock vaults and
   the router have no `__gap`; document any appended variable in the
   contract's storage comment block (see `TimeLockRouter.sol`
@@ -241,7 +247,8 @@ you add is still the whole safety net for that path.
 - `docs/plans/round-2026-09.md`: the 2026-09 round (governance, destination
  wallet, the trains behind them) with its execution log at the top.
 - `scripts/safe-call.ts`: the Safe's instant emergency stops (pause new
-  creates, stop renewals), printed for Safe{Wallet} or sent at threshold 1.
+  creates, stop renewals), printed for Safe{Wallet} (two of three owners
+  sign since 2026-11-25).
 - `scripts/timelock-op.ts`, `scripts/rehearse-timelock-op.ts`,
  `scripts/harden-governance.ts`,
  `scripts/verify-governance.ts`, `scripts/deploy-impl.ts`,

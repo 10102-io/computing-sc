@@ -25,8 +25,10 @@
  *   TL_VIA_SAFE = 1 → send schedule/cancel through the governance Safe
  *                (contract-addresses.json governance.safe) with the deployer
  *                as the approving owner. Works only while the Safe has
- *                threshold 1 and the deployer is an owner; otherwise use
- *                TL_ACTION=print and paste into Safe{Wallet}.
+ *                threshold 1 and the deployer is an owner. The Safe is 2 of
+ *                3 since 2026-11-25: leave it out and the deployer schedules
+ *                as PROPOSER itself, or use TL_ACTION=print and paste into
+ *                Safe{Wallet} to schedule from the Safe.
  *
  *   print → no transaction. Prints the operation id, salt, delay and eta,
  *           and the exact `schedule`/`scheduleBatch` and `execute`/

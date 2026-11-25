@@ -226,7 +226,7 @@
       "address": "0xeed1e3614fb5F3Ed980fD120Bc7c68d144e84C59"
     },
     "governance": {
-      "_note": "Same Safe (1.5.0, threshold 1, owners = guardian + maintainer EOA) and guardian as mainnet, deployed on Sepolia 2026-09-22 for rehearsals. See mainnet.governance._note and docs/plans/round-2026-09.md.",
+      "_note": "Same Safe (1.5.0) and guardian as mainnet, deployed on Sepolia 2026-09-22 for rehearsals. 2 of 3 since 2026-11-25 18:56 UTC, like mainnet (owners = the guardian, the maintainer EOA and a third key). See mainnet.governance._note and docs/plans/round-2026-09.md.",
       "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"
@@ -461,7 +461,7 @@
       "address": "0xaB3C8C69fD17ba980b3D11064200c866904e360E"
     },
     "governance": {
-      "_note": "docs/plans/round-2026-09.md. safe = PROPOSER and operational owner (Safe 1.5.0, threshold 1 to start, read live 2026-09-22: owners = the guardian hardware wallet and the maintainer EOA). guardians = CANCELLER keys. Founder decision 2026-09-22: the guardian is the actively used and monitored hardware wallet that is also a Safe owner; separation from the EOA holds now, separation from the Safe holds once the threshold is 2. Pending: a third Safe owner. Done 2026-09-22: the same Safe is deployed on Sepolia for rehearsals (sepolia.governance), and the guardian rehearsed a cancel there.",
+      "_note": "docs/plans/round-2026-09.md. safe = PROPOSER and operational owner (Safe 1.5.0, threshold 1 to start, read live 2026-09-22: owners = the guardian hardware wallet and the maintainer EOA). guardians = CANCELLER keys. Founder decision 2026-09-22: the guardian is the actively used and monitored hardware wallet that is also a Safe owner; separation from the EOA holds since then, separation from the Safe since the threshold is 2. Since 2026-11-25 18:53 UTC the Safe is 2 of 3 (a third owner added with threshold 2, tx 0xa5ede822c7469c2ce5cc19be2d68a517792aa01f399c90b15973177b0221d812; read live with getOwners and getThreshold, checked by verify-governance.ts). Founder decision 2026-11-25: the maintainer EOA keeps PROPOSER and the delay stays 48 hours. Done 2026-09-22: the same Safe is deployed on Sepolia for rehearsals (sepolia.governance), and the guardian rehearsed a cancel there.",
       "safe": "0x60B3da49f05E21a1fcD7e210075A23b75939C3eA",
       "guardians": [
         "0x7B61dD775422f465D6b9f28C8EFEE39263ef2579"

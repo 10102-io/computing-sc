@@ -35,21 +35,23 @@ Router state verified healthy after the cycle.
 
 Hardened on 2026-09-22 (`docs/plans/round-2026-09.md`, Track A). Read the
 live table any time with `npx hardhat run scripts/verify-governance.ts
---network mainnet` (phase `interim` is the expected state until the Safe
-is 2-of-3; `final` afterwards).
+--network mainnet` (phase `interim` is the expected state, and the
+standing one: see "Decided 2026-11-25" below).
 
 - **PROPOSER**: the governance Safe
-  (`0x60B3da49f05E21a1fcD7e210075A23b75939C3eA`, Safe 1.5.0; threshold 1
-  to start, owners = the guardian hardware key and the maintainer EOA;
-  to be raised to 2-of-3) AND, until the Safe is 2-of-3, the maintainer
-  EOA (`0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630`) so scripts can queue
-  routine upgrades. Sepolia: same Safe address, same owners.
+  (`0x60B3da49f05E21a1fcD7e210075A23b75939C3eA`, Safe 1.5.0; 2 of 3 since
+  2026-11-25 18:53 UTC, tx
+  `0xa5ede822c7469c2ce5cc19be2d68a517792aa01f399c90b15973177b0221d812`;
+  owners = the guardian hardware key, the maintainer EOA and a third key)
+  AND the maintainer EOA (`0xfe8bcd055DAf9478137Ecc0E8eb5414B68f4b630`)
+  so scripts can queue routine upgrades. Sepolia: same Safe address, same
+  owners, 2 of 3 since 2026-11-25 18:56 UTC.
 - **CANCELLER**: the guardian hardware key
   (`0x7B61dD775422f465D6b9f28C8EFEE39263ef2579`), never connected to a
   browser wallet extension. It can stop anything queued. It holds no
-  PROPOSER role itself, but while the Safe has threshold 1 the guardian
-  (an owner) can queue through the Safe. The maintainer EOA's CANCELLER is revoked in the same batch
-  (mainnet batch executable from 2026-09-24 ~21:02 UTC; Sepolia done).
+  PROPOSER role itself, and since the Safe is 2 of 3 it cannot queue
+  through the Safe alone either. The maintainer EOA's CANCELLER was
+  revoked in the batch of 2026-09-24 (Sepolia 2026-09-22).
 - **EXECUTOR**: open (`address(0)`) — anyone can execute a ready operation.
   We cannot censor an operation once its delay has passed.
 - **DEFAULT_ADMIN**: the timelock itself. Role grants/revocations and
@@ -66,12 +68,21 @@ Who owns what, after the same day:
 | `LegacyDeployer` | `UpgradeTimelock` (since 2026-11-19, `scripts/handover-legacy-deployer.ts`) | `setParams`, which names the three routers that may deploy through it, is queued |
 | `TokenWhiteList`, `Payment`, premium stack, `EIP712LegacyVerifier` | as recorded in `AGENTS.md` ("What is live"): the Safe holds every `Payment` role and owns `PremiumSetting`, the maintainer EOA keeps day-to-day ops with the Safe as co-admin | `scripts/verify-governance.ts` reads each one |
 
-While the Safe has threshold 1 and the EOA is an owner, scripts act
-through it with `TL_VIA_SAFE=1` (Safe `execTransaction` with a
-pre-validated owner signature, `scripts/utils/safe.ts`). Once the
-threshold is 2 that path stops working by construction; use
-`TL_ACTION=print` and paste the calldata into Safe{Wallet}'s Transaction
-Builder.
+While the Safe had threshold 1, scripts acted through it with
+`TL_VIA_SAFE=1` (Safe `execTransaction` with a pre-validated owner
+signature, `scripts/utils/safe.ts`). Since 2026-11-25 the threshold is 2
+and that path refuses by construction. A call the Safe must make is
+printed (`TL_ACTION=print`, `scripts/safe-call.ts`) and pasted into
+Safe{Wallet}'s Transaction Builder, where two owners sign it. A routine
+upgrade does not need the Safe: the maintainer EOA schedules it as
+PROPOSER (`TL_ACTION=schedule` without `TL_VIA_SAFE`).
+
+**Decided 2026-11-25 (founder).** The maintainer EOA keeps PROPOSER and
+the delay stays 48 hours: more upgrades may come in the next months, and
+the 48-hour public wait with the guardian's cancel is judged enough for
+now. Steps 2c (`revokeRole(PROPOSER, EOA)`) and 3 (`updateDelay(7 days)`)
+of `round-2026-09.md` are not planned; `verify-governance.ts` keeps the
+phase `final` for the day they are.
 
 ## What is / is not timelocked (the honest split)
 
@@ -114,11 +125,15 @@ renewals.
 
 ## Honest limit
 
-This is a transparency window, not multi-party control. A compromised
-maintainer key can still QUEUE a malicious upgrade, and while the Safe is
-threshold 1 it can also pause creates or stop renewals at once (an
-annoyance, never a loss: neither touches claims or withdrawals) — but it
-cannot land an upgrade or a lever change silently or instantly. The 48h window is the time for us (canceller) and for
+For upgrades this is a transparency window, not multi-party control: a
+compromised maintainer key can still QUEUE a malicious upgrade on its
+own, because it keeps PROPOSER (decided 2026-11-25, above). It cannot
+land an upgrade or a lever change silently or instantly, and it cannot
+cancel. What the Safe holds directly (the create pauses and the attestor
+kill switch, the `Payment` roles, the TimeLockRouter's settings,
+`PremiumSetting`, the Shield Vaults' owner settings) takes two of its
+three keys since 2026-11-25; until then either owner key alone could use
+them. The 48h window is the time for us (canceller) and for
 users (exit paths) to react. The reminder-worker's timelock watch
 (`services/reminder-worker/src/timelock-watch.ts` in the `computing` repo)
 alerts on every `CallScheduled` / `CallExecuted` / `Cancelled` /
@@ -151,9 +166,10 @@ Direct hardhat-deploy proxy upgrades from the deployer key **revert** now
    ```
 
    `print` shows id, salt, eta and the `scheduleBatch` / `executeBatch` /
-   `cancel` calldata for Safe{Wallet}. `TL_VIA_SAFE=1` sends the schedule
-   through the Safe (PROPOSER) while it is threshold 1; drop it to send
-   from the EOA while the EOA still holds PROPOSER. A single upgrade still
+   `cancel` calldata for Safe{Wallet}. `TL_VIA_SAFE=1` sent the schedule
+   through the Safe (PROPOSER) while it had threshold 1; since 2026-11-25
+   it refuses, so drop it: the schedule goes from the EOA, which keeps
+   PROPOSER, or from the Safe with two signatures in Safe{Wallet}. A single upgrade still
    works with `TL_PROXY` + `TL_IMPL`. Announce the queued upgrade
    (changelog/Discord); the window is the feature, use it.
 4. **Wait out the delay** (48h mainnet / 300s sepolia). The reminder
@@ -256,8 +272,10 @@ never saw is not found this way: check it with `timelock-op.ts`
 - Exploit in progress via NEW creates: pause them from the Safe, instant
   and deliberately not timelocked: `$env:SAFE_CALL="pause-eoa"` or
   `"pause-timelock"`, `npx hardhat run scripts/safe-call.ts --network
-  mainnet` prints the call for Safe{Wallet} (`SAFE_ACTION=send` executes it
-  on the threshold-1 Safe from a configured owner key).
+  mainnet` prints the call for Safe{Wallet}, where two of the three
+  owners sign it (2 of 3 since 2026-11-25; `SAFE_ACTION=send` works on a
+  threshold-1 Safe only). The admin panel's Ops Status page builds the
+  same calls as Transaction Builder files.
 - A misbehaving or leaked attestor key: `SAFE_CALL="stop-renewals"` (the
   kill switch). A new attestor is then installed through the timelock
   (`timelock-op.ts`, `TL_TARGET` = EOA router, `TL_DATA` =
